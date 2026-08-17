@@ -75,6 +75,14 @@ function TrendsIcon() {
     </svg>
   );
 }
+function UsageIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12a9 9 0 1 1-9-9" />
+      <path d="M12 12l6-4" />
+    </svg>
+  );
+}
 function FlowsIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -172,6 +180,7 @@ const NAV: NavItem[] = [
   { label: "Projetos", href: "/projects" as Route, icon: <ProjectsIcon /> },
   { label: "Action items", href: "/tasks" as Route, icon: <TasksIcon /> },
   { label: "Tendências", href: "/trends" as Route, icon: <TrendsIcon />, matchPrefixes: ["/trends"] },
+  { label: "Consumo", href: "/usage" as Route, icon: <UsageIcon />, matchPrefixes: ["/usage"] },
   { label: "Fluxos", href: "/flows" as Route, icon: <FlowsIcon />, matchPrefixes: ["/flows"] },
 ];
 

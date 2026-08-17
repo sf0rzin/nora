@@ -134,8 +134,9 @@ class AuthorizationCoverageIntegrationTest {
         calls.get("/tasks");
         calls.patch("/tasks/" + id, json(Map.of("status", "DONE")));
 
-        // trends: an aggregate over the same meetings, gated on the same meeting:read
+        // trends and usage: two aggregates over the same meetings, both on the same meeting:read
         calls.get("/trends");
+        calls.get("/usage");
 
         // workflows — before #51 these seven had no IAM gate at all
         calls.get("/workflows");
@@ -394,6 +395,75 @@ class AuthorizationCoverageIntegrationTest {
         assertThat(notAnalysed.get("themes").get("overall")).isEmpty();
         // The axis is still dense: an empty period is a series of zeros, not a missing series.
         assertThat(notAnalysed.get("taskLoad").get("buckets")).isNotEmpty();
+    }
+
+    /* =============== GET /usage aggregate authorization ============== */
+
+    /**
+     * The usage panel is the same aggregate-authorization problem as {@code /trends} plus one case
+     * that panel does not have. Its meeting counts follow the caller's visible set exactly as the
+     * trends counters do; its AI half cannot, because {@code usage_events} carries no meeting id,
+     * so a caller whose policy distinguishes meetings gets a refusal rather than a tenant-wide
+     * total. Both halves are asserted here, and the refusal is the half worth a test: a silent
+     * tenant-wide number would look identical to a correct answer.
+     */
+    @Test
+    void usageAggregate_followsTheVisibleSetAndWithholdsTheAiHalfWhenItCannot() throws Exception {
+        String rootToken = signupAndLogin("usage-root@nora.dev", "Usage Root");
+        UUID tenantId = readClaim(rootToken, "tenantId");
+        List<String> analysed = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            String meeting = uploadMeeting(rootToken, "Usage " + i, Map.of(), TRANSCRIPT);
+            analysisService.run(UUID.fromString(meeting), tenantId);
+            analysed.add(meeting);
+        }
+
+        JsonNode asRoot = mapper.readTree(getRaw("/usage", rootToken).getBody());
+        assertThat(asRoot.get("scopeStrategy").asText()).isEqualTo("TENANT_UNIFORM");
+        assertThat(asRoot.get("meetings").asLong()).isEqualTo(3);
+        assertThat(asRoot.get("analysedMeetings").asLong()).isEqualTo(3);
+        assertThat(asRoot.get("meetingBuckets")).isNotEmpty();
+        // The control plane (ADR 0022) is off in the test profile, so the AI half must say it does
+        // not know rather than report zeros that read as "this tenant consumed nothing".
+        assertThat(asRoot.get("ai").get("state").asText()).isEqualTo("UNAVAILABLE");
+        assertThat(asRoot.get("ai").get("buckets")).isEmpty();
+        assertThat(asRoot.get("ai").get("costBasis").asText()).isEqualTo("CATALOG_LIST_PRICE");
+
+        UUID memberId = insertActiveMember(tenantId, "usage-member@nora.dev", "Usage Member");
+        String member = login("usage-member@nora.dev");
+        String hidden = analysed.get(0);
+        String document =
+                document(
+                        statement("Allow", "meeting:read", arn(tenantId, ":meeting/*"), null),
+                        statement(
+                                "Deny", "meeting:read", arn(tenantId, ":meeting/" + hidden), null));
+        attach(rootToken, memberId, createPolicy(rootToken, "UsageDenyOne", document));
+
+        JsonNode asMember = mapper.readTree(getRaw("/usage", member).getBody());
+        assertThat(asMember.get("scopeStrategy").asText()).isEqualTo("PER_MEETING_FILTER");
+        assertThat(asMember.get("meetings").asLong()).isEqualTo(2);
+        assertThat(asMember.get("analysedMeetings").asLong()).isEqualTo(2);
+        assertThat(asMember.get("ai").get("state").asText()).isEqualTo("WITHHELD_RESTRICTED_SCOPE");
+        assertThat(asMember.get("ai").get("calls").asLong()).isZero();
+    }
+
+    /**
+     * A tenant with nothing has to say "no data yet" rather than draw zeros, and the state must be
+     * decided over the meetings half alone while the AI half is unknown.
+     */
+    @Test
+    void usage_separatesNoDataFromMeetingsThatWereNeverAnalysed() throws Exception {
+        String rootToken = signupAndLogin("usage-empty@nora.dev", "Usage Empty");
+
+        JsonNode nothing = mapper.readTree(getRaw("/usage", rootToken).getBody());
+        assertThat(nothing.get("dataState").asText()).isEqualTo("NO_DATA");
+
+        uploadMeeting(rootToken, "Not analysed yet", Map.of(), TRANSCRIPT);
+
+        JsonNode notAnalysed = mapper.readTree(getRaw("/usage", rootToken).getBody());
+        assertThat(notAnalysed.get("dataState").asText()).isEqualTo("NO_ANALYSED_MEETINGS");
+        // The axis is still dense: an empty period is a series of zeros, not a missing series.
+        assertThat(notAnalysed.get("meetingBuckets")).isNotEmpty();
     }
 
     private static long totalOpened(JsonNode trends) {

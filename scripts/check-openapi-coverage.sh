@@ -50,7 +50,7 @@ CONTROLLERS="services/api/src/main/java/br/com/nora/api/api/controllers"
 # Routes that exist in the code and are deliberately NOT in the public contract.
 # One `METHOD /path` per entry, exactly as the script prints it, with the reason.
 #
-# Empty today: every route the 16 controllers expose is documented, including the
+# Empty today: every route the 21 controllers expose is documented, including the
 # operator/control-plane families, which are tagged rather than hidden — see the
 # `Platform Admin` and `Platform Internal` tags in the spec.
 #

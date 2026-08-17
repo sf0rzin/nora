@@ -35,6 +35,7 @@ import type {
   TenantInfo,
   TrendsGranularity,
   TrendsResponse,
+  UsageResponse,
   WorkflowDefinition,
   WorkflowExecutionResponse,
   WorkflowResponse,
@@ -48,6 +49,7 @@ export type { WorkflowDefinition, WorkflowExecutionResponse, WorkflowResponse };
 export type { IntegrationProvider, IntegrationStatus, TelegramPairingStart };
 export type { MeResponse, TenantInfo };
 export type { TrendsGranularity, TrendsResponse };
+export type { UsageResponse };
 import meetingsListFixture from '@/fixtures/meetings-list-response.json';
 import meetingDetailFixture from '@/fixtures/meeting-detail-response.json';
 import { handleSessionExpired, sharedRefresh } from '@/lib/auth';
@@ -605,6 +607,36 @@ export async function getTrends(params?: TrendsParams): Promise<TrendsResponse> 
   if (params?.to) qs.set('to', params.to);
   const q = qs.toString();
   return request<TrendsResponse>(q ? `/trends?${q}` : '/trends');
+}
+
+// ---------- Tenant usage (US33) ----------
+
+export interface UsageParams {
+  /** Defaults to `MONTH` on the server: consumption is read against a billing period. */
+  granularity?: TrendsGranularity;
+  /** ISO-8601. Absent means the last 6 months (or 12 weeks). */
+  from?: string;
+  /** ISO-8601. Absent means now. */
+  to?: string;
+}
+
+/**
+ * Tenant usage panel (GET /usage). The tenant's own consumption, not the operator's cross-tenant
+ * telemetry — that one is `/admin/platform/telemetry/*`, lives behind Cloudflare Access and is not
+ * reachable from this client at all.
+ *
+ * Two flags decide what the screen may say and both must be read rather than inferred from the
+ * counters: `dataState` separates "nothing yet" from a real period of zero activity, and `ai.state`
+ * says whether the AI half is a measurement, an absence of one (the control plane is off) or a
+ * refusal (the caller's IAM position cannot be honoured over an aggregate with no meeting id).
+ */
+export async function getUsage(params?: UsageParams): Promise<UsageResponse> {
+  const qs = new URLSearchParams();
+  if (params?.granularity) qs.set('granularity', params.granularity);
+  if (params?.from) qs.set('from', params.from);
+  if (params?.to) qs.set('to', params.to);
+  const q = qs.toString();
+  return request<UsageResponse>(q ? `/usage?${q}` : '/usage');
 }
 
 // ---------- IAM (AWS-style) ----------

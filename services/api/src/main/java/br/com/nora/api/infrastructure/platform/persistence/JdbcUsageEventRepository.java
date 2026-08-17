@@ -1,11 +1,16 @@
 package br.com.nora.api.infrastructure.platform.persistence;
 
 import br.com.nora.api.application.platform.UsageEventRepository;
+import br.com.nora.api.application.ports.TrendsRepository.Granularity;
 import br.com.nora.api.domain.platform.CostReport;
 import br.com.nora.api.domain.platform.UsageEvent;
 import java.math.BigDecimal;
+import java.sql.Date;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -86,5 +91,48 @@ public class JdbcUsageEventRepository implements UsageEventRepository {
         }
         return new CostReport(
                 from, to, groupBy, rows, new CostReport.Totals(pin, pout, cost, events));
+    }
+
+    /**
+     * The tenant-facing series (US33). Two differences from {@link #aggregate} above, and both are
+     * the point of it existing: the tenant is a bound predicate rather than a grouping key, and the
+     * rows are cut into buckets in the caller's reporting zone so they line up with the meeting
+     * counts the primary database produced for the same range.
+     *
+     * <p>{@code status <> 'stub'} matches the operator query: a stub run is the deterministic
+     * offline fallback, it calls no provider and costs nothing, so counting it as consumption would
+     * inflate a demo tenant's figures. Errors ARE counted — a refused call was still a call, and a
+     * tenant whose calls are all failing should see them.
+     */
+    @Override
+    public List<TenantUsageRow> tenantSeries(
+            UUID tenantId, OffsetDateTime from, OffsetDateTime to, Granularity unit, ZoneId zone) {
+        MapSqlParameterSource params =
+                new MapSqlParameterSource()
+                        .addValue("tenantId", tenantId)
+                        .addValue("from", from)
+                        .addValue("to", to)
+                        .addValue("unit", unit.sqlUnit())
+                        .addValue("zone", zone.getId());
+        return jdbc.query(
+                "SELECT CAST(date_trunc(CAST(:unit AS text), timezone(CAST(:zone AS text),"
+                        + " occurred_at)) AS date) AS bucket, service, COUNT(*) AS calls,"
+                        + " COALESCE(SUM(prompt_tokens),0) AS pin, COALESCE(SUM(completion_tokens),0)"
+                        + " AS pout, COALESCE(SUM(cost_usd),0) AS cost FROM usage_events WHERE"
+                        + " tenant_id = :tenantId AND occurred_at >= :from AND occurred_at < :to AND"
+                        + " status <> 'stub' GROUP BY 1, 2 ORDER BY 1, 2",
+                params,
+                (rs, n) ->
+                        new TenantUsageRow(
+                                toLocalDate(rs.getDate("bucket")),
+                                rs.getString("service"),
+                                rs.getLong("calls"),
+                                rs.getLong("pin"),
+                                rs.getLong("pout"),
+                                rs.getBigDecimal("cost")));
+    }
+
+    private static LocalDate toLocalDate(Date value) {
+        return value == null ? null : value.toLocalDate();
     }
 }

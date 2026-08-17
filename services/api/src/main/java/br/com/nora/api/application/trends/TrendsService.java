@@ -9,11 +9,10 @@ import br.com.nora.api.application.ports.TrendsRepository.OpenByPriority;
 import br.com.nora.api.application.ports.TrendsRepository.Scope;
 import br.com.nora.api.application.ports.TrendsRepository.TopicOccurrence;
 import br.com.nora.api.application.ports.TrendsRepository.Window;
-import java.time.DayOfWeek;
+import br.com.nora.api.application.reporting.ReportingWindow;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
-import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -55,12 +54,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class TrendsService {
 
     /**
-     * Reporting zone, fixed. Bucketing a {@code TIMESTAMPTZ} by week with no declared zone means
-     * bucketing in UTC, which files a Friday 21:00 meeting in Brazil under the following week. The
-     * product's users and its copy are pt-BR, so the zone is the country's, not the server's, and
-     * it is returned in the payload so the numbers can be reproduced.
+     * Reporting zone, fixed, and shared with every other panel that reports over a period — see
+     * {@link ReportingWindow#REPORTING_ZONE} for why it is not UTC. Kept as a field here because it
+     * is what this class quotes on the wire.
      */
-    public static final ZoneId REPORTING_ZONE = ZoneId.of("America/Sao_Paulo");
+    public static final ZoneId REPORTING_ZONE = ReportingWindow.REPORTING_ZONE;
 
     /** Analysed meetings in the range below which no theme ranking is produced at all. */
     public static final int MIN_ANALYSED_MEETINGS = 5;
@@ -100,7 +98,7 @@ public class TrendsService {
     public TrendsView compute(
             Scope scope, Granularity granularity, OffsetDateTime from, OffsetDateTime to) {
         Window window = resolveWindow(granularity, from, to);
-        List<LocalDate> axis = axis(window);
+        List<LocalDate> axis = ReportingWindow.axis(window);
         LocalDate today = LocalDate.ofInstant(clock.now(), REPORTING_ZONE);
 
         MeetingCoverage coverage = trends.meetingCoverage(scope, window);
@@ -273,64 +271,16 @@ public class TrendsService {
     }
 
     /**
-     * Resolves the reporting range. An absent {@code to} is now; an absent, inverted or empty
-     * {@code from} falls back to the default span; a range longer than the ceiling is clamped
-     * forward, so no request can ask the database for an unbounded series.
+     * Resolves the reporting range through {@link ReportingWindow}, with this panel's own default
+     * span and ceiling. The rules — absent {@code to} means now, an inverted range falls back to
+     * the default, an over-long one is clamped forward — live there and are shared with the usage
+     * panel.
      */
     private Window resolveWindow(Granularity granularity, OffsetDateTime from, OffsetDateTime to) {
         Granularity g = granularity == null ? Granularity.WEEK : granularity;
-        OffsetDateTime now = OffsetDateTime.ofInstant(clock.now(), REPORTING_ZONE);
-        OffsetDateTime end = to == null ? now : to;
         int defaults = g == Granularity.WEEK ? DEFAULT_WEEK_BUCKETS : DEFAULT_MONTH_BUCKETS;
         int ceiling = g == Granularity.WEEK ? MAX_WEEK_BUCKETS : MAX_MONTH_BUCKETS;
-
-        OffsetDateTime start = from == null ? back(end, g, defaults - 1) : from;
-        if (!start.isBefore(end)) {
-            start = back(end, g, defaults - 1);
-        }
-        OffsetDateTime floor = back(end, g, ceiling - 1);
-        if (start.isBefore(floor)) {
-            start = floor;
-        }
-        return new Window(start, end, g, REPORTING_ZONE);
-    }
-
-    private static OffsetDateTime back(OffsetDateTime from, Granularity g, int units) {
-        return g == Granularity.WEEK ? from.minusWeeks(units) : from.minusMonths(units);
-    }
-
-    /**
-     * Every bucket of the range, in order and with no gaps, so a period with no activity is a zero
-     * on the chart instead of a missing point the eye joins to its neighbours.
-     */
-    private static List<LocalDate> axis(Window window) {
-        LocalDate first =
-                truncate(
-                        window.from().atZoneSameInstant(window.zone()).toLocalDate(),
-                        window.granularity());
-        // The last instant INSIDE the half-open range: `to` itself belongs to the next bucket when
-        // it lands exactly on a boundary.
-        LocalDate last =
-                truncate(
-                        window.to().minusNanos(1).atZoneSameInstant(window.zone()).toLocalDate(),
-                        window.granularity());
-        List<LocalDate> out = new ArrayList<>();
-        LocalDate cursor = first;
-        while (!cursor.isAfter(last)) {
-            out.add(cursor);
-            cursor =
-                    window.granularity() == Granularity.WEEK
-                            ? cursor.plusWeeks(1)
-                            : cursor.plusMonths(1);
-        }
-        return List.copyOf(out);
-    }
-
-    /** Same truncation Postgres applies: ISO week (Monday) or the first day of the month. */
-    private static LocalDate truncate(LocalDate date, Granularity granularity) {
-        return granularity == Granularity.WEEK
-                ? date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-                : date.withDayOfMonth(1);
+        return ReportingWindow.resolve(clock.now(), g, from, to, defaults, ceiling);
     }
 
     private static Map<LocalDate, Long> index(List<BucketCount> rows) {

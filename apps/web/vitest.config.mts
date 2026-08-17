@@ -79,7 +79,7 @@ export default defineConfig({
       // `--cov-fail-under` on `pii_shield.py`.
       //
       // No threshold on `src/lib/api/client.ts` either, and that omission is deliberate rather
-      // than an oversight. The file is one `request()` plus 69 one-line wrappers around it, so a
+      // than an oversight. The file is one `request()` plus 74 one-line wrappers around it, so a
       // file-level percentage measures how many wrappers exist, not how well the shared function
       // is tested: adding twenty endpoints would drop the number and fail the build while
       // changing nothing about the tested behaviour. `request` is covered by
@@ -95,6 +95,16 @@ export default defineConfig({
         'src/lib/report/tasks-export.ts': {
           statements: 95,
           branches: 90,
+          functions: 100,
+          lines: 95,
+        },
+        // Measured 98.4/88.4/100/100 when US34 shipped it. Gated rather than only reported —
+        // unlike the trends helpers — because it is the second module in this repository whose
+        // job is to not lie in a downloaded file: it decides when an AI figure is written as an
+        // empty CSV field instead of as a zero, and that branch has no visible symptom.
+        'src/lib/report/usage-report.ts': {
+          statements: 95,
+          branches: 85,
           functions: 100,
           lines: 95,
         },

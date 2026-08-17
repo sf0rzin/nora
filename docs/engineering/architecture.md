@@ -341,6 +341,10 @@ never reach `usage`), cache-hit pricing when the hit price is unknown, and — o
 transcription lands — audio minutes NORA never carries (§14). The provider's invoice is
 authoritative; this is telemetry, not accounting.
 
+`usage_events` has a second reader since US33, and it is on the other plane: `GET /usage` answers
+one tenant their own slice of this ledger. It does **not** reuse the operator aggregation above,
+and §21 is where that endpoint and the reasons for it are described.
+
 ### The console
 
 `apps/admin` is a separate Next.js app (`apps/admin/src/app/models/`, `telemetry/`,
@@ -1177,6 +1181,87 @@ the deployed stack while passing locally — the migration says so at length.
 - **No `uniformDecision` fast path.** `GET /meetings` uses it to keep pagination in SQL; the
   adapter does not. Duplicating an optimisation whose correctness argument lives in another class
   is how two copies of an authorization decision start to diverge.
+
+## §21. Tenant usage, and the two databases behind one screen (US33, US34)
+
+`GET /usage` (`api/controllers/UsageController.java`) answers one question — how much of the
+product did *this tenant* consume over a period — and it answers it out of two databases with two
+very different guarantees. `application/usage/UsageService` composes them;
+`application/reporting/ReportingWindow` resolves the range and the bucket axis, shared with §19 so
+the two panels cannot cut a week in different zones and quote different numbers for the same range.
+
+### The endpoint that already existed is a different endpoint
+
+`GET /admin/platform/telemetry/business` and `/telemetry/cost` are US83: the platform owner's view
+of every tenant, behind Cloudflare Access, on the control plane's own identity (§6, ADR 0023/0025).
+The temptation was to reuse the aggregation behind them, and the reason not to is visible in its
+signature: `UsageEventRepository.aggregate(from, to, groupBy)` **has no tenant parameter at all** —
+it groups the whole platform and lets the caller pick the dimension. Serving a tenant from it would
+mean filtering a cross-tenant result in application code, one forgotten line away from another
+tenant's numbers, which is the exact shape of hole `MeetingsController.search` documents having had
+(§8). So `tenantSeries` is a new query whose WHERE clause binds the tenant, and there is no code
+path through it that omits the predicate. RLS would not have caught the mistake either: the platform
+database has none, and ADR 0022 §6 says `usage_events.tenant_id` is a telemetry dimension and not a
+security boundary.
+
+### What each half can promise
+
+- **Meetings and analyses** come from the primary database through the §19 port, restricted to the
+  meetings the caller may open. Always available.
+- **AI calls, tokens and cost** come from the control plane, which is `@ConditionalOnProperty` and
+  **off by default in local, test and CI** (ADR 0022 §4). A screen that printed zeros there would be
+  asserting "no consumption" where the truth is "this deployment does not record it", so the half
+  carries `ai.state`: `AVAILABLE`, `UNAVAILABLE`, or `WITHHELD_RESTRICTED_SCOPE`.
+
+No transaction spans the two. Every primary read is already `@Transactional` in its own adapter, and
+holding a primary connection open while querying a second, possibly degraded database is the
+coupling ADR 0022 §4 exists to prevent. A control-plane failure is caught and degrades to
+`UNAVAILABLE`; the tenant's screen does not 500 because the operator's database is unreachable.
+
+### Aggregate authorization, and the one case with no per-item answer
+
+The meetings half reproduces §19 unchanged: `uniformDecision` asks whether any statement of this
+caller can tell two meetings of the tenant apart, and when one can, `filterAllowed` resolves the
+visible set and every count is restricted to those ids. `scopeStrategy` reports which path ran. No
+new IAM action is invented — `meeting:read` gates it, for the reason §19 gives for not inventing
+`meeting:trends:read`.
+
+The AI half cannot do the same, and the honest consequence is that it refuses. `usage_events` is
+denormalized for the operator's dimensions (tenant, model, service) and **carries no meeting id**,
+so "how many analyses ran for the meetings this caller may open" has no answer. The tenant-wide
+figure would be a fact about the meetings they were refused, and a count is information. So a
+restricted caller gets `WITHHELD_RESTRICTED_SCOPE` — a statement, not a zero — while their meeting
+counts stay correct.
+
+### Three numbers that are not measurements, and how each is labelled
+
+- **Cost** is `ai.costBasis = CATALOG_LIST_PRICE`: the catalog's price per million tokens times the
+  measured tokens. It is not an invoice and does not include infrastructure. The wire says so and
+  the screen repeats it.
+- **Live transcription** is counted in `ai.unmeteredCalls` and flagged `metered: false` per service.
+  ADR 0045 §4 attributes a **session issued**, never a minute transcribed, because the audio never
+  crosses NORA's infrastructure — so those events carry zero tokens and zero cost by construction.
+  Showing them at `US$ 0.00` beside real costs would read as "transcription is free".
+- **An absent control plane** produces zeros that mean nothing. `dataState` is therefore computed
+  over the meetings half alone whenever `ai.state` is not `AVAILABLE`.
+
+`dataState` itself separates `NO_DATA` from `NO_ANALYSED_MEETINGS` and from a real period of zero
+activity, and it is decided over **both** halves: a tenant that never uploaded a meeting but used
+the chat has consumption and no meetings, and calling that screen empty would be false.
+
+### The export (US34) is client-side, and repeats the caveats
+
+The consolidated period report is `apps/web/src/lib/report/usage-report.ts` plus the export menu on
+the panel — the same shape US60 set for one meeting and US25 for the task list, reusing their
+`escapeCsvField`, `CSV_BOM` and `slugify` rather than growing a third implementation. No endpoint:
+the numbers are already in the browser, and the three conditions that would justify one (a volume
+beyond the response, an audited export, a non-browser client — which would be ADR 0041's MCP server)
+are all false.
+
+The one thing it does that the other two exports did not have to: **an AI column the API did not
+measure is written as an empty CSV field, not as `0`.** A spreadsheet sums a zero, averages it and
+plots it, and nothing downstream ever learns it was invented. The Markdown twin says in words which
+of the three `ai.state` values produced the file.
 
 ## Next architectural refactors
 
