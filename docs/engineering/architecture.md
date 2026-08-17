@@ -1190,6 +1190,30 @@ the deployed stack while passing locally — the migration says so at length.
   adapter does not. Duplicating an optimisation whose correctness argument lives in another class
   is how two copies of an authorization decision start to diverge.
 
+### What the tests prove, and what they cannot
+
+Thirteen integration tests plus four tenant-isolation cases cover this adapter, and every one runs
+in-process against MockMvc. That is the right place for the authorization invariant — an MCP client
+can never see more than the user it acts for — because that invariant is about which service is
+called, not about bytes on a wire.
+
+It is the wrong place for a conformance claim. **Nothing in the suite speaks the protocol over HTTP
+to a running server**, so "this server implements MCP" rests on having read the specification
+correctly, which is the one thing a specification cannot check for you.
+
+`scripts/mcp-conformance.mjs` closes the smaller half of that. Point it at a deployment with a
+minted token and it drives the real endpoint over the real transport: the handshake on both
+supported revisions, the catalogue, a tool call, and — the part that matters more than the happy
+path — the refusals. An unsupported protocol version must be rejected with an error that *names*
+the supported ones, a request with no credential or a wrong one must be refused, and the MCP token
+must **not** authenticate `GET /meetings`, since that scoping is what makes §4's read-only cut a
+property of the credential rather than of which tools happen to exist.
+
+The larger half stays open and is named rather than implied: **no third-party client has ever
+connected.** Nothing here demonstrates interoperability with an implementation nobody in this
+repository wrote, and ADR 0041 §3 already records the known limit — a client that speaks only the
+specification's OAuth flow will not connect without a manually pasted token.
+
 ## §21. Tenant usage, and the two databases behind one screen (US33, US34)
 
 `GET /usage` (`api/controllers/UsageController.java`) answers one question — how much of the
