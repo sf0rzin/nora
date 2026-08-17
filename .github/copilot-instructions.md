@@ -15,11 +15,18 @@ Always read and respect (new structure after Sub-phase 1.10):
 - `docs/engineering/standards.md` (code conventions)
 - `docs/adr/` (durable decisions — immutable)
 
-## MVP Boundary
+## Scope Boundary
 
-Prioritize Web + Backend + NLP Worker. The first real product slice is text transcript upload, tenant context, structured NLP analysis, dashboard, meeting detail and AWS-style IAM (Root + Users + Groups + Policies) for Enterprise tenants.
+Five surfaces are functional: `apps/web`, `apps/admin` (operator console), `apps/desktop` (Windows-only), `services/api` and `services/nlp-worker`.
 
-Treat Desktop real-time capture, SSO, full MCP integrations, audio/video upload and Salesforce/HubSpot as post-MVP unless the user explicitly asks otherwise.
+**Scope is declared, not open, and this file does not hold the list.** What is closed, what came back into scope and what is a declared deferral are enumerated in **ADR 0038 §4/§5/§6** and summarised in `AGENTS.md`. Anything in none of those three lists needs a successor ADR before it is built.
+
+Two corrections to what this section said until 2026-08-17, because both would have sent an agent the wrong way:
+
+- **SSO (US05) is WONT**, closed by ADR 0038 §4 — not "post-MVP".
+- **MCP is active scope with nothing built.** ADR 0041 decided NORA exposes an MCP server as an inbound adapter inside `services/api`, read-only in its first cut. The OAuth integrations that already shipped (ADR 0031) are the **outbound** direction and are not MCP.
+
+Still genuinely out of scope: audio/video upload (`POST /meetings` takes a transcript file), and a native Salesforce/HubSpot integration, which was never tracked as a user story.
 
 ## Engineering Rules
 
@@ -34,6 +41,8 @@ Treat Desktop real-time capture, SSO, full MCP integrations, audio/video upload 
 - Write commit messages in English — subject and body — keeping Conventional Commits
   (`type(scope): subject (#PR)`). Issues, PR descriptions and review threads may stay in
   Portuguese; the rule covers commit text only.
+- **Write the PR title in English too.** `main` squashes and takes the commit subject from the
+  PR title, so a Portuguese title lands a Portuguese commit. Nothing checks this.
 
 ## Documentation Rules
 
