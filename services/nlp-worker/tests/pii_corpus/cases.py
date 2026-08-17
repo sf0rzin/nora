@@ -1205,7 +1205,8 @@ def _adversarial() -> list[Case]:
             status=KNOWN_GAP,
             note="HALF CLOSED, which is why it is still a gap and still worth reading. `Costa` "
             "is redacted now and `Kranz` is not: the surviving lookup is a LIST lookup, so the "
-            "listed surname is claimed and the off-list one is refused -- " + _LONE_AFTER_HEAD
+            "listed surname is claimed and the off-list one is refused -- "
+            + _LONE_AFTER_HEAD
             + ". What this case adds over its neighbours is the OTHER direction: a fix that "
             "closes the leak by emptying the head list eats `Contato` and `Prazo` and fails here, "
             "and both of them survive today",

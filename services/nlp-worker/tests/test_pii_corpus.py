@@ -104,10 +104,19 @@ _PLACEHOLDER_IN_TESTS = re.compile(r"\[\[[A-Z_]+_\d+\]\]")
 #   fell purely by denominator -- 36 new cases that all pass. Both are corpus movements, not
 #   shield movements, and this is the row the "corpus grew" discipline exists for.
 #
-#   2026-08-17, the shield changes of this branch, same corpus:
+#   2026-08-17, the shield changes of this branch, on that same corpus. Both columns measured in
+#   CI by `python -m tests.pii_corpus.harness`, one commit apart, with the corpus byte-identical
+#   between them -- which is what makes the difference attributable to the shield and nothing
+#   else:
 #
-#       leak              9.60%  ->  ?       (544 of 5664 -> ? of 5664)
-#       false redaction  10.13%  ->  ?       (558 of 5506 -> ? of 5507)
+#       leak              9.60%  ->  2.12%   (544 of 5664 -> 120 of 5664)
+#       false redaction  10.13%  -> 10.08%   (558 of 5506 -> 555 of 5507)
+#
+#   BOTH FELL, and the false-redaction denominator moved by one because the change added a case
+#   for its own residual (`adv/allcaps_pair/english_role_phrase`). The leak side is four rules:
+#   `product_between` 300 -> 100, `allcaps` and `allcaps_product_before` 100 -> 0 each,
+#   `speaker_label` 7 -> 0, `address` 11 -> 0 and five phrase-head gaps closed. The
+#   false-redaction side is -4 from the negative-list entries and +1 from the residual case.
 #
 # --------------------------------------------------------------------------- #
 # A ceiling, a ratchet and a goal
