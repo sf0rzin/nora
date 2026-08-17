@@ -416,7 +416,7 @@ Conventional Commits, **subject and body in English** — for humans and agents 
 - `docs(engineering): refresh standards.md to match current code`
 - `chore(infra): pin the GHCR image tag the host pulls`
 
-**Write the PR title in English too.** `main` squashes, and the squash takes the commit subject from the **PR title**, so a Portuguese title lands a Portuguese commit on `main`. Nothing checks this: `scripts/check-language.sh` scans file names and file contents and never looks at a commit message or a PR title. It has already happened once, and rewriting `main` to fix it is not available — the branch is `non_fast_forward`.
+**Write the PR title in English too.** `main` squashes, and the squash takes the commit subject from the **PR title**, so a Portuguese title lands a Portuguese commit on `main`. It has already happened once (`3696e55`), and rewriting `main` to fix it is not available — the branch is `non_fast_forward`. **`scripts/check-pr-title.sh` now checks it in CI**, as the `pr-title` job inside `ci-gate`: Portuguese, Conventional Commits shape, and a 120-character ceiling taken from this repository's own p99 rather than the usual 72, which is the median here. `scripts/check-language.sh` cannot cover this and never could — it scans file names and file contents, and a commit message is neither.
 
 Do not add AI-attribution or co-author trailers. They were removed from this repository on purpose.
 

@@ -722,6 +722,34 @@ jobs:
       - name: No Portuguese outside the declared allowlist
         run: bash scripts/check-language.sh
 
+  # The one text of a merge that nothing else can see.
+  #
+  # `main` merges with squash, and GitHub takes the squash commit's SUBJECT from the
+  # PULL REQUEST TITLE — not from any commit on the branch. So the title is never
+  # reviewed as code and, until this job, was checked by nothing. On 2026-08-16 that
+  # put commit `3696e55` on `main` with a Portuguese subject, in a repository whose
+  # rule is English commit messages, and it could not be corrected afterwards because
+  # `main` carries `non_fast_forward` and `required_linear_history`.
+  #
+  # `language` above cannot cover this and never could: it scans file names and file
+  # contents, and a commit message is neither.
+  #
+  # No path filter and no checkout of history — it reads one string from the event
+  # payload. `if:` guards the push case, where there is no PR title to read.
+  pr-title:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: The PR title has to be a usable commit subject
+        # Passed through the environment, NOT interpolated into the run script: a
+        # title is attacker-controlled text on a public repository, and `${{ }}`
+        # inside `run:` is a shell injection.
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: bash scripts/check-pr-title.sh
+
   # Always runs (no path filter), and that is the whole point: this check compares TWO
   # sides that live under different filters. `docs/api/openapi.yaml` matches `docs`;
   # `services/api/**` matches `api`. A PR that deletes a controller touches only the
@@ -899,7 +927,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [changes, api, worker, web, admin, desktop-rust, supply-chain, docs-link-check, language, openapi-coverage, infra]
+    needs: [changes, api, worker, web, admin, desktop-rust, supply-chain, docs-link-check, language, openapi-coverage, pr-title, infra]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

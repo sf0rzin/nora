@@ -42,7 +42,8 @@ Still genuinely out of scope: audio/video upload (`POST /meetings` takes a trans
   (`type(scope): subject (#PR)`). Issues, PR descriptions and review threads may stay in
   Portuguese; the rule covers commit text only.
 - **Write the PR title in English too.** `main` squashes and takes the commit subject from the
-  PR title, so a Portuguese title lands a Portuguese commit. Nothing checks this.
+  PR title, so a Portuguese title lands a Portuguese commit. The `pr-title` job in `ci.yml`
+  checks this (`scripts/check-pr-title.sh`): Portuguese, Conventional Commits shape, length.
 
 ## Documentation Rules
 
