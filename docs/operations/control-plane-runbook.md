@@ -112,7 +112,7 @@ az containerapp replica list -n nora-admin-dev -g rg-nora-dev -o table
 #    The internal FQDN (nora-admin-dev.internal.<domain>) is NOT accessible from outside.
 ```
 
-## Procedure — backfilling the RAG index (ADR 0042)
+## Procedure — backfilling the RAG index (ADR 0044)
 
 Run this after configuring an embedding credential for the first time, and after changing
 `NORA_EMBEDDING_PROVIDER` or `NORA_EMBEDDING_MODEL`. Indexing only happens at the end of an

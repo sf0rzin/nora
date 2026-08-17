@@ -356,7 +356,7 @@ A deterministic pipeline that runs before any call to the LLM. Implementation in
 
 | **ADDRESS** | Street-type opener (`Rua`, `Avenida`, `Alameda`, `Rodovia`, `Estrada`, `Praca`, `Largo`, `Travessa`, `Av.`) + capitalised street name + optional number and complement | BR |
 
-**ADDRESS was out of scope in the MVP** (ADR 0012; audit §6) and is covered since ADR 0042. It is
+**ADDRESS was out of scope in the MVP** (ADR 0012; audit §6) and is covered since ADR 0043. It is
 a deterministic recogniser and not NER, so the boundary is worth stating: an address whose name is
 lower-cased (`rua sem saida`) or purely numeric (`Rua 25`) is not claimed, and the street-type word
 on its own is never enough. It runs in the deterministic stage, **before** the PERSON_NAME
@@ -413,7 +413,7 @@ Two consequences worth stating rather than discovering:
 ### Reindexing: the backfill path
 
 `application/embedding/EmbeddingBackfillService.java`, reached through two operator endpoints on
-`/admin/platform/embeddings/backfill` (ADR 0042). It exists because the two consequences above are
+`/admin/platform/embeddings/backfill` (ADR 0044). It exists because the two consequences above are
 permanent otherwise: before it, the only way to give an analysed meeting a vector was
 `POST /meetings/{id}/reprocess`, which re-runs the entire LLM analysis to obtain one embedding.
 
