@@ -1,9 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * First test suite `apps/web` has ever had. README and AGENTS.md both say so plainly, and
- * this does not change that sentence much — it is a thin suite over three things that are
- * cheap to check and expensive to get wrong:
+ * First test suite `apps/web` has ever had; a Vitest unit suite joined it on 2026-08-17
+ * (`vitest.config.mts`, ADR 0042) and the two never see each other's files. This one is a thin
+ * suite over three things that are cheap to check and expensive to get wrong:
  *
  *   1. the security headers, which nothing has ever regression-tested;
  *   2. the middleware's route protection, which is real access control;

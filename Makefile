@@ -207,10 +207,17 @@ admin-setup: ## Install the operator console dependencies (idempotent)
 admin-dev: admin-setup ## Run the operator console in dev mode (port 3002; NORA_ADMIN_USE_MOCKS=true for mock data)
 	cd apps/admin && npm run dev
 
-# There is no `web-test`: apps/web has no test script and no test files, so the target
-# it used to declare invoked `npm test` against a package.json that does not define it,
-# and `make test` failed for that reason alone. The gap is real and recorded in ADR 0018;
-# advertising a target that cannot work only hid it.
+# `web-test` is back, and this time the script it calls exists. It was removed because the
+# target invoked `npm test` against a package.json that did not define it, so `make test`
+# failed for that reason alone — advertising a target that cannot work hid the gap rather
+# than showing it. ADR 0042 closed the gap: `apps/web` has a Vitest suite under `src/`.
+#
+# `npm run test:coverage`, not `npm test`: the coverage run is what applies the per-module
+# thresholds, so `make web-test` and the CI step assert the same thing. It takes about four
+# seconds and needs no browser.
+.PHONY: web-test
+web-test: web-setup ## Run the web unit tests with coverage (Vitest; does not run Playwright)
+	cd apps/web && npm run test:coverage
 
 # --- Quality ---
 
@@ -226,5 +233,8 @@ format: ## Format every package (modifies files)
 	cd services/nlp-worker && ruff format .
 	cd services/api && mvn spotless:apply
 
+# Not "the full test suite" in the sense of everything CI runs: the Playwright e2e specs are
+# deliberately out, because they need a production build plus a chromium download and would turn
+# a command people run between edits into a multi-minute one. `make web-test` is the unit half.
 .PHONY: test
-test: api-test worker-test ## Run the full test suite
+test: api-test worker-test web-test ## Run the backend, worker and web unit suites (not Playwright)
