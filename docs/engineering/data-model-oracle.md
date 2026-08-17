@@ -3,9 +3,9 @@
 > A mirror of the Postgres schema in **Oracle 19c+ (PL/SQL DDL)** syntax.
 > NORA runs **on Postgres in production** (see `data-model.md`). This document is an academic deliverable for FIAP's Database Design course, which requires Oracle modeling.
 > Each table corresponds 1:1 to the schema documented in `data-model.md`, with the type and syntax adaptations described in §20.
-> It covers migrations **V001–V027** — the whole canonical schema, including soft-delete (V013), refresh token rotation (V014), the two composite FKs (V015, V027), the hashed invitation token (V018), Customer Confidence (V017), semantic search (V021), chat sessions (V022), NORA Flows (V023), the OAuth integration connections (V024–V026) and Row-Level Security (V016/V017/V019/V020/V021–V024 — Oracle equivalent via VPD/DBMS_RLS in §23). Full inventory in §22.
+> It covers migrations **V001–V028** — the whole canonical schema, including soft-delete (V013), refresh token rotation (V014), the two composite FKs (V015, V027), the hashed invitation token (V018), Customer Confidence (V017), semantic search (V021), chat sessions (V022), NORA Flows (V023), the OAuth integration connections (V024–V026), the company-context history (V028) and Row-Level Security (V016/V017/V019/V020/V021–V024/V028 — Oracle equivalent via VPD/DBMS_RLS in §23). Full inventory in §22.
 >
-> **Note (scope of this doc), checked 2026-08-17:** the mirror is **complete up to V027**. Every table documented in `data-model.md` §2 has Oracle DDL here, and every migration V001–V027 has a row in §22. Two things are deliberately **not** mirrored, and both are Postgres-side operational objects rather than schema: the role provisioning in `services/api/src/main/resources/db/operational/R001__provision_app_roles.sql` (the Oracle counterpart is a privilege grant, not a script — see §23.4) and the **separate control-plane database** of ADR 0022 (`services/api/src/main/resources/db/platform/`), which `data-model.md` does not cover either. This file carries **41 tables** (`grep -c '^CREATE TABLE '`) against the **39** `### 2.x` sections of `data-model.md`: the two counts differ by design, because §2.3 (`roles` + `user_roles`) and §2.23 (`iam_user_invitations` + `iam_invitation_groups`) each document two tables. A looser `grep -c 'CREATE TABLE'` returns 44, matching three prose mentions as well.
+> **Note (scope of this doc), checked 2026-08-17:** the mirror is **complete up to V028**. Every table documented in `data-model.md` §2 has Oracle DDL here, and every migration V001–V028 has a row in §22. Two things are deliberately **not** mirrored, and both are Postgres-side operational objects rather than schema: the role provisioning in `services/api/src/main/resources/db/operational/R001__provision_app_roles.sql` (the Oracle counterpart is a privilege grant, not a script — see §23.4) and the **separate control-plane database** of ADR 0022 (`services/api/src/main/resources/db/platform/`), which `data-model.md` does not cover either. This file carries **42 tables** (`grep -c '^CREATE TABLE '`) against the **40** `### 2.x` sections of `data-model.md`: the two counts differ by design, because §2.3 (`roles` + `user_roles`) and §2.23 (`iam_user_invitations` + `iam_invitation_groups`) each document two tables. A looser `grep -c 'CREATE TABLE'` returns 45, matching three prose mentions as well.
 
 ## 1. `TENANTS`
 
@@ -281,6 +281,9 @@ CREATE TABLE tenant_contexts (
     tenant_id   VARCHAR2(36) NOT NULL,
     document    CLOB NOT NULL,
     updated_by  VARCHAR2(36),
+    -- V028 (US31): number of the newest row in tenant_context_versions. Denormalized the same way
+    -- iam_policies.current_version is (§12), so the current number is a column read, not a MAX().
+    current_version NUMBER(10) DEFAULT 1 NOT NULL,
     created_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
     updated_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
     -- Soft-delete (V013). NULL = active.
@@ -288,7 +291,11 @@ CREATE TABLE tenant_contexts (
 
     CONSTRAINT tenant_ctx_tenant_fk FOREIGN KEY (tenant_id)  REFERENCES tenants(id) ON DELETE CASCADE,
     CONSTRAINT tenant_ctx_user_fk   FOREIGN KEY (updated_by) REFERENCES users(id),
-    CONSTRAINT tenant_ctx_doc_json  CHECK (document IS JSON)
+    CONSTRAINT tenant_ctx_ver_chk   CHECK (current_version >= 1),
+    CONSTRAINT tenant_ctx_doc_json  CHECK (document IS JSON),
+    -- V028: adds no new uniqueness (id is already the PK). It exists only as the target of the
+    -- composite FK from tenant_context_versions below — the same two-step shape V015 used on users.
+    CONSTRAINT tenant_ctx_tenant_id_uk UNIQUE (tenant_id, id)
 );
 
 -- tenant_id: full UNIQUE (one context per tenant) replaced by "partial"
@@ -302,6 +309,58 @@ CREATE INDEX idx_tenant_contexts_tenant ON tenant_contexts (tenant_id);
 -- Supports the default deleted_at IS NULL filter of @SQLRestriction (Spring) — V013.
 CREATE INDEX idx_tenant_contexts_deleted_at ON tenant_contexts (deleted_at);
 ```
+
+### Version history (V028, US31)
+
+Postgres source: `data-model.md` §2.40.
+
+Immutable history of the company context: one row per edit, never updated, never deleted except by
+cascade. The shape is `iam_policy_versions` (§12) — composite primary key `(entity_id, version)`,
+explicit `tenant_id`, JSON document, `created_by`, `created_at`, `CHECK (version >= 1)`, index by
+tenant — with **one deliberate difference**: the FK to the parent is composite. `iam_policy_versions`
+predates V015, so its `tenant_id` and `policy_id` are independent foreign keys and nothing in the
+database requires them to describe the same policy; this table is born with the constraint V015 and
+V027 had to retrofit elsewhere.
+
+The second difference is not visible in the DDL and matters more: this table is **read**.
+`iam_policy_versions` has been written on every policy edit since V006 with no `SELECT` and no
+endpoint anywhere in the codebase, which makes it a backup rather than an audit trail. V028 ships
+with `GET /tenant/context/versions` and `GET /tenant/context/versions/{version}`.
+
+```sql
+CREATE TABLE tenant_context_versions (
+    context_id  VARCHAR2(36) NOT NULL,
+    version     NUMBER(10) NOT NULL,
+    tenant_id   VARCHAR2(36) NOT NULL,
+    -- The whole context document as it stood when this version was written.
+    document    CLOB NOT NULL,
+    -- Nullable: losing the author must not lose the record that a change happened. See the note
+    -- below on the delete action.
+    created_by  VARCHAR2(36),
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+
+    CONSTRAINT tenant_cv_pk         PRIMARY KEY (context_id, version),
+    -- Composite FK: tenant_id and context_id together must match one tenant_contexts row.
+    CONSTRAINT tenant_cv_context_fk FOREIGN KEY (tenant_id, context_id)
+        REFERENCES tenant_contexts (tenant_id, id) ON DELETE CASCADE,
+    CONSTRAINT tenant_cv_tenant_fk  FOREIGN KEY (tenant_id)  REFERENCES tenants(id) ON DELETE CASCADE,
+    CONSTRAINT tenant_cv_user_fk    FOREIGN KEY (created_by) REFERENCES users(id),
+    CONSTRAINT tenant_cv_ver_chk    CHECK (version >= 1),
+    CONSTRAINT tenant_cv_doc_json   CHECK (document IS JSON)
+);
+
+CREATE INDEX idx_tenant_context_versions_tenant ON tenant_context_versions (tenant_id);
+```
+
+> **Soft-delete of the parent does not touch the history.** `tenant_contexts.deleted_at` marks a row
+> without removing it, so the FK still holds and the trail survives — it simply stops being
+> reachable through the API, whose two read endpoints join through the live context. A **hard**
+> delete of the context or of the tenant takes the history with it by cascade, which is the LGPD
+> erasure path (ADR 0029). Same behaviour in both engines; nothing here is Oracle-specific.
+
+> **`created_by` uses a plain `REFERENCES users(id)` here, as `iam_policy_versions` does in §12.**
+> Postgres declares it `ON DELETE SET NULL`; Oracle supports the same clause, and the mirror follows
+> the convention already set for the IAM history table rather than diverging for one column.
 
 ## 11. `MEETING_ANALYSES` and children
 
@@ -875,7 +934,7 @@ CREATE TABLE meeting_embeddings (
     tenant_id     VARCHAR2(36) NOT NULL,
     -- Which model/provider produced the vector. Search only compares vectors from the SAME
     -- space (same provider + model); switching provider requires a re-backfill, which is
-    -- POST /admin/platform/embeddings/backfill since ADR 0042.
+    -- POST /admin/platform/embeddings/backfill since ADR 0044.
     model         VARCHAR2(120) NOT NULL,
     dim           NUMBER(10) NOT NULL,
     -- JSON array of floats. Postgres: TEXT, unvalidated. See the note above.
@@ -1121,7 +1180,7 @@ CREATE INDEX idx_integration_connections_tenant ON integration_connections (tena
 | **Partial index (`WHERE …`)** | native (`CREATE INDEX … WHERE`) | nonexistent; emulate with a function-based index (`CASE WHEN … THEN … END`). Used both for `is_root`/refresh-tokens and for the **partial unique of the soft-delete** (V013): `UNIQUE INDEX (CASE WHEN deleted_at IS NULL THEN col END)`, which frees slug/email/tenant_id for reuse after a soft-delete. |
 | **GIN index for JSONB** | `USING GIN (col jsonb_path_ops)` | `CREATE SEARCH INDEX … FOR JSON` (Oracle Text/JSON Search Index) in 19c+. |
 | **Cascade FK** | `ON DELETE CASCADE` / `ON DELETE RESTRICT` / `ON DELETE SET NULL` | identical (`ON DELETE CASCADE`, `ON DELETE SET NULL`; **`RESTRICT` does not exist** — the default behavior with no clause is equivalent to `NO ACTION`/`RESTRICT`). |
-| **Composite FK** | `FOREIGN KEY (a, b) REFERENCES t(a, b)` (the target needs a composite UNIQUE/PK) | identical — Oracle supports composite FKs natively; the target is the `UNIQUE (tenant_id, id)` (V015, §2). Used twice: `meetings` (V015, §6) and the two IAM user-attachment tables (V027, §12). |
+| **Composite FK** | `FOREIGN KEY (a, b) REFERENCES t(a, b)` (the target needs a composite UNIQUE/PK) | identical — Oracle supports composite FKs natively; the target is the `UNIQUE (tenant_id, id)` (V015, §2). Used three times: `meetings` (V015, §6), the two IAM user-attachment tables (V027, §12) and `tenant_context_versions` (V028, §10), which is born with it rather than having it retrofitted. |
 | **UNIQUE over an expression** | may be written as `CREATE UNIQUE INDEX … (tenant_id, LOWER(name))` (V017) | the index form is identical, but Oracle cannot express it as a table-level `CONSTRAINT … UNIQUE (…)` — an expression only goes in an index. `customer_accounts` (§15) therefore declares it outside the `CREATE TABLE`. |
 | **Reserved words** | `role`, `type`, `text`, `position` are all usable as column names | Same here, and none of them needed quoting or renaming. `ROLE` (`CREATE ROLE`) and `TYPE` (`CREATE TYPE`) are Oracle **keywords** but **not reserved words** — they are absent from the reserved-word list in the Oracle SQL Language Reference — so `chat_message.role` (§17) and `customer_buying_signals.type` / `customer_objections.type` (§15) stay unquoted. Quoting one as `"ROLE"` would make the identifier case-sensitive at every reference, which is the worse trade. Note that `USER` and `SESSION` **are** reserved, but only as bare words: the columns `user_id` and `session_id` are unaffected. |
 | **Vector / embedding type** | none in use — `pgvector` is **not** created; V021 stores a JSON array of floats in `TEXT` and similarity runs in Java | none needed. Oracle 19c has no vector type either (`VECTOR` arrives in 23ai); the column mirrors as `CLOB` (§16). |
@@ -1162,7 +1221,7 @@ END;
 
 ## 22. Oracle ≡ Postgres inventory
 
-Every migration V001–V027 appears in exactly one row below, so the two schemas can be checked
+Every migration V001–V028 appears in exactly one row below, so the two schemas can be checked
 against each other line by line.
 
 | # | Table | Postgres (migration) | Oracle (§ in this doc) |
@@ -1191,7 +1250,8 @@ against each other line by line.
 | 22 | workflows, workflow_executions | V023 | §18 |
 | 23 | integration_connections | V024, V025 + V026 (provider CHECK) | §19 |
 | 24 | composite FK iam_user_groups / iam_user_policies .(tenant_id, user_id) → users.(tenant_id, id) | V027 | §12 |
-| 25 | Row-Level Security (RLS → VPD/DBMS_RLS), all waves | V016, V017, V019, V020, V021, V022, V023, V024 | §23 |
+| 25 | tenant_context_versions + `tenant_contexts.current_version` (company-context history, US31) | V028 | §10 |
+| 26 | Row-Level Security (RLS → VPD/DBMS_RLS), all waves | V016, V017, V019, V020, V021, V022, V023, V024, V028 | §23 |
 
 > **V027 carries a checksum warning on the Postgres side that has no Oracle counterpart.** The
 > migration was edited after it had already been applied, so a database that ran the earlier
@@ -1200,11 +1260,11 @@ against each other line by line.
 > records the detail, including that V027 **deletes** the pre-existing cross-tenant rows the new
 > constraint cannot accept, reporting the counts via `RAISE NOTICE`.
 
-## 23. Row-Level Security (V016 → V024) — Oracle equivalent: VPD / DBMS_RLS
+## 23. Row-Level Security (V016 → V028) — Oracle equivalent: VPD / DBMS_RLS
 
 In Postgres, migration V016 enables **Row-Level Security (RLS)**: each tenant-owned table gains `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + a `tenant_isolation` policy whose predicate is `tenant_id = nora.current_tenant_id()`. The function reads a **session GUC** (`nora.current_tenant_id`) set by the Spring **`TenantRlsAspect`** via `SET LOCAL` at the start of each `@Transactional`. Enforcement is **opt-in in prod**: it only becomes real when the API connects with a dedicated role **without `BYPASSRLS`** (`nora_app NOBYPASSRLS`) and `nora.security.rls.enforce=true`; the owner/admin (used in dev/Testcontainers) bypasses by default, leaving the RLS schema inert without breaking tests.
 
-V016 was the first of seven waves, not the whole story — **§23.4 has the full coverage**, including
+V016 was the first of eight waves, not the whole story — **§23.4 has the full coverage**, including
 the 13 tables V020 later took back out of enforcement.
 
 The native equivalent in Oracle is **VPD (Virtual Private Database)**, also called *Fine-Grained Access Control (FGAC)*, configured via **`DBMS_RLS.ADD_POLICY`** + a **policy function** that returns a dynamic predicate (`WHERE` clause). The session context (Postgres's GUC) becomes an Oracle **application context** (`CREATE CONTEXT … USING …`), read with `SYS_CONTEXT`.
@@ -1290,11 +1350,11 @@ END;
 
 The remaining tenant-owned tables covered by V016 follow **exactly the same pattern** (`DBMS_RLS.ADD_POLICY` with `NORA_TENANT_PREDICATE`): `tenant_contexts`, `refresh_tokens`, `iam_groups`, `iam_policies`, `iam_user_invitations`, `meeting_analyses` and `meeting_participants`. The `tenants` table is the only special case (it filters by `id`, not `tenant_id`) — and the same is true of every table added in the later waves listed in §23.4, none of which needs a different predicate.
 
-### 23.4 Full coverage: seven waves, and the 13 tables V020 took back out
+### 23.4 Full coverage: eight waves, and the 13 tables V020 took back out
 
-**34 tables carry a `tenant_isolation` policy**, added over seven migrations. Those 34, plus the
+**35 tables carry a `tenant_isolation` policy**, added over eight migrations. Those 35, plus the
 5 cascade-boundary children that deliberately get none and the 2 legacy tables outside the model,
-account for all 41 tables in this document.
+account for all 42 tables in this document.
 
 | Wave | Count | Tables |
 |---|---|---|
@@ -1305,6 +1365,7 @@ account for all 41 tables in this document.
 | **V022** | 2 | `chat_session`, `chat_message` |
 | **V023** | 2 | `workflows`, `workflow_executions` |
 | **V024** | 1 | `integration_connections` |
+| **V028** | 1 | `tenant_context_versions` |
 
 **No policy, by design (5):** `iam_invitation_groups`, `meeting_goal_expected_outcomes`,
 `meeting_outcome_coverage`, `customer_buying_signals`, `customer_objections` — children with no
@@ -1314,7 +1375,7 @@ column that does not exist on them.
 
 **Outside the model (2):** `roles` and `user_roles`, the unused V002 RBAC tables (§3).
 
-#### V020 disables 13 of the 34 — and it is a scope decision, not a retreat
+#### V020 disables 13 of the 35 — and it is a scope decision, not a retreat
 
 ADR 0028 narrowed enforcement to **business data + PII**, the tables touched only by authenticated
 requests or by the analysis pipeline, both of which set the tenant context. V020 turns RLS **off**
@@ -1325,7 +1386,7 @@ invitation acceptance, lookup by token hash, and the onboarding writes to author
 - **(B) IAM authorization, 7:** `iam_groups`, `iam_policies`, `iam_user_groups`, `iam_group_policies`, `iam_user_policies`, `iam_policy_versions`, `iam_audit_events`.
 
 The policies stay **defined but inert**, so re-enabling is one statement rather than a recreation.
-Isolation on those 13 continues through the application's `tenant_id` filter. **21 tables** are left
+Isolation on those 13 continues through the application's `tenant_id` filter. **22 tables** are left
 under enforcement.
 
 Note what that means for §23.3: `USERS` is one of the 13. It is kept in the example above because it

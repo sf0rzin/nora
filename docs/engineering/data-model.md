@@ -1,8 +1,8 @@
 # Data Model — NORA (Postgres 16)
 
-> Actual state of the schema, aligned with **migrations V001–V027** in `services/api/src/main/resources/db/migration/` (full inventory in §5).
+> Actual state of the schema, aligned with **migrations V001–V028** in `services/api/src/main/resources/db/migration/` (full inventory in §5).
 > Each table is mapped to its originating migration. Where there is **drift** between what was documented and what is in the database, it is marked explicitly.
-> Multi-tenancy: `tenant_id` column on every tenant-bound table (ADR 0002). **RLS enabled in the schema (V016, completed in V019; auth-aware scope in V020; extended to every table added since, V021–V024)** — enforcement is opt-in via the `nora_app` role + the `nora.security.rls.enforce` flag; see §RLS.
+> Multi-tenancy: `tenant_id` column on every tenant-bound table (ADR 0002). **RLS enabled in the schema (V016, completed in V019; auth-aware scope in V020; extended to every table added since, V021–V024, V028)** — enforcement is opt-in via the `nora_app` role + the `nora.security.rls.enforce` flag; see §RLS.
 > **Soft-delete** (V013): the `tenants`, `users`, `tenant_contexts`, `meetings` tables have `deleted_at`; Spring Data queries filter `deleted_at IS NULL` via `@SQLRestriction`; full UNIQUEs became partial ones (see §4).
 
 ## 1. Overview (ER)
@@ -13,6 +13,7 @@ erDiagram
   TENANTS ||--o{ IAM_GROUPS : defines
   TENANTS ||--o{ IAM_POLICIES : defines
   TENANTS ||--|| TENANT_CONTEXTS : "1:1"
+  TENANT_CONTEXTS ||--o{ TENANT_CONTEXT_VERSIONS : history
   TENANTS ||--o{ MEETINGS : owns
   TENANTS ||--o{ IAM_USER_INVITATIONS : invites
 
@@ -224,13 +225,16 @@ Status: **orphaned**. A comment in `V006:7-9` indicates "removal in a future mig
 | `tenant_id` | `UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` | 1:1. **V013**: full UNIQUE replaced by a partial index `WHERE deleted_at IS NULL` |
 | `document` | `JSONB NOT NULL` | normalized; structural validation lives in the domain/Pydantic |
 | `updated_by` | `UUID REFERENCES users(id) ON DELETE SET NULL` | |
+| `current_version` | `INTEGER NOT NULL DEFAULT 1 CHECK (current_version >= 1)` | **V028** — number of the newest row in `tenant_context_versions` (§2.40). Denormalized the way `iam_policies.current_version` is |
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
 | `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
 | `deleted_at` | `TIMESTAMPTZ` | **V013** — soft-delete. NULL = active |
 
+**UNIQUE**: `tenant_contexts_tenant_id_id_uk (tenant_id, id)` (V028) — adds no new uniqueness (`id` is already the PK); it exists only as the target of the composite FK from §2.40, the same two-step shape V015 used for `users`.
+
 **Indexes**: `idx_tenant_contexts_tenant(tenant_id)`, `tenant_contexts_tenant_id_uk ON tenant_contexts(tenant_id) WHERE deleted_at IS NULL` (V013 — partial), `tenant_contexts_deleted_at_idx(deleted_at)` (V013).
 
-> **Debt (US31)**: the old doc foresaw a `version INTEGER NOT NULL` column for context versioning. **It does not exist in reality.** Today only `updated_at` allows seeing "when it changed", with no history. A trivial V014+ migration would solve it.
+> **The US31 debt is closed (V028).** The old doc foresaw a `version INTEGER NOT NULL` column, and for twenty-three migrations it genuinely did not exist: every `PUT /tenant/context` overwrote `document` in place and the previous products, ICP and objection-handling were gone. V028 delivers it as **`current_version` here plus a separate immutable history table** (§2.40) rather than a bare counter, because a number that says "this is edit 7" without keeping edits 1–6 answers none of the questions the story was about. Contexts that already existed were given version 1 by the migration's backfill, with an approximate `created_at`.
 
 ### 2.11 `meeting_analyses` — V005
 
@@ -355,7 +359,7 @@ Status: **orphaned**. A comment in `V006:7-9` indicates "removal in a future mig
 
 > **`attached_by` is out of scope on purpose** (V027 header): it also references `users(id)`, but it is `ON DELETE SET NULL`, and a composite FK would null **both** columns when the actor is removed — including `tenant_id`, which is `NOT NULL`. That would be an FK unable to execute its own delete action.
 >
-> **Checksum warning:** `V027__composite_fk_iam_user_attachments.sql` was **edited after having already been applied** to at least one database. Flyway checksums the migration body, so any database that ran the earlier V027 fails `validate` on startup and the API will not boot until someone runs `flyway repair` there once (or recreates the environment). The migration explains why there was no alternative: the failure it fixes happens **while V027 runs**, so a follow-up V028 would never get the chance to execute. The migration also **deletes** the pre-existing rows the new constraint cannot accept (cross-tenant memberships/attachments), reporting the counts via `RAISE NOTICE` so the operator reads them in the migration log instead of losing data silently.
+> **Checksum warning:** `V027__composite_fk_iam_user_attachments.sql` was **edited after having already been applied** to at least one database. Flyway checksums the migration body, so any database that ran the earlier V027 fails `validate` on startup and the API will not boot until someone runs `flyway repair` there once (or recreates the environment). The migration explains why there was no alternative: the failure it fixes happens **while V027 runs**, so a follow-up migration would never get the chance to execute. The migration also **deletes** the pre-existing rows the new constraint cannot accept (cross-tenant memberships/attachments), reporting the counts via `RAISE NOTICE` so the operator reads them in the migration log instead of losing data silently.
 
 ### 2.18 `iam_policies` — V006
 
@@ -660,7 +664,7 @@ Expected format of `document`:
 |---|---|---|
 | `meeting_id` | `UUID PK REFERENCES meetings(id) ON DELETE CASCADE` | 1:1 — one embedding per meeting. The vector is of the **summary snippet only**; the title is deliberately excluded because it arrives unredacted from the upload (ADR 0012). V021's own comment says "summary/title" and is frozen by the Flyway checksum — the code is `AnalysisService`, which passes only the snippet |
 | `tenant_id` | `UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` | |
-| `model` | `TEXT NOT NULL` | model/provider that generated the vector; search only compares vectors from the same space (same provider+model). Switching provider requires a re-backfill, which since ADR 0042 is `POST /admin/platform/embeddings/backfill` and not a full reprocess |
+| `model` | `TEXT NOT NULL` | model/provider that generated the vector; search only compares vectors from the same space (same provider+model). Switching provider requires a re-backfill, which since ADR 0044 is `POST /admin/platform/embeddings/backfill` and not a full reprocess |
 | `dim` | `INT NOT NULL` | vector dimension |
 | `embedding` | `TEXT NOT NULL` | JSON array of floats |
 | `source_chars` | `INT NOT NULL DEFAULT 0` | |
@@ -783,9 +787,36 @@ The nine values match the `IntegrationProvider` enum. Neither V025 nor V026 chan
 
 > Tenant-owned: RLS `tenant_isolation` enabled in V024 (business table, enforced under V020) — one tenant's tokens are invisible to a session carrying another tenant's GUC.
 
+### 2.40 `tenant_context_versions` — V028
+
+| Column | Type | Notes |
+|---|---|---|
+| `context_id` | `UUID NOT NULL` | part of the PK; composite FK below |
+| `version` | `INTEGER NOT NULL CHECK (version >= 1)` | part of the PK. Per context, not global — two tenants both have a version 1 |
+| `tenant_id` | `UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` | |
+| `document` | `JSONB NOT NULL` | the whole context document as it stood when this version was written |
+| `created_by` | `UUID REFERENCES users(id) ON DELETE SET NULL` | NULL when the author's user row was removed — losing the author must not lose the record that a change happened |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+
+**PK**: `(context_id, version)`. **FK**: `tenant_context_versions_context_fk (tenant_id, context_id) → tenant_contexts(tenant_id, id) ON DELETE CASCADE`.
+
+**Indexes**: `idx_tenant_context_versions_tenant(tenant_id)`.
+
+**Purpose**: immutable history of the company context (US31). Written by `TenantContextRepositoryAdapter.save` inside the same transaction as the upsert, and read by `GET /tenant/context/versions` and `GET /tenant/context/versions/{version}`.
+
+> **Shape copied from `iam_policy_versions` (§2.19), with one deliberate difference.** That table predates V015, so its `tenant_id` and `policy_id` are two independent FKs and nothing in the database requires them to describe the same policy. This one is born with the **composite FK** V015/V027 established, so a row filed under a tenant that does not own the context is rejected by Postgres rather than only by the application.
+>
+> **The other difference is that this one is read.** `iam_policy_versions` has been written on every policy edit since V006 and has no `SELECT` anywhere in the codebase and no endpoint — a tenant admin cannot list or inspect it, which makes it a backup rather than an audit trail. The two read endpoints shipped in the same pull request as V028 precisely so this table would not repeat that.
+
+> **A save that changes nothing writes no row.** The adapter compares the incoming document to the stored one as parsed JSON (never as text — the column is `JSONB` and Postgres returns its own normalized rendering, so a string comparison would report "changed" every time). Re-saving an unchanged settings form is the most common interaction there is; one row per click would bury the edits that matter.
+
+> **Soft-delete, decided rather than implied.** A soft delete of `tenant_contexts` leaves the history in place — the parent row still exists, so the FK still holds and the trail survives — but unreachable through the API, because both read endpoints join through the live context (`deleted_at IS NULL`). A **hard** delete of the context or of the tenant takes the history with it via `ON DELETE CASCADE`; that is the LGPD erasure path (ADR 0029), and an erasure that left the previous versions of the company document behind would not be one. A context created after a soft delete gets a new `id` and therefore its own trail, starting again at version 1.
+
+> Tenant-owned: RLS `tenant_isolation` enabled in V028. `tenant_contexts` is one of the tables V020 kept under enforce, so leaving its history unprotected would put the same document one table away from any session.
+
 ## 3. Tables planned but **not migrated**
 
-Listed in ADR 0006 and/or the old `data-model.md`, but **with no corresponding migration** (V001–V027 do not cover them; inventory in §5).
+Listed in ADR 0006 and/or the old `data-model.md`, but **with no corresponding migration** (V001–V028 do not cover them; inventory in §5).
 
 > **Note (2026-05-21, reconciled post-#148):** ADR 0015 reserved "V013" for `customer_confidence_persistence`, but the **V013 slot was used for `add_soft_delete`** and V014–V016 for rotation / composite FK / RLS. Customer Confidence was delivered in **V017** (`customer_accounts`, `meeting_account_links`, `customer_confidence_assessments`, `customer_buying_signals`, `customer_objections` — see §2.29–§2.33) and **fully wired in #148**: the worker emits `customerConfidence` and `AnalysisService` persists it in the pipeline. Only `account_health_snapshots` (US50-51) remains not migrated.
 
@@ -798,7 +829,7 @@ Listed in ADR 0006 and/or the old `data-model.md`, but **with no corresponding m
 
 > **Anchor pending:** the successor ADR that records this realignment is not in `docs/adr/` at the time of writing (the index ends at 0037). Until it lands, this row states the decision without an ADR to cite — which is the honest form, not a reason to keep calling the table debt.
 
-**`audit_events` (global) remains genuine debt.** ADR 0029 dealt with **retention and erasure** (the `RetentionSweeper` and `DELETE /privacy/meetings/{id}`), not with global auditing: only IAM actions are recorded in a table (`iam_audit_events`, §2.22). Logins, uploads and context changes are not audited in the database.
+**`audit_events` (global) remains genuine debt.** ADR 0029 dealt with **retention and erasure** (the `RetentionSweeper` and `DELETE /privacy/meetings/{id}`), not with global auditing: only IAM actions are recorded in a table (`iam_audit_events`, §2.22). Logins and uploads are not audited in the database. Context changes now leave a trail of their own (`tenant_context_versions`, §2.40 — who, when, and the full document), but it is per-entity versioning rather than an event log, so consolidating MEETING_UPLOAD and the auth events into one table is still open.
 
 The LLM block for Customer Confidence exists in the schema (`meeting-analysis-v1.schema.json`), persistence exists (V017, §2.29–§2.33), the worker **emits** it (`MeetingAnalysisV1.customer_confidence`), `AnalysisService` **persists** it in the pipeline, and `GET /meetings/{id}` + `CustomerConfidenceCard` **consume** it. **ADR 0015** (accepted 2026-05-14, vote "a") was implemented in 4 slices, all merged in **#148** (2026-05-21).
 
@@ -820,7 +851,7 @@ The LLM block for Customer Confidence exists in the schema (`meeting-analysis-v1
 - Affected UNIQUEs (`tenants.slug`, `users(tenant_id,email)`, `tenant_contexts.tenant_id`) became **partial indexes `WHERE deleted_at IS NULL`** — this allows reusing a slug/email after a soft-delete (otherwise a deleted user would block a new signup with the same email forever).
 - **Hard-delete** remains possible via a native query and underpins the **delivered** operational LGPD support (ADR 0029): `DELETE /privacy/meetings/{id}` (right to be forgotten) + the scheduled `RetentionSweeper` (retention), covered by `PrivacyFlowIntegrationTest`.
 
-### RLS — Row-Level Security (V016 → V017 → V019 → V020 → V021 → V022 → V023 → V024)
+### RLS — Row-Level Security (V016 → V017 → V019 → V020 → V021 → V022 → V023 → V024 → V028)
 
 ADR 0002 promised RLS in production; **V016 delivered it in the schema**, **V019 completed the coverage** (ADR 0026) and **V020 adjusted the enforce scope to be auth-aware** (ADR 0028). What remains is the operational cutover/enforcement in production (runbook in ADR 0026/0028), not the schema:
 
@@ -832,6 +863,7 @@ ADR 0002 promised RLS in production; **V016 delivered it in the schema**, **V019
   - **V022 (2):** `chat_session`, `chat_message` (assistant history). Isolation is by **tenant**; the per-user rule is an application filter (§2.35), not a policy.
   - **V023 (2):** `workflows`, `workflow_executions` (NORA Flows).
   - **V024 (1):** `integration_connections` (OAuth tokens at rest).
+  - **V028 (1):** `tenant_context_versions` (company-context history, US31) — its parent `tenant_contexts` is enforced, so the history is too.
 - **Auth-aware enforce scope (V020, ADR 0028):** the enforce of the `nora_app` role (NOBYPASSRLS) applies to the **business data + PII** tables (touched only by authenticated requests or by the analysis pipeline, which set the GUC). V020 **disables RLS** on two families that cannot be enforced without breaking flows that have no JWT, keeping isolation through the application's `tenant_id` filter: **(A) Identity** (`users`, `tenants`, `email_verification_tokens`, `password_reset_tokens`, `refresh_tokens`, `iam_user_invitations` — login/signup/acceptance are cross-tenant or tenant-less); **(B) IAM Authorization** (`iam_groups`, `iam_policies`, `iam_user_groups`, `iam_group_policies`, `iam_user_policies`, `iam_policy_versions`, `iam_audit_events` — authorization config written during onboarding without a JWT). The `tenant_isolation` policies remain **defined** (inert with RLS off), reversible without recreating them.
 - **Cascade boundaries (no policy, by design):** `iam_invitation_groups`, `meeting_goal_expected_outcomes`, `meeting_outcome_coverage`, `customer_buying_signals`, `customer_objections` — children without their own `tenant_id`, isolated via the FK cascade to the parent. Documented in the V019 header.
 - **Legacy outside RLS:** `roles` (global rows with `tenant_id NULL`) and `user_roles` (deprecated) — to be removed in a future cleanup.
@@ -861,7 +893,7 @@ ADR 0002 promised RLS in production; **V016 delivered it in the schema**, **V019
 | **V016** | Row-Level Security: `nora` schema + `nora.current_tenant_id()` + `tenant_isolation` policies + `ENABLE RLS` on 10 tenant-owned tables (opt-in enforce) |
 | **V017** | Customer Confidence (foundation, ADR 0015): `customer_accounts` (UNIQUE `(tenant_id, LOWER(name))`), `meeting_account_links`, `customer_confidence_assessments` (UNIQUE `(meeting_id, customer_account_id)`), `customer_buying_signals`, `customer_objections`; RLS `tenant_isolation` on the 3 tenant-owned tables |
 | **V018** | invitation token hash: `iam_user_invitations.token` → `token_hash` (SHA-256, aligned with the other one-time tokens); invalidates legacy PENDING invitations; renames the index (US06, ADR 0011) |
-| **V019** | full RLS (ADR 0026): `ENABLE RLS` + `tenant_isolation` policy on the remaining 15 tenant-owned tables (priority `transcripts` = PII), closing the coverage started in V016/V017 (28 tables with a direct policy through V019; +1 in V021, +5 in V022–V024 → **34**). Cascade boundaries documented (no policy). Role provisioning versioned in `db/operational/R001` (admin) |
+| **V019** | full RLS (ADR 0026): `ENABLE RLS` + `tenant_isolation` policy on the remaining 15 tenant-owned tables (priority `transcripts` = PII), closing the coverage started in V016/V017 (28 tables with a direct policy through V019; +1 in V021, +5 in V022–V024, +1 in V028 → **35**). Cascade boundaries documented (no policy). Role provisioning versioned in `db/operational/R001` (admin) |
 | **V020** | auth-aware RLS scope (ADR 0028, corrects the enforce from ADR 0026): `DISABLE RLS` on the Identity (6) and IAM Authorization (7) families — not enforceable without breaking flows without a JWT; policies remain defined (inert). Enforce is restricted to business data + PII |
 | **V021** | RAG / semantic search (US15, PR #206): `meeting_embeddings` (PK `meeting_id`, provider-agnostic embeddings in JSON/TEXT, cosine similarity in Java); RLS `tenant_isolation` enforced (ADR 0004/0028) |
 | **V022** | persistent chat sessions: `chat_session` (tenant + owner user, title derived from the 1st message) and `chat_message` (`role` CHECK `user`/`assistant`); 3 indexes on the session (incl. `(user_id, updated_at DESC)` for the sidebar) + 2 on the message; RLS `tenant_isolation` on both. Per-user scoping is an application filter, not a policy |
@@ -870,6 +902,7 @@ ADR 0002 promised RLS in production; **V016 delivered it in the schema**, **V019
 | **V025** | integration providers wave 1: provider CHECK → `google, slack, github, notion, todoist, linear`. Drops and recreates `integration_connections_provider_check`; no index/RLS change |
 | **V026** | integration providers wave 2: provider CHECK → the current nine (+ `microsoft, telegram, trello`). Telegram pairs by code (`access_token` holds the bot's `chat_id`) and Trello uses a user-pasted token; same table and cipher |
 | **V027** | composite FK: `iam_user_groups` and `iam_user_policies` `.(tenant_id, user_id)` → `users(tenant_id, id)` (same remedy as V015 for `meetings`), closing cross-tenant group/policy attachment. Deletes offending pre-existing rows with `RAISE NOTICE` counts. **Edited after being applied** — carries a checksum warning; a database that ran the earlier version needs `flyway repair` (see §2.17) |
+| **V028** | company-context history (US31): `tenant_context_versions` (PK `(context_id, version)`, immutable, shape of `iam_policy_versions` plus the composite FK of V015/V027), `tenant_contexts.current_version` + its `UNIQUE (tenant_id, id)`, backfill of version 1 for every context that already existed (approximate `created_at`, derived from `updated_at`), and RLS `tenant_isolation`. Ships with the two read endpoints, unlike `iam_policy_versions` |
 
 ## 6. Academic considerations (Oracle)
 

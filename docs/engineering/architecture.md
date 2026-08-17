@@ -198,7 +198,8 @@ Canonical resource: `nora:tenant/{tenantId}:{recurso}/{instanceId|*}`. Examples:
 
 ### Versioning and auditing
 
-- `iam_policy_versions` (V006:89-99): immutable history of each edit (`PRIMARY KEY (policy_id, version)`)
+- `iam_policy_versions` (V006:89-99): immutable history of each edit (`PRIMARY KEY (policy_id, version)`). **Write-only today** — it is inserted into on every policy change and no code and no endpoint reads it, so a tenant admin cannot list, inspect or diff it. Stated here because it is the shape US31 deliberately did not repeat.
+- `tenant_context_versions` (V028): immutable history of the company context, same shape (`PRIMARY KEY (context_id, version)`) plus the composite FK of V015/V027, written inside the upsert transaction and **read** by `GET /tenant/context/versions` and `GET /tenant/context/versions/{version}`. There is no restore endpoint: the UI loads a past version into the editor and the user saves, which appends a new version through the same audited write path.
 - `iam_audit_events` (V006:138-150): every IAM operation records actor, action, target and JSONB payload
 
 ## §5. LLM pipeline
@@ -356,7 +357,7 @@ A deterministic pipeline that runs before any call to the LLM. Implementation in
 
 | **ADDRESS** | Street-type opener (`Rua`, `Avenida`, `Alameda`, `Rodovia`, `Estrada`, `Praca`, `Largo`, `Travessa`, `Av.`) + capitalised street name + optional number and complement | BR |
 
-**ADDRESS was out of scope in the MVP** (ADR 0012; audit §6) and is covered since ADR 0042. It is
+**ADDRESS was out of scope in the MVP** (ADR 0012; audit §6) and is covered since ADR 0043. It is
 a deterministic recogniser and not NER, so the boundary is worth stating: an address whose name is
 lower-cased (`rua sem saida`) or purely numeric (`Rua 25`) is not claimed, and the street-type word
 on its own is never enough. It runs in the deterministic stage, **before** the PERSON_NAME
@@ -413,7 +414,7 @@ Two consequences worth stating rather than discovering:
 ### Reindexing: the backfill path
 
 `application/embedding/EmbeddingBackfillService.java`, reached through two operator endpoints on
-`/admin/platform/embeddings/backfill` (ADR 0042). It exists because the two consequences above are
+`/admin/platform/embeddings/backfill` (ADR 0044). It exists because the two consequences above are
 permanent otherwise: before it, the only way to give an analysed meeting a vector was
 `POST /meetings/{id}/reprocess`, which re-runs the entire LLM analysis to obtain one embedding.
 
@@ -997,7 +998,7 @@ Catalogued technical debt, prioritization and planned successor ADRs live in **`
 - **AUTH_FILTER_HARD_CAP**: **resolved** (Sub-phase 1.11b) — the silent cap of `500` was removed; `MeetingService.listAllForAuthFilter` scans all the tenant's meetings in batches before the in-memory IAM filter. SQL pushdown via `meeting_attributes @>` + GIN (V008) remains a future **performance** optimization (not a fix), for when some tenant reaches that scale.
 - **PolicyEvaluator** operators: **resolved** (Sub-phase 1.11c) — `SUPPORTED_CONDITION_OPERATORS` now covers `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (fail-closed kept for unknown operators and missing attributes).
 - **Postgres RLS**: **delivered in the schema (V016 + V019/V020)** and enforced on the deployed stack since 2026-08-10 (`nora_app` NOBYPASSRLS, `nora_telemetry` for the operator aggregate, `RlsEnforceTelemetryGuard` refusing a half-applied cutover). What is deferred is flipping the repository default — ADR 0028, ADR 0038 §6g. See §3/§18.
-- **`tenant_contexts.version`** (US31): column missing; no version history for the context. Reactivated as open scope by ADR 0038 §5, unbuilt.
+- **`tenant_contexts.version`** (US31): **resolved** — migration V028 adds `current_version` plus the immutable `tenant_context_versions` table, with the two read endpoints shipping alongside it so the trail is consultable rather than write-only. Reactivated by ADR 0038 §5, built.
 - **Global `audit_events`** (not just IAM): auth already has its own log (§18); what is missing is consolidating MEETING_UPLOAD, CONTEXT_UPDATE into a single trail.
 - **Customer Confidence**: **implemented full-stack** (PR #148, 2026-05-21) — V017 + worker emit + `AnalysisService` wiring (server-side trend) + `GET /meetings/{id}` + `CustomerConfidenceCard`. Narrative debt resolved. **Aggregated** Account Health (US50-51) is closed scope by ADR 0038 §4. See `docs/adr/0015-customer-confidence-minimal-persistence.md`.
 - **Hardening ADRs**: documented retroactively in ADR 0019 (RLS + composite FK), 0020 (refresh-token rotation), 0021 (soft-delete). What remains is evaluating an ADR for JWT RS256/JWKS (candidate).

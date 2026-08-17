@@ -133,12 +133,12 @@ twice.
 **On test coverage, since the old section quoted numbers.** The old snapshot's figures — worker 87%,
 backend 67%, web 0% — were measured on `2026-05-13` and went three months unrepeated. CI now
 measures them on every run: **worker 92.4% statement over 863 tests; backend 77.1-77.3% instruction
-and 61.5-61.6% branch over 578 tests; web 5.5% statement over 85 tests** (2026-08-17). The backend is
+and 61.5-61.6% branch over 578 tests; web 6.2% statement over 104 tests** (2026-08-17). The backend is
 quoted as a range because the figure jitters between runs of the same commit, which is worth knowing
 before anyone treats a one-decimal move as a regression. The web figure is low for a reason worth
-stating rather than averaging away: its unit suite (ADR 0042) covers four `src/lib` modules and no
-page or component at all, so 5.5% is the honest whole-app denominator while the three gated modules
-sit at 96.6%, 97.7% and 100%. Current numbers come from `scripts/report-coverage.sh`; read the last
+stating rather than averaging away: its unit suite (ADR 0042) covers five `src/lib` modules and no
+page or component at all, so 6.2% is the honest whole-app denominator while the four gated modules
+sit at 96.6%, 97.7%, 100% and 100%. Current numbers come from `scripts/report-coverage.sh`; read the last
 CI run rather than this paragraph. What is actually enforced in CI is narrower and is verifiable: a
 JaCoCo rule over the single class `PolicyEvaluator` at instruction >= 90% / branch >= 75%
 (`services/api/pom.xml`), `pytest --cov=nora_nlp.services.pii_shield --cov-fail-under=90` over that

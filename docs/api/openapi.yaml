@@ -834,6 +834,60 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /tenant/context/versions:
+    get:
+      tags: [Tenant]
+      summary: Lists the version history of the tenant's context
+      description: |
+        IAM action: `tenant:context:read` — the same action the live read uses, because opening a
+        past version reveals nothing that reading the current one does not, and a separate action
+        would leave every existing policy unable to audit the trail it is meant to audit.
+
+        Metadata only; the document travels with `GET /tenant/context/versions/{version}`. Newest
+        version first. A tenant that never saved a context gets `200` with an empty list, not a
+        `404` — an empty history and a missing context are the same state here.
+
+        **Versions are appended, never rewritten.** There is no restore operation in this API on
+        purpose: a client restores by reading a version and `PUT`ting its document back, which
+        records a new version with the real actor on it. A save whose document is identical to the
+        current one writes no version at all.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantContextVersionList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /tenant/context/versions/{version}:
+    get:
+      tags: [Tenant]
+      summary: Reads one version of the tenant's context, with its document
+      description: |
+        IAM action: `tenant:context:read`. Returns the document exactly as it stood when that
+        version was written.
+
+        `404` for a version this tenant does not have — including a number that exists under a
+        different tenant, which must be indistinguishable from one that never existed. The lookup
+        is scoped by the tenant claim in the JWT before it is scoped by number, and the error body
+        carries the number only.
+      parameters:
+        - in: path
+          name: version
+          required: true
+          description: Version number, from 1. Per tenant, not global.
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TenantContextVersionDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /tenant/domain:
     get:
       tags: [Tenant]
@@ -2530,6 +2584,61 @@ components:
         keyDifferentiators:
           type: array
           items: { type: string, maxLength: 200 }
+
+    # ---- tenant context history (US31, migration V028) ----
+    TenantContextVersion:
+      type: object
+      required: [version, createdAt]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+          description: |
+            Numbered per context, not globally: every tenant's history starts at 1. A version is
+            appended only when the document actually changes — re-saving an unchanged form does
+            not create one.
+        createdBy:
+          type: [string, 'null']
+          format: uuid
+          description: '`null` when the author''s user row was removed.'
+        createdByName:
+          type: [string, 'null']
+          description: 'Display name of the author, `null` in the same case as `createdBy`.'
+        createdAt:
+          type: string
+          format: date-time
+          description: |
+            When this version was written. For **version 1 of a context that predates migration
+            V028** this is the parent row's `updated_at` — it describes that context's LAST edit
+            rather than its first, because the real value was never recorded. Every version from 2
+            onwards is exact.
+    TenantContextVersionList:
+      type: object
+      required: [items, total, currentVersion]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TenantContextVersion' }
+          description: Newest version first.
+        total: { type: integer }
+        currentVersion:
+          type: integer
+          description: |
+            Version currently in force — the one `GET /tenant/context` returns a document for.
+            `0` when the tenant has never saved a context, which is the same case as an empty
+            `items`.
+    TenantContextVersionDetail:
+      type: object
+      required: [version, document]
+      properties:
+        version: { $ref: '#/components/schemas/TenantContextVersion' }
+        document:
+          allOf:
+            - $ref: '#/components/schemas/TenantContext'
+          description: |
+            The context exactly as it stood when this version was written. Same shape the live
+            `GET /tenant/context` returns, so a client renders a past version with the code it
+            already has; its `updatedAt` is this version's timestamp, not the current row's.
 
     # ---- tenant domain ----
     TenantDomain:

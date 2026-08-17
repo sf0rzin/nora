@@ -10,6 +10,10 @@ import {
   type TaskStatus,
   ApiRequestError,
 } from "@/lib/api/client";
+// The two label maps live with the exporter, not here: a status has to read the same in the
+// exported file as on this screen, and two copies of one map is how that stops being true.
+import { PRIORITY_LABEL, STATUS_LABEL } from "@/lib/report/tasks-export";
+import TasksExportMenu from "./export-menu";
 
 const FILTERS: { value: TaskStatus | "ALL"; label: string }[] = [
   { value: "ALL", label: "Todas" },
@@ -17,14 +21,6 @@ const FILTERS: { value: TaskStatus | "ALL"; label: string }[] = [
   { value: "IN_PROGRESS", label: "Em andamento" },
   { value: "DONE", label: "Concluídas" },
 ];
-
-const STATUS_LABEL: Record<TaskStatus, string> = {
-  OPEN: "Aberta",
-  IN_PROGRESS: "Em andamento",
-  DONE: "Concluída",
-};
-
-const PRIORITY_LABEL: Record<string, string> = { LOW: "Baixa", MEDIUM: "Média", HIGH: "Alta" };
 const PRIORITY_COLOR: Record<string, string> = { HIGH: "var(--danger)", MEDIUM: "var(--warn)", LOW: "var(--muted)" };
 
 // Dates in pt-BR (Intl, no date-fns). Keeps the prototype's tone: vence hoje /
@@ -158,13 +154,28 @@ export default function TasksPage() {
     return base;
   }, [items, filter]);
 
+  const activeFilterLabel = FILTERS.find((f) => f.value === filter)?.label ?? "Todas";
+
   return (
     <div className="page" style={{ maxWidth: 880 }}>
-      <header style={{ marginBottom: 22 }}>
-        <h1 className="h1">Action items</h1>
-        <p className="lede" style={{ marginTop: 8 }}>
-          Tarefas extraídas das suas reuniões. Atualize o status conforme avança.
-        </p>
+      <header
+        style={{
+          marginBottom: 22,
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <h1 className="h1">Action items</h1>
+          <p className="lede" style={{ marginTop: 8 }}>
+            Tarefas extraídas das suas reuniões. Atualize o status conforme avança.
+          </p>
+        </div>
+        {/* Exports what is on screen, filter included — see export-menu.tsx. */}
+        <TasksExportMenu items={items} filterLabel={activeFilterLabel} />
       </header>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>

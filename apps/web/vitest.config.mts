@@ -88,6 +88,16 @@ export default defineConfig({
       thresholds: {
         'src/lib/pii/redact.ts': { statements: 90, branches: 80, functions: 100, lines: 95 },
         'src/lib/report/markdown.ts': { statements: 90, branches: 80, functions: 100, lines: 95 },
+        // Measured 100/100/100/100 when US25 shipped it. The floor is set below that rather
+        // than at it: the point of the module is that a task title carrying a comma or a quote
+        // survives the CSV, and a gate that fires on the next unexercised branch would get
+        // lowered by whoever it inconveniences instead of defending that.
+        'src/lib/report/tasks-export.ts': {
+          statements: 95,
+          branches: 90,
+          functions: 100,
+          lines: 95,
+        },
         // Two exported constants and no branches: 100% is what "the mirror test imports both of
         // them" means. A third constant nobody asserts on drops this below the line, which is
         // the intent — the module exists to not diverge from the backend.

@@ -24,7 +24,7 @@ Postgres row-level security **is enforced on the deployed stack** since 2026-08-
 
 It is **off by default in the repository** (`NORA_RLS_ENFORCE` defaults to `false`), so a local `make dev` still connects as the owner and the application-layer filter is the only control there. Identity and IAM tables are exempt by design (ADR 0028): login resolves a user by global e-mail before any tenant exists, and RLS with no tenant context would fail that closed.
 
-One thing to know before reading the code as production-ready: `apps/web` is tested very unevenly. It has a Vitest unit suite over four `src/lib` modules and three Playwright e2e specs (security headers, route protection, CSP violations), and **no page or component has a unit test at all**, so its whole-app coverage was 5.5% statement on 2026-08-17. All three surfaces are measured on every CI run — backend 77.1-77.3% instruction, worker 92.4% statement, web 5.5% statement with three gated `src/lib` modules in the nineties (`scripts/report-coverage.sh`; ADR 0042 explains what is gated and what is only reported).
+One thing to know before reading the code as production-ready: `apps/web` is tested very unevenly. It has a Vitest unit suite over five `src/lib` modules and three Playwright e2e specs (security headers, route protection, CSP violations), and **no page or component has a unit test at all**, so its whole-app coverage was 6.2% statement on 2026-08-17. All three surfaces are measured on every CI run — backend 77.1-77.3% instruction, worker 92.4% statement, web 6.2% statement with four gated `src/lib` modules between 96.6% and 100% (`scripts/report-coverage.sh`; ADR 0042 explains what is gated and what is only reported).
 
 ## Architecture
 

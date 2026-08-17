@@ -40,7 +40,7 @@
 
 **Conditions** — In an IAM Policy, optional rules that restrict when an Allow/Deny statement applies. AWS-style format: `{ "stringEquals": { "nora:Department": "sales" } }`. PolicyEvaluator supports `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan` and `DateLessThan`. Unsupported operators result in `false` (fail-closed).
 
-**Coverage** — (1) In **Productivity Score**, the status of each `expectedOutcome` declared by the user: `ADDRESSED` (fully covered) / `PARTIAL` (partially covered) / `MISSED` (not covered). Each with textual evidence (`sourceQuote`). (2) In **testing**, the percentage of code exercised by the tests. Measured on every CI run by `scripts/report-coverage.sh` — as of 2026-08-17: NLP worker 92.4% statement, Spring backend 77.1-77.3% instruction / 61.5-61.6% branch, `apps/web` 5.5% statement whole-app (its unit suite covers four `src/lib` modules and no page or component; ADR 0042). The current figures live in the `api`, `worker` and `web` job logs; the canonical table is `docs/engineering/standards.md` §9.
+**Coverage** — (1) In **Productivity Score**, the status of each `expectedOutcome` declared by the user: `ADDRESSED` (fully covered) / `PARTIAL` (partially covered) / `MISSED` (not covered). Each with textual evidence (`sourceQuote`). (2) In **testing**, the percentage of code exercised by the tests. Measured on every CI run by `scripts/report-coverage.sh` — as of 2026-08-17: NLP worker 92.4% statement, Spring backend 77.1-77.3% instruction / 61.5-61.6% branch, `apps/web` 6.2% statement whole-app (its unit suite covers five `src/lib` modules and no page or component; ADR 0042). The current figures live in the `api`, `worker` and `web` job logs; the canonical table is `docs/engineering/standards.md` §9.
 
 **Customer Confidence** — Score 0-100 of the **customer's/lead's confidence in the tenant's NORA** (not our confidence in the customer). Per meeting. Combines sentiment + buying signals (`buyingSignals`) + objections (`objections`) + trend relative to the last meeting of the same account. Band `LOW`/`MEDIUM`/`HIGH`. Trend `IMPROVING`/`STABLE`/`DECLINING`. ADR 0006 accepted. **Delivered full-stack (PR #148)**: field emitted by the worker, persisted in the backend and rendered in the web app, with an authoritative per-account trend.
 
@@ -127,7 +127,7 @@ Internal-only — only the Spring backend talks to it. Hosted in `nora-worker-de
 
 **packages/nlp-baseline** — Local Python package in `packages/nlp-baseline/` with 3 TF-IDF modules (preprocessing, vectorizer, top_terms). Used by the NLP worker **before** the LLM to extract important terms in an interpretable way. ADR 0010.
 
-**PII** — Personally Identifiable Information. Categories covered by NORA's PII Shield: email, CPF, CNPJ, phone, credit card, PERSON_NAME (BR) and ADDRESS (BR street-type recogniser, ADR 0042 — deterministic, not NER). ADR 0012.
+**PII** — Personally Identifiable Information. Categories covered by NORA's PII Shield: email, CPF, CNPJ, phone, credit card, PERSON_NAME (BR) and ADDRESS (BR street-type recogniser, ADR 0043 — deterministic, not NER). ADR 0012.
 
 **PII Shield** — System in the NLP worker that detects and redacts PII **before** sending text to an external LLM. Replaces it with `[[TIPO_N]]` placeholders (e.g., `[[EMAIL_1]]`, `[[CPF_2]]`). After the LLM, the backend can unredact if authorized. ADR 0012. Implementation in `services/nlp-worker/src/.../pii_shield.py` (95% coverage).
 
@@ -163,7 +163,7 @@ Internal-only — only the Spring backend talks to it. Hosted in `nora-worker-de
 
 **Tenant** — Client/organization that uses NORA. Full isolation guaranteed by `tenant_id` in all tenant-owned tables. Each tenant has its own Users, Meetings, Tasks, IAM Policies, Tenant Context, Refresh Tokens, Audit Events.
 
-**Tenant Context** — Per-tenant configuration that teaches NORA the "company vocabulary". Fields: company name, products, glossary, competitors, stakeholders. Injected into the LLM prompt in every analysis. Edited via `TenantContextController`. Migration V005. US31 (version history) still MISSING.
+**Tenant Context** — Per-tenant configuration that teaches NORA the "company vocabulary". Fields: company name, products, glossary, competitors, stakeholders. Injected into the LLM prompt in every analysis. Edited via `TenantContextController`. Migration V005. Every edit is versioned in `tenant_context_versions` (V028, US31) and readable through `GET /tenant/context/versions`.
 
 **TF-IDF baseline** — Term Frequency × Inverse Document Frequency. Classic NLP algorithm that extracts important terms from a document by comparing local frequency vs the corpus. The `packages/nlp-baseline/` package extracts relevant terms pre-LLM (interpretable and cheap). ADR 0010.
 
