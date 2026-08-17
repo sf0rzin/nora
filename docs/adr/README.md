@@ -86,3 +86,4 @@ Partially superseded decisions: a successor ADR may mark `Partially supersedes X
 | 0039 | Cloud STT: OpenAI transcription reached with an ephemeral session token | accepted (supersedes 0035) |
 | 0040 | The PII non-negotiable is scoped to analysis; transcription becomes a declared subprocessor | accepted (relates to 0012 and 0033; supersedes neither) |
 | 0041 | NORA as an MCP server (the inbound path) | accepted (relates to 0031, the outbound path) |
+| 0042 | The RAG index gets a backfill path, triggered by an operator | accepted (extends 0024; relates to 0012 and 0028) |

@@ -658,9 +658,9 @@ Expected format of `document`:
 
 | Column | Type | Notes |
 |---|---|---|
-| `meeting_id` | `UUID PK REFERENCES meetings(id) ON DELETE CASCADE` | 1:1 — one embedding per meeting (vector of the summary/title) |
+| `meeting_id` | `UUID PK REFERENCES meetings(id) ON DELETE CASCADE` | 1:1 — one embedding per meeting. The vector is of the **summary snippet only**; the title is deliberately excluded because it arrives unredacted from the upload (ADR 0012). V021's own comment says "summary/title" and is frozen by the Flyway checksum — the code is `AnalysisService`, which passes only the snippet |
 | `tenant_id` | `UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` | |
-| `model` | `TEXT NOT NULL` | model/provider that generated the vector; search only compares vectors from the same space (same provider+model). Switching provider requires a re-backfill |
+| `model` | `TEXT NOT NULL` | model/provider that generated the vector; search only compares vectors from the same space (same provider+model). Switching provider requires a re-backfill, which since ADR 0042 is `POST /admin/platform/embeddings/backfill` and not a full reprocess |
 | `dim` | `INT NOT NULL` | vector dimension |
 | `embedding` | `TEXT NOT NULL` | JSON array of floats |
 | `source_chars` | `INT NOT NULL DEFAULT 0` | |

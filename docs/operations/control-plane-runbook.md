@@ -112,6 +112,39 @@ az containerapp replica list -n nora-admin-dev -g rg-nora-dev -o table
 #    The internal FQDN (nora-admin-dev.internal.<domain>) is NOT accessible from outside.
 ```
 
+## Procedure — backfilling the RAG index (ADR 0042)
+
+Run this after configuring an embedding credential for the first time, and after changing
+`NORA_EMBEDDING_PROVIDER` or `NORA_EMBEDDING_MODEL`. Indexing only happens at the end of an
+analysis, so meetings analysed before either event have no usable vector and are invisible to
+`GET /meetings/search` until this is run. It does not need the platform database.
+
+```bash
+# 1. Preview. Free — SQL only, no provider call. Tells you which tenants are behind and why.
+curl -sH "X-Internal-Token: $NORA_PLATFORM_ADMIN_TOKEN" \
+  https://api.nora.systems/admin/platform/embeddings/backfill
+
+# 2. Run, one tenant at a time. `limit` defaults to 25 and is clamped to 100.
+curl -sX POST -H "X-Internal-Token: $NORA_PLATFORM_ADMIN_TOKEN" \
+  -H "X-Operator-Email: $YOUR_EMAIL" -H 'Content-Type: application/json' \
+  -d '{"tenantId":"<uuid>","limit":100}' \
+  https://api.nora.systems/admin/platform/embeddings/backfill
+
+# 3. Repeat step 2 while `remaining` > 0.
+```
+
+Reading the output:
+
+- `enabled: false` — no embedding credential; step 2 returns `409`. Fix the credential first.
+- `source: primary` with every counter at zero, **under RLS enforce** — that is not necessarily an
+  empty backlog. The primary role is NOBYPASSRLS and this read carries no tenant GUC, so it can be
+  fail-closed. Configure `NORA_TELEMETRY_DATASOURCE_URL` (role `nora_telemetry`) and re-read.
+- `stoppedReason` non-null — the run ended early on its 60s budget or on three consecutive provider
+  failures. In the second case, check the provider before running again.
+- Cost lands in `telemetry/cost` under `service=embedding-backfill`, separate from the ordinary
+  `embedding` traffic. On Gemini `promptTokens` is 0 because the provider reports none; it means
+  unknown, not free.
+
 ## Rollback
 
 `param enablePlatform = false` + deploy. The 2nd Postgres, `nora-admin` and `cloudflared` disappear; the API

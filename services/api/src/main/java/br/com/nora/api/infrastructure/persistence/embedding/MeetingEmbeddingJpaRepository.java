@@ -32,4 +32,33 @@ public interface MeetingEmbeddingJpaRepository
             @Param("dim") int dim,
             @Param("embedding") String embedding,
             @Param("sourceChars") int sourceChars);
+
+    /**
+     * Backfill candidates: a meeting carries an analysed summary (only AnalysisService writes
+     * summary_snippet) and either has no vector or has one from another model, which the search
+     * ignores just as completely. Newest first — the recent meetings are the ones a user searches
+     * for. Under RLS enforce both tables are filtered by the GUC the caller set.
+     */
+    @Query(
+            value =
+                    "SELECT m.id, m.summary_snippet FROM meetings m LEFT JOIN meeting_embeddings e"
+                            + " ON e.meeting_id = m.id WHERE m.tenant_id = :tenantId AND"
+                            + " m.summary_snippet IS NOT NULL AND btrim(m.summary_snippet) <> ''"
+                            + " AND (e.meeting_id IS NULL OR e.model <> :model) ORDER BY"
+                            + " m.created_at DESC LIMIT :limit",
+            nativeQuery = true)
+    List<Object[]> findPendingIndex(
+            @Param("tenantId") UUID tenantId,
+            @Param("model") String model,
+            @Param("limit") int limit);
+
+    /** Same predicate as {@link #findPendingIndex}, counted without the ceiling. */
+    @Query(
+            value =
+                    "SELECT COUNT(*) FROM meetings m LEFT JOIN meeting_embeddings e ON e.meeting_id"
+                            + " = m.id WHERE m.tenant_id = :tenantId AND m.summary_snippet IS NOT"
+                            + " NULL AND btrim(m.summary_snippet) <> '' AND (e.meeting_id IS NULL"
+                            + " OR e.model <> :model)",
+            nativeQuery = true)
+    long countPendingIndex(@Param("tenantId") UUID tenantId, @Param("model") String model);
 }

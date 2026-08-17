@@ -158,7 +158,7 @@ Every row here is decided by an accepted ADR and **none of it is built**. Per-st
 | **PII Shield: ADDRESS, and the shapes that still leak** | ADR 0012 (debt), ADR 0040 (scope) | ADDRESS has been declared, uncovered debt since ADR 0012. The corpus tests in `services/nlp-worker/tests/test_pii_corpus.py` catalogue the redaction shapes that still leak. ADR 0040 changes the *promise* — the non-negotiable is scoped to text and analysis — and changes no control: the work here is coverage, not policy |
 | **A unit-test runner for `apps/web`** | ADR 0018 | The web app has three Playwright e2e specs and no unit runner, so ADR 0018's coverage line has nothing to measure on the largest surface. Vitest closes it |
 | **US21 trends panel · US25 task export · US31 company-context history · US43 policy simulator** | ADR 0038 §5 | Four stories ADR 0014 deferred and ADR 0038 brought back. US21's stated criterion ("after US15 is on") had already been met by #206 and nobody noticed. US43 matters out of proportion to its size: IAM is the Enterprise tier's main artefact, and a simulator is what makes it demonstrable instead of merely present |
-| **Embeddings backfill** | — (US15 debt) | Meetings analysed before #206 have no embedding, so they are invisible to semantic search and to the chat's grounding. US21 is worth little without it |
+| ~~**Embeddings backfill**~~ | **Delivered** — ADR 0042 | Meetings analysed before #206, or while the provider was failing, had no embedding and were invisible to semantic search and to the chat's grounding, permanently: indexing is best-effort and nothing ever came back. `GET`/`POST /admin/platform/embeddings/backfill` reindex from the summary already stored on the meeting — no second LLM analysis — bounded per run and billed through the existing cost telemetry. Same mechanism repairs a change of embedding model |
 
 ### 2.4 The substrate these land on
 
@@ -229,7 +229,7 @@ For a sub-phase to be considered **closed** (`DONE`):
 | **Desktop finalisation** | Windows capture (WASAPI loopback) works. The client is Windows-only by ADR 0038 §2 — the macOS (BlackHole) and Linux (PulseAudio) paths and the ScreenCaptureKit debt were deleted, having never been exercised — and the local UI went with them. Transcription is being replaced (§2.3, ADR 0039). Real Windows/Teams validation is still pending |
 | **SSO Entra ID / SAML** (US05) | **Closed** by ADR 0038 §4 |
 | **Polish + Demo + Pitch** | The pitch was held on 2026-06-15. The polish landed with the v3 redesign; the demo material is §2.1 |
-| **Trends panel** (US21) | **Reactivated** by ADR 0038 §5 — its prerequisite (US15, semantic search) shipped in #206. Note that the prerequisite is weaker than it looks: there is no embeddings backfill, so meetings analysed before #206 are invisible to it |
+| **Trends panel** (US21) | **Reactivated** by ADR 0038 §5 — its prerequisite (US15, semantic search) shipped in #206. The gap that made that prerequisite weaker than it looked — no backfill, so meetings analysed before #206 stayed invisible — is closed by ADR 0042; the index now has to be *run*, not just merged |
 | **Policy templates + Simulator** (US41 + US43) | US43 **reactivated** by ADR 0038 §5. US41 open with no trigger |
 | **Permission boundaries** (US44) | Open, no trigger. It needs an organisational hierarchy and IAM delegation that nothing else asks for |
 | **Tenant metrics and Export** (US33 + US34) | Open, no trigger. The operator-facing telemetry that exists (`/admin/platform/telemetry/*`) is a different thing behind Cloudflare Access |
@@ -252,7 +252,9 @@ by what one person can carry.
 - **The MCP server** depends on the IAM principal resolution being reachable from a non-HTTP entry
   point — ADR 0041's invariant is that a tool call and a web request go through the same
   `PolicyEvaluator`. It does not depend on the shared contracts package, which was the old note here
-- **The trends panel** depends on the embeddings backfill (§2.3), not just on US15 being merged
+- **The trends panel** depends on the embeddings backfill having been *run* for the tenant on
+  display, not just on US15 being merged. The mechanism exists (ADR 0042); a panel built on a
+  half-filled index still has to say so instead of drawing a flat line
 - **Cloud STT** depends on a decision the desktop's own cleanup left open: `http_proxy.rs` signs
   requests with an `access-token` from the keyring, and the login form that was the only writer of
   that secret was deleted. The live surfaces authenticate through the web session instead. That

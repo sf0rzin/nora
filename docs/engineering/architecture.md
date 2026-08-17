@@ -394,12 +394,46 @@ returns, and never fails the analysis.
 
 Two consequences worth stating rather than discovering:
 
-- **Nothing backfills.** A meeting analysed before V021, or analysed while no embedding credential
-  was configured, has no vector and is invisible to semantic search until it is reprocessed. No
-  backfill job exists in the repository.
+- **Indexing is best-effort, so it can silently not happen.** A meeting analysed before V021, or
+  analysed while no embedding credential was configured, or analysed while the provider was
+  failing, ends up with a summary and no vector. Nothing in the analysis path ever comes back for
+  it. The reindexing path below is what does.
 - **`model` is part of the identity of the vector.** `EmbeddingService.search` filters by
   `client.modelId()` (`provider:model`), so changing provider or model silently empties the index
   until everything is re-indexed. That is why the column exists.
+
+### Reindexing: the backfill path
+
+`application/embedding/EmbeddingBackfillService.java`, reached through two operator endpoints on
+`/admin/platform/embeddings/backfill` (ADR 0042). It exists because the two consequences above are
+permanent otherwise: before it, the only way to give an analysed meeting a vector was
+`POST /meetings/{id}/reprocess`, which re-runs the entire LLM analysis to obtain one embedding.
+
+**The input is already in the database.** A meeting that was analysed carries
+`meetings.summary_snippet`, which is exactly the text the live path indexes — the summary that went
+through the PII Shield, never the raw transcript and never the title (ADR 0012). So a backfill is
+one embedding call per meeting and no model call at all.
+
+**One query covers both failure shapes.** A meeting with no row in `meeting_embeddings` and a
+meeting whose row carries a different `model` are equally invisible to the search, which only
+compares vectors from the same space. The pending predicate is "has a summary snippet AND (no row
+OR row from another model)", so switching the embedding provider is repaired by the same mechanism
+as never having had a credential.
+
+**It is bounded because it is billed.** There is no startup catch-up and no scheduled sweep — both
+would spend money without anyone asking. `GET` returns what a run *would* do, per tenant, from plain
+SQL and no provider call; `POST` runs one tenant at a time with a default of 25 meetings, a ceiling
+of 100, a 60-second budget and an abort after three consecutive provider failures. Every embedding
+call, on this path and on the live one, emits a usage event through `UsageRecorder` (§6) — the
+backfill under `service=embedding-backfill` so a deliberate bulk spend is separable from ordinary
+traffic in `GET /admin/platform/telemetry/cost?groupBy=service`.
+
+**Two database roles, on purpose.** The `POST` writes `meeting_embeddings` through the primary
+datasource as `nora_app` (NOBYPASSRLS), so it sets the tenant GUC explicitly via `TenantRlsContext`
+— the operator request thread never carried one. The `GET` is cross-tenant by nature and reads
+through the `nora_telemetry` datasource (BYPASSRLS) when configured, exactly like the business
+metrics of §6; the response echoes which role answered, because under RLS enforce the primary role
+would return all-zero counters that look like "nothing to do".
 
 ### The client
 
@@ -825,7 +859,7 @@ Step by step in words:
 3. **Backend → Worker** (`MeetingService.processAsync` → `AnalysisService.requestAnalysis`): assembles the `AnalyzeRequest` with transcript + tenant_context + options.
 4. **Worker** (`/analyze`): PII Shield → TF-IDF baseline → strict LLM → Pydantic validate → returns `AnalyzeResponse`.
 5. **Persistence**: the backend saves `meeting_analyses` + children (`meeting_decisions`, `meeting_action_items`, `meeting_risks`, `meeting_opportunities`) + optionally `meeting_productivity_assessments` + `meeting_outcome_coverage`. It updates `meetings.processing_status = COMPLETED`.
-6. **Post-COMPLETED fan-out** (`AnalysisService.java:143-157`), all of it fail-soft and none of it able to revert the analysis: usage telemetry to the control plane (§6), the three Flows domain events (§11), and the embedding of the summary for semantic search (§8).
+6. **Post-COMPLETED fan-out** (`AnalysisService.java:143-157`), all of it fail-soft and none of it able to revert the analysis: usage telemetry to the control plane (§6), the three Flows domain events (§11), and the embedding of the summary for semantic search (§8). Fail-soft means the embedding can silently not happen; §8 describes the backfill path that repairs that afterwards without re-running this pipeline.
 7. **Frontend polling**: the "Processing" card in `apps/web/src/app/(app)/meetings/[id]/page.tsx` polls every ~2s until `processing_status = COMPLETED`.
 8. **Render**: the UI shows the summary (markdown via `react-markdown`), decisions, action items, risks/opportunities and, if present, `ProductivityScoreCard`.
 

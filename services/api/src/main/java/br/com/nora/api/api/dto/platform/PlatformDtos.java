@@ -87,6 +87,13 @@ public final class PlatformDtos {
     /** PUT /admin/platform/config/{service}. */
     public record BindRequest(UUID modelId, Boolean enabled) {}
 
+    /**
+     * POST /admin/platform/embeddings/backfill. {@code tenantId} is required — a backfill spends
+     * money per meeting, so it is never implicitly "everyone". {@code limit} is optional and
+     * clamped by the service.
+     */
+    public record BackfillRequest(UUID tenantId, Integer limit) {}
+
     /** POST /internal/platform/usage. */
     public record UsageRequest(
             @NotBlank String service,

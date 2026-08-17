@@ -40,11 +40,25 @@ public class EmbeddingRepositoryAdapter implements EmbeddingRepository {
                 .toList();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<PendingIndex> findPendingIndex(UUID tenantId, String modelId, int limit) {
+        return jpa.findPendingIndex(tenantId, modelId, limit).stream()
+                .map(r -> new PendingIndex((UUID) r[0], (String) r[1]))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countPendingIndex(UUID tenantId, String modelId) {
+        return jpa.countPendingIndex(tenantId, modelId);
+    }
+
     private String toJson(float[] vector) {
         try {
             return mapper.writeValueAsString(vector);
         } catch (JsonProcessingException e) {
-            throw new IllegalStateException("falha ao serializar embedding", e);
+            throw new IllegalStateException("failed to serialize embedding", e);
         }
     }
 
@@ -52,7 +66,7 @@ public class EmbeddingRepositoryAdapter implements EmbeddingRepository {
         try {
             return mapper.readValue(json, float[].class);
         } catch (JsonProcessingException e) {
-            throw new IllegalStateException("falha ao desserializar embedding", e);
+            throw new IllegalStateException("failed to deserialize embedding", e);
         }
     }
 }

@@ -1,0 +1,21 @@
+-- V002 — retires the `service.search-embeddings` feature flag.
+--
+-- Seeded by V001 and never consulted by anything. `LlmConfigResolver` reads
+-- `service.{service}` only for the services that have an `llm_config` binding —
+-- chat, analysis, multimodal — and embeddings have no binding, no row in
+-- `llm_models`, and no place in the router: their provider, model and credential
+-- come from `nora.embedding.*` in the environment, not from this database.
+--
+-- It was also a false statement. It sat at FALSE describing semantic search as
+-- "off no MVP" while `GET /meetings/search` has been serving that exact feature
+-- since migration V021 on the primary database, and the chat has been grounding
+-- its answers on it.
+--
+-- The off-switch it looked like already exists and is the real one: with no
+-- credential for the active provider `EmbeddingClient.isEnabled()` is false and
+-- indexing, search and backfill are all no-ops. A second switch in another
+-- database, contradicting the first, is not a safety net.
+--
+-- The three surviving keys keep their consumer. See ADR 0042.
+
+DELETE FROM feature_flags WHERE key = 'service.search-embeddings';
