@@ -376,7 +376,7 @@ ADR 0018 is accepted and immutable; the targets below are its, unchanged. The **
 | Area | Sustained target (ADR 0018) | Measured 2026-08-17 |
 |---|---|---|
 | **Critical areas** (IAM, Auth, PII, LLM analyzer) | **> 85%** | IAM packages 90.9% instr · Auth/identity packages 93.8% instr · PII shield 96.6% stmt · `llm_analyzer.py` 84.7% stmt |
-| Other backend areas | > 60% | overall backend 77.1-77.3% instruction / 78.0-78.1% line (see the repeatability note below) |
+| Other backend areas | > 60% | overall backend 79.5% instruction / 79.9% line over 713 tests (see the repeatability note below) |
 | NLP Worker | > 85% | **92.4%** statement over `nora_nlp` |
 | **Backend branch coverage** | > 70% | **61.5-61.6%** — still short of the target, by about 8.5 points |
 | Web Next.js | ADR 0018's per-page table (auth pages > 50%, dashboard/meeting-detail/tasks > 40%, shared components > 60%) — **not enforced, not met** | **9.54%** statement whole-app; the five gated `src/lib` modules at 96.6% (`redact.ts`), 97.7% (`markdown.ts`), 100% (`tasks-export.ts`), 100% (`password-policy.ts`) and 89.9% (`iam/policy-document.ts`); `client.ts` 32.5%, reported and not gated — it drops every time a wrapper is added, which is why it is not |

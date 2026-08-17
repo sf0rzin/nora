@@ -55,14 +55,14 @@ Two different things get confused whenever this project quotes a coverage number
 
 | Scope | Measured 2026-08-17 | How |
 |---|---|---|
-| Spring backend, overall | **77.1-77.3%** instruction · 61.5-61.6% branch · 78.0-78.1% line (578 tests) | `mvn -B verify` → JaCoCo |
+| Spring backend, overall | **79.5%** instruction · 63.6% branch · 79.9% line (713 tests) | `mvn -B verify` → JaCoCo |
 | ↳ *why that row is a range* | three runs of the same branch gave 77.1%, 77.2% and 77.3%; the per-area rows below did not move at all | the aggregate is good to about ±0.1 point |
 | Backend IAM packages (`*.iam`) | 90.9% instruction · 80.4% branch | idem |
 | Backend Auth packages (`*.identity`, `*.security`) | 93.8% instruction · 72.8% branch | idem |
 | `PolicyEvaluator` — the one gated class | 96.3% instruction · 86.0% branch | idem |
 | NLP worker, whole package | **92.4%** statement (863 tests) | `pytest --cov=nora_nlp` |
 | Worker PII shield — the one gated module | 96.6% statement | idem |
-| `apps/web`, whole app | **9.54%** statement · 8.59% branch · 9.27% line (150 tests) | `npm run test:coverage` → Vitest + v8 |
+| `apps/web`, whole app | **9.37%** statement · 8.39% branch · 9.11% line (150 tests) | `npm run test:coverage` → Vitest + v8 |
 | ↳ *why that row is so low* | the unit suite covers eight `src/lib` modules; **no page and no component has a unit test** | the three Playwright e2e specs exercise routing, headers and CSP, and are not counted here |
 | `apps/web` gated modules | `redact.ts` 96.6% · `markdown.ts` 97.7% · `tasks-export.ts` 100% · `usage-report.ts` 98.4% · `password-policy.ts` 100% · `iam/policy-document.ts` 89.9% statement | idem |
 | `apps/web/src/lib/api/client.ts` | 30.9% statement — reported, deliberately not gated | one `request()` plus 74 one-line wrappers; the percentage counts wrappers |

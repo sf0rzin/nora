@@ -9,6 +9,12 @@
 > re-derived by opening the file it cites; no status is carried over on trust. Where a claim could
 > not be verified, it says so instead of guessing.
 >
+> **Those three numbers are the anchor's, not today's, and they are deliberately not refreshed** —
+> they say what was measured when the rewrite was done, which is what makes the statuses below
+> auditable. The tree has moved since: as of 2026-08-17 it carries **32 migrations** (last
+> `V033__create_iam_permission_boundaries.sql`, with `V031` a permanent gap — see
+> `standards.md` §Migrations), **21 controllers** and **49 numbered ADRs, 36 of them accepted**.
+>
 > **Why the rewrite.** The previous revision declared itself current as of 2026-05-14 and worked with a
 > closed universe of 58 stories. Two things were wrong with that. First, the repository shipped an
 > entire product surface after that date with no story anywhere in this document: the chat assistant
@@ -293,10 +299,10 @@ number of stories.
 | MoSCoW | Total | DONE | PARTIAL | MISSING | WONT |
 |---|---|---|---|---|---|
 | **Must Have (M)** | 28 | **28** | 0 | 0 | 0 |
-| **Should Have (S)** | 40 | **38** | **1** (US13) | **1** (US80) | 0 |
+| **Should Have (S)** | 40 | **39** | 0 | **1** (US80) | 0 |
 | **Could Have (C)** | 12 | **12** | 0 | 0 | 0 |
 | **Won't Have v1 (W)** | 6 | **1** (US09) | 0 | 0 | **5** (US05, US08, US47, US50, US51) |
-| **Total** | **86** | **79** | **1** | **1** | **5** |
+| **Total** | **86** | **80** | 0 | **1** | **5** |
 
 > **The numerals in this table are recomputed by script**, not by hand, after the parallel branches
 > of the 2026-08 wave merge. Each branch sees only its own delivery, so a branch that recounted the
@@ -333,10 +339,11 @@ number of stories.
 **Effective coverage**
 
 - Must Have: **28 of 28** (100%). The v1.0 MVP of §6 is complete.
-- Should Have: **38 of 40** (95%). The two that remain are tenant-wide erasure and portability
-  (US80, a declared deferral under ADR 0038 §6h rather than open work) and one partial, US13. All
-  four of the ADR 0038 reactivations have landed, US27 left this list when the MCP server shipped,
-  and US33, US34, US41 and US42 left it under ADR 0046 §1.
+- Should Have: **39 of 40** (98%). **One story remains, and it is not open work**: US80,
+  tenant-wide erasure and LGPD portability, a declared deferral under ADR 0038 §6h and reaffirmed by
+  ADR 0046 §2. All four of the ADR 0038 reactivations have landed, US27 left this list when the MCP
+  server shipped, US33, US34, US41 and US42 left it under ADR 0046 §1, and US13 stopped being a
+  partial when participant matching shipped under ADR 0048.
 - Could Have: **12 of 12** (100%). Scheduled flows (US75) shipped under ADR 0047 and permission
   boundaries (US44) under ADR 0049 — the last of the seven stories ADR 0046 §1 reactivated.
 

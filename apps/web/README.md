@@ -96,7 +96,7 @@ note at the top of `e2e/fixtures.ts`). The Vitest suite covers eight `src/lib` m
 Markdown report builder, the task-list CSV/Markdown exporter, the BFF's PII redaction, the password
 policy, the trends panel's date/axis helpers and the IAM policy-document conversion that the form
 editor is built on. **No page and no component has a unit test**, which is why whole-app coverage is
-around 9.5% (9.54% statement, 150 tests across 8 files, measured 2026-08-17).
+around 9.4% (9.37% statement, 150 tests across 8 files, measured 2026-08-17).
 
 Two of those tests are mirrors and read files from other services: `src/lib/pii/redact.test.ts`
 compares its pattern literals with the worker's PII Shield, and `src/lib/password-policy.test.ts`
