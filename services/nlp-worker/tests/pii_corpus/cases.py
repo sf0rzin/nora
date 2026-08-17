@@ -1,4 +1,8 @@
-"""The cases themselves: 4,400 generated, plus a hand-written adversarial set.
+"""The cases themselves: the generated grid, plus the hand-written pools and adversarial set.
+
+The generated count is `len(SHAPES) * len(QUADRANTS) * PAIRS_PER_QUADRANT_PER_SHAPE` and is
+asserted there rather than written here -- it has been 4,482 and 5,600 in the life of this file,
+and a number in a docstring nobody re-derives is the kind of claim this repository forbids.
 
 A case declares what must *vanish* (a person's name) and what must *survive* (a product, a
 company, a role). Most cases declare both, which is deliberate: a fix that redacts the whole
@@ -275,6 +279,46 @@ SHAPES = (
     ("signature_block", _signature_block),
     ("title_then_name_then_label", _title_then_name_then_label),
 )
+
+
+# --------------------------------------------------------------------------- #
+# Addresses
+#
+# `PiiType.ADDRESS` is in the published enum and in
+# `packages/shared-contracts/pii-types.json`, and until this group existed nothing measured
+# whether it was ever emitted. It was not. These cases are the measurement: each declares the
+# whole address as `must_vanish`, so a shield that redacts only the street NAME and keeps `Rua`
+# and the number still fails.
+#
+# Two frames put a person beside the address, because the two recognisers meet there: the
+# address is claimed in the deterministic stage and the person in the heuristic one, and the
+# person must survive that ordering as a `[[PERSON_NAME_n]]` rather than being swallowed or
+# freed.
+# --------------------------------------------------------------------------- #
+
+_ADDRESS_FRAMES: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
+    ("O escritorio do cliente fica na {}.", (), ("escritorio", "cliente")),
+    ("Confirmamos a entrega na {} ate sexta.", (), ("entrega",)),
+    ("{} e o endereco que consta no contrato.", (), ("endereco", "contrato")),
+    ("Marina Alves mora na {}.", ("Marina", "Alves"), ()),
+    ("A visita com Carlos Silva sera na {}.", ("Carlos", "Silva"), ("visita",)),
+)
+
+
+def _addresses() -> list[Case]:
+    cases: list[Case] = []
+    for i, (address, tokens) in enumerate(pools.ADDRESSES):
+        frame, people, survive = _ADDRESS_FRAMES[i % len(_ADDRESS_FRAMES)]
+        cases.append(
+            Case(
+                case_id=f"address/{i:03d}",
+                shape="address",
+                text=frame.format(address),
+                must_vanish=tokens + people,
+                must_survive=survive,
+            )
+        )
+    return cases
 
 
 # --------------------------------------------------------------------------- #
@@ -567,6 +611,32 @@ def _false_positives() -> list[Case]:
             must_survive=("Contabilidade",),
         )
     )
+
+    # The price list for the ADDRESS recogniser. Every one of these opens on a street type word
+    # and is not an address, and what separates them is that the word after it is not a name.
+    # A recogniser keyed on the street type word alone eats all thirteen.
+    for i, (text, tokens) in enumerate(pools.NOT_ADDRESSES):
+        cases.append(
+            Case(
+                case_id=f"fp_address/{i:03d}",
+                shape="fp_address",
+                text=text,
+                must_survive=tokens,
+            )
+        )
+
+    # The price list for the all-caps pair rule. Each is held by one of its four guards --
+    # ordinary vocabulary, the negative list, the four-letter floor, the preterite tail -- and
+    # `test_the_all_caps_pair_pool_is_not_inert` is what proves the guards are what hold them.
+    for i, (text, tokens) in enumerate(pools.ALLCAPS_PAIRS_THAT_ARE_NOT_PEOPLE):
+        cases.append(
+            Case(
+                case_id=f"fp_allcaps_pair/{i:03d}",
+                shape="fp_allcaps_pair",
+                text=text,
+                must_survive=tokens,
+            )
+        )
 
     # An ordinary word in the `product_between` slot -- the mirror of the shape 5b is measured
     # on. If the fix keys on structure rather than on the name lists, these become people.
@@ -1217,7 +1287,11 @@ def _adversarial() -> list[Case]:
 
 def all_cases() -> list[Case]:
     """The whole corpus, generated and hand written, in a stable order."""
-    return _generated() + _negatives() + _false_positives() + _adversarial()
+    return _generated() + _addresses() + _negatives() + _false_positives() + _adversarial()
+
+
+def address_cases() -> list[Case]:
+    return _addresses()
 
 
 def false_positive_cases() -> list[Case]:

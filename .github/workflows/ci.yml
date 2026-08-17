@@ -199,7 +199,15 @@ jobs:
       # whole transcript. Under a second for the whole corpus — no case count here on purpose,
       # because it grew from 4,482 to 5,682 in one review and a stale number in a comment is
       # exactly the kind of claim this project forbids.
+      #
+      # `if: !cancelled()` because the step said "on every run" and was not doing it. A failing
+      # `pytest` above aborts the job, so on exactly the runs where somebody needs the two
+      # numbers — the ones where a rate moved and the gate fired — the report was the step that
+      # never executed, and the reviewer got an assertion message instead of the shape table.
+      # This does not weaken the gate: `tests/test_pii_corpus.py` still fails the job, this step
+      # only reports.
       - name: PII corpus — leak rate and false-redaction rate
+        if: ${{ !cancelled() }}
         working-directory: services/nlp-worker
         run: python -m tests.pii_corpus.harness
 
