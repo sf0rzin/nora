@@ -163,7 +163,7 @@ Internal-only — only the Spring backend talks to it. Hosted in `nora-worker-de
 
 **Tenant** — Client/organization that uses NORA. Full isolation guaranteed by `tenant_id` in all tenant-owned tables. Each tenant has its own Users, Meetings, Tasks, IAM Policies, Tenant Context, Refresh Tokens, Audit Events.
 
-**Tenant Context** — Per-tenant configuration that teaches NORA the "company vocabulary". Fields: company name, products, glossary, competitors, stakeholders. Injected into the LLM prompt in every analysis. Edited via `TenantContextController`. Migration V005. US31 (version history) still MISSING.
+**Tenant Context** — Per-tenant configuration that teaches NORA the "company vocabulary". Fields: company name, products, glossary, competitors, stakeholders. Injected into the LLM prompt in every analysis. Edited via `TenantContextController`. Migration V005. Every edit is versioned in `tenant_context_versions` (V028, US31) and readable through `GET /tenant/context/versions`.
 
 **TF-IDF baseline** — Term Frequency × Inverse Document Frequency. Classic NLP algorithm that extracts important terms from a document by comparing local frequency vs the corpus. The `packages/nlp-baseline/` package extracts relevant terms pre-LLM (interpretable and cheap). ADR 0010.
 

@@ -158,6 +158,8 @@ class AuthorizationCoverageIntegrationTest {
         calls.put("/tenant/domain", json(Map.of("allowedEmailDomain", "nora.dev")));
         calls.get("/tenant/context");
         calls.put("/tenant/context", json(Map.of("companyName", "NORA")));
+        calls.get("/tenant/context/versions");
+        calls.get("/tenant/context/versions/1");
 
         // iam
         calls.get("/iam/groups");

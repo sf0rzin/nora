@@ -161,7 +161,7 @@ done in.
 | ID | Title | MoSCoW | Status | Evidence | Known debt |
 |---|---|---|---|---|---|
 | US30 | Configure the company context | M | DONE | `TenantContextController` (`GET` line 40, `PUT` line 51) · migration V005 · `apps/web/src/app/(app)/settings/context/page.tsx` · PR #33 | — |
-| US31 | Version history of the company context | S | MISSING | V005 has only `created_at`/`updated_at`. `docs/engineering/data-model.md:223` records that the `version` column the old design foresaw was never migrated | **Reactivated by ADR 0038 §5**, on a different argument from ADR 0014's: the company context is the product's central claim, and a field that can be silently overwritten with no history undermines the claim it supports. Trivial migration |
+| US31 | Version history of the company context | S | DONE | migration `V028__tenant_context_versions.sql` (immutable table + `tenant_contexts.current_version` + backfill of version 1 + RLS) · `TenantContextRepositoryAdapter.save` writes the version in the upsert transaction · `GET /tenant/context/versions` and `GET /tenant/context/versions/{version}` (`TenantContextController`) · history block in `settings/context/page.tsx` · `TenantContextHistoryIntegrationTest` | Reactivated by ADR 0038 §5. **No restore endpoint, deliberately**: the UI loads a past version into the form and the user saves, which appends version N+1 through the audited write path instead of rewriting history. A save that does not change the document writes no version. Version 1 of a pre-V028 context carries an approximate `created_at` — the true one was never recorded |
 | US32 | Tenant's corporate domain | M | DONE | `TenantController.updateDomain` (`TenantController.java:71`) · migration V009 · ADR 0011 · `TenantDomainIntegrationTest` · PR #55 | — |
 | US33 | Tenant usage metrics | S | MISSING | No tenant-facing endpoint. `GET /admin/platform/telemetry/business` (`PlatformAdminController.java:164`) exists but is the **operator's** view of the whole platform, behind Cloudflare Access — it is US83, not this | Still deferred. ADR 0038 neither kills nor reactivates it; its ADR 0014 criterion ("5+ paying tenants in a pilot") is unreachable under ADR 0038 §1 |
 | US34 | Export of a consolidated report for the period | S | MISSING | No endpoint. US59/US60 export **one** meeting; nothing aggregates a period | Still deferred, and its dependency on US33 still holds |
@@ -285,15 +285,15 @@ then ADR 0038's, argued is worth keeping.
 
 ## 4. State Summary (2026-08-17)
 
-Counted row by row from §2 at commit `4017bb4`, plus US86 (ADR 0044) and US25.
+Counted row by row from §2 at commit `4017bb4`, plus US86 (ADR 0044), US25 and US31.
 
 | MoSCoW | Total | DONE | PARTIAL | MISSING | WONT |
 |---|---|---|---|---|---|
 | **Must Have (M)** | 28 | **28** | 0 | 0 | 0 |
-| **Should Have (S)** | 40 | **31** | **2** (US13, US42) | **7** (US27, US31, US33, US34, US41, US43, US80) | 0 |
+| **Should Have (S)** | 40 | **32** | **2** (US13, US42) | **6** (US27, US33, US34, US41, US43, US80) | 0 |
 | **Could Have (C)** | 12 | **9** | 0 | **3** (US21, US44, US75) | 0 |
 | **Won't Have v1 (W)** | 6 | **1** (US09) | 0 | **1** (US08) | **4** (US05, US47, US50, US51) |
-| **Total** | **86** | **69** | **2** | **11** | **4** |
+| **Total** | **86** | **70** | **2** | **10** | **4** |
 
 **What changed against the 2026-05-14 revision, and why the totals move so much:**
 
@@ -312,15 +312,16 @@ Counted row by row from §2 at commit `4017bb4`, plus US86 (ADR 0044) and US25.
   reactivatable under a criterion, and these four are not waiting for anything.
 - **US86 was added after that revision** (ADR 0044), for the same reason the 34 above were: the RAG
   index had a defect nobody had written down.
-- **US25 went MISSING → DONE** after that revision, which is the only status that has moved since.
+- **US25 and US31 both went MISSING → DONE** after that revision. They are the only statuses that
+  have moved since, and they moved in the same wave.
 
 **Effective coverage**
 
 - Must Have: **28 of 28** (100%). The v1.0 MVP of §6 is complete.
-- Should Have: **31 of 40** (78%). The gaps are three of the four ADR 0038 reactivations (US31,
-  US43, and US21 in `C`; US25 is done), the MCP server (US27), tenant-facing metrics and export
-  (US33, US34), policy templates (US41), tenant-wide erasure and portability (US80), and two
-  partials (US13, US42).
+- Should Have: **32 of 40** (80%). The gaps are two of the four ADR 0038 reactivations (US43, and
+  US21 in `C` — US25 and US31 both shipped), the MCP server (US27), tenant-facing metrics and
+  export (US33, US34), policy templates (US41), tenant-wide erasure and portability (US80), and
+  two partials (US13, US42).
 
 ## 5. Scope decisions in force
 
@@ -336,7 +337,7 @@ section now points rather than copies: **the ADR decides, the backlog records.**
 | Enterprise DPA and SLA (not user stories) | **Closed** | ADR 0038 §4 |
 | US21 — Trends panel | **Reactivated** | ADR 0038 §5 |
 | US25 — CSV/MD task export | **Reactivated**, and delivered | ADR 0038 §5 |
-| US31 — Company-context history | **Reactivated** | ADR 0038 §5 |
+| US31 — Company-context history | **Reactivated**, and delivered — migration V028 | ADR 0038 §5 |
 | US43 — Policy simulator | **Reactivated** | ADR 0038 §5 |
 | US27 — NORA as an MCP server | **Reframed and reactivated** | ADR 0041 |
 | US28, US29 — calendar and task managers | **Reframed**: delivered by OAuth, removed from MCP scope | ADR 0041 §Effect on the backlog |

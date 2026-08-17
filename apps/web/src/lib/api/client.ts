@@ -459,6 +459,50 @@ export async function upsertTenantContext(
   });
 }
 
+// ---------- Tenant Context history (US31) ----------
+
+/**
+ * One entry of the company-context history.
+ *
+ * `createdBy`/`createdByName` are both null when the author's user row was removed — the record of
+ * the change outlives the record of who made it.
+ */
+export interface TenantContextVersionDto {
+  version: number;
+  createdBy: string | null;
+  createdByName: string | null;
+  createdAt: string;
+}
+
+export interface TenantContextVersionListDto {
+  items: TenantContextVersionDto[];
+  total: number;
+  /** Version currently in force. `0` when nothing was ever saved. */
+  currentVersion: number;
+}
+
+/** A past version together with the document it froze. */
+export interface TenantContextVersionDetailDto {
+  version: TenantContextVersionDto;
+  document: TenantContextDto;
+}
+
+/** History of the company context, newest version first (GET /tenant/context/versions). */
+export async function listTenantContextVersions() {
+  return request<TenantContextVersionListDto>(`/tenant/context/versions`);
+}
+
+/**
+ * One version with its document (GET /tenant/context/versions/{version}).
+ *
+ * There is no restore endpoint on purpose: restoring is loading this document back into the form
+ * and saving it, which goes through `upsertTenantContext` and therefore appends a new version with
+ * the real actor on it instead of rewriting history.
+ */
+export async function getTenantContextVersion(version: number) {
+  return request<TenantContextVersionDetailDto>(`/tenant/context/versions/${version}`);
+}
+
 // ---------- Tenant Domain (US32) ----------
 
 /** Current state of the tenant's corporate domain (GET /tenant/domain). */
