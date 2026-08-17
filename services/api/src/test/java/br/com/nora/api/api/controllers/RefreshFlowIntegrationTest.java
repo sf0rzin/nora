@@ -132,8 +132,12 @@ class RefreshFlowIntegrationTest {
         // cookie. Re-presenting the old cookie RIGHT AFTER the rotation (multi-tab, timer +
         // 401 interceptor) is treated as a benign race inside the 60s window: it issues a
         // new pair in the same family instead of revoking everything and logging the user out.
-        // The family revocation outside the window is covered in AuthServiceTest (fake clock) —
-        // here the clock is real and we cannot wait 60s.
+        // The revocation OUTSIDE the window is exercised by
+        // reuseOutsideTheLeewayRevokesTheWholeFamilyForReal below, against this same database.
+        // It used to be delegated to AuthServiceTest's fake clock on the grounds that the clock
+        // here is real and 60s is too long to wait — and that delegation is precisely what let a
+        // rollback bug hide for as long as it did, because a fake repository has no transaction.
+        // Backdating last_used_at clears the window without waiting.
         String email = "rt@nora.dev";
         registerAndVerify(email);
         ResponseEntity<String> login = postJson("/auth/login", basicAuth(email));
@@ -169,6 +173,101 @@ class RefreshFlowIntegrationTest {
         ResponseEntity<String> r3 =
                 postWithCookies("/auth/refresh", List.of("nora_refresh=" + racedRefresh));
         assertThat(r3.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    /**
+     * Reuse OUTSIDE the leeway must actually kill the family — in the database, not just in the log
+     * line that says so.
+     *
+     * <p>This is a regression test for a control that reported itself as having acted while undoing
+     * its own work. {@code AuthService.refresh} revokes the whole family and then throws {@code
+     * RefreshTokenInvalid}, which is a RuntimeException; under a plain {@code @Transactional} the
+     * throw rolled the revocation back. Production logged {@code Refresh token reuse detected} and
+     * every token in the family kept working, so a stolen chain survived the detection that exists
+     * to cut it. Verified against the live deployment before the fix: the presented token got its
+     * 401, the WARN was in the log, and the CURRENT token of the same family still refreshed
+     * successfully.
+     *
+     * <p>The existing coverage could not see it. {@code AuthServiceTest} drives an in-memory fake
+     * repository where "revoke" mutates a list and there is no transaction to roll back, so the
+     * revocation always sticks. It needs a real database, which is why it lives here.
+     *
+     * <p>The 60-second window is cleared by BACKDATING {@code last_used_at} rather than by sleeping
+     * for it — the leeway is anchored to that column, so moving it is the same input a real
+     * hour-old stolen cookie provides.
+     */
+    @Test
+    void reuseOutsideTheLeewayRevokesTheWholeFamilyForReal() throws Exception {
+        String email = "reuse@nora.dev";
+        registerAndVerify(email);
+        ResponseEntity<String> login = postJson("/auth/login", basicAuth(email));
+        String stolen = extractCookieValue(setCookieHeaders(login), "nora_refresh");
+
+        ResponseEntity<String> rotated =
+                postWithCookies("/auth/refresh", List.of("nora_refresh=" + stolen));
+        assertThat(rotated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String current = extractCookieValue(setCookieHeaders(rotated), "nora_refresh");
+        assertThat(current).isNotBlank().isNotEqualTo(stolen);
+
+        // Push last_used_at well outside REFRESH_REUSE_LEEWAY so the next presentation is read as
+        // theft rather than as a multi-tab race.
+        backdateRefreshTokens(email);
+
+        ResponseEntity<String> theft =
+                postWithCookies("/auth/refresh", List.of("nora_refresh=" + stolen));
+        assertThat(theft.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+
+        // THE ASSERTION THAT MATTERS. Refusing the presented token proves only that it was already
+        // revoked by rotation — it would have been refused anyway. What the detection is FOR is
+        // cutting the rest of the chain, so the victim's live token must be dead too.
+        ResponseEntity<String> afterDetection =
+                postWithCookies("/auth/refresh", List.of("nora_refresh=" + current));
+        assertThat(afterDetection.getStatusCode())
+                .as("the current token of a family flagged for reuse must be revoked too")
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+
+        assertThat(liveRefreshTokensOf(email))
+                .as("no token of the family may survive the reuse detection")
+                .isZero();
+    }
+
+    /** Ages this user's refresh tokens past the benign-reuse window, without sleeping for it. */
+    private void backdateRefreshTokens(String email) throws Exception {
+        // Scoped to one user: the container is shared with every other test in this class, and an
+        // unscoped UPDATE would reach into whatever they left behind.
+        executeSql(
+                "UPDATE refresh_tokens SET last_used_at = NOW() - INTERVAL '10 minutes'"
+                        + " WHERE user_id = (SELECT id FROM users WHERE email = ?)",
+                email);
+    }
+
+    private static final String LIVE_TOKENS_OF_USER =
+            "SELECT COUNT(*) FROM refresh_tokens WHERE revoked_at IS NULL"
+                    + " AND user_id = (SELECT id FROM users WHERE email = ?)";
+
+    /** Refresh tokens of this user that are still usable, read straight from the database. */
+    private int liveRefreshTokensOf(String email) throws Exception {
+        try (java.sql.Connection c = testDatabase();
+                java.sql.PreparedStatement s = c.prepareStatement(LIVE_TOKENS_OF_USER)) {
+            s.setString(1, email);
+            try (java.sql.ResultSet rs = s.executeQuery()) {
+                rs.next();
+                return rs.getInt(1);
+            }
+        }
+    }
+
+    private void executeSql(String sql, String param) throws Exception {
+        try (java.sql.Connection c = testDatabase();
+                java.sql.PreparedStatement s = c.prepareStatement(sql)) {
+            s.setString(1, param);
+            s.executeUpdate();
+        }
+    }
+
+    private java.sql.Connection testDatabase() throws Exception {
+        return java.sql.DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
     }
 
     @Test
