@@ -23,3 +23,4 @@
 | (initial) | 2026-05-14 | Folder created in Sub-phase 1.10 (Docs Refresh). Documents `personas-and-empathy-map.md` and `use-case-diagram.md` moved from the `docs/` root |
 | 1.0 | 2026-06-06 | Doc × code reconciliation + standardization |
 | 1.1 | 2026-08-17 | `demo-script.md` added to the index (sub-phase 1.11f) |
+| 1.2 | 2026-08-17 | `fiap-challenge-2026.md` rewritten for after the pitch: the 2026-06-15 pitch is recorded as held, and the milestones that follow it are collected in a named "Open items to confirm with FIAP" section instead of three `?? unverified` cells. **The deadlines table is deliberately one row long** — the remaining dates are unknown, and this folder now says so where a reader will find it |

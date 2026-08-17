@@ -1,24 +1,43 @@
 # Possible integrations in NORA Flows — catalogue + credential tutorials
 
-> **Who this doc is for:** whoever picks the next integration. Each section says what it enables in
-> Flows, whether it is free and genuinely multi-user, and the step by step for obtaining the
-> credentials. **Agreed workflow:** you obtain the credential, save it in your Windows user
-> env vars under the indicated name, and the wiring is done from there
-> (GitHub Secrets, Bicep, backend, block on the canvas).
+> **This catalogue has been executed.** It was written as a build plan, and every one of the ten
+> numbered sections below has since shipped (ADR 0031, migrations V024–V026). What stays useful is
+> the second half of each section — the step by step for obtaining the credentials, which is what
+> anyone reconnecting a provider or registering a new app still needs. What is no longer true is the
+> framing: these are not "possible" integrations, and the ranking is not a recommendation.
+>
+> **Two corrections to the workflow line this banner replaces.** It said credentials are wired
+> through "GitHub Secrets, Bicep, backend, block on the canvas". **Bicep is gone** — the Azure
+> deployment it belonged to was shut down with no subscription and no export (ADR 0034/0036); the
+> substrate is one bare-metal host and secrets reach it through SOPS + age
+> (`docs/operations/environment-secrets.md`). And a per-user OAuth credential is not an environment
+> variable at all: it is stored per tenant in `integration_connections` (V024), encrypted at rest.
+> The env-var path is only for the **app-level** credential — the client id and secret NORA
+> registers once with each provider.
 >
 > Entry criterion for the catalogue: **free** (no per-user/per-use charge at our
 > volume) and **multi-user** (each NORA user connects their own account — it is not one
 > hardcoded account of ours).
 
-## Current state (2026-06-12)
+## Current state (measured 2026-08-17)
 
-| Integration | Status |
+Counted from `services/api/src/main/java/br/com/nora/api/infrastructure/integration/actions/` and
+from the provider `CHECK` constraints in migrations V024–V026, rather than from memory.
+
+| | |
 |---|---|
-| Transactional e-mail (Resend) | In production (action `send_email`) |
-| Google Gmail + Calendar (OAuth) | In production (Testing mode — test users; reconnect every 7 days) |
-| Slack (OAuth) | Backend + Bicep ready; **the app still has to be created** (tutorial below) |
+| Flow actions implemented | **13** — `send_email` (Resend), Gmail, Google Calendar, Outlook, Microsoft Calendar, Slack, Discord, Telegram, GitHub, Notion, Todoist, Linear, Trello, plus the generic webhook |
+| OAuth providers registered | **9** — `google`, `microsoft`, `slack`, `telegram`, `github`, `notion`, `todoist`, `linear`, `trello` |
+| Direction | **Outbound only.** NORA writes into these tools; it does not read them back. The inbound direction is the MCP server (ADR 0041), which is a different mechanism and a different document |
 
-## Recommendation ranking (effort × impact on the demo)
+The table this replaces listed three integrations and was dated 2026-06-12. It said Slack was
+"backend ready, the app still has to be created" — Slack shipped, and so did the nine after it.
+
+## The build order that was actually followed
+
+Kept as a record rather than deleted, because the ordering argument is still the right one for
+whoever adds the eleventh: cheapest credential first, most visible on stage first. It is **not** a
+list of things to do — all of it is done.
 
 1. **Generic webhook** — zero credentials, huge impact ("integrates with anything")
 2. **Discord** — zero global credentials (per-channel webhook), visual demo
@@ -27,7 +46,7 @@
 5. **GitHub** — OAuth App with no review, "action item becomes an issue"
 6. **Notion** — free OAuth, "summary becomes a page in the workspace"
 7. **Trello / Todoist / Linear** — free OAuth, "action item becomes a card/task"
-8. **Microsoft Outlook/Teams** — possible and free, but the Azure AD setup is more of a hassle
+8. **Microsoft Outlook/Teams** — possible and free, but the Entra ID setup is more of a hassle
 
 ## 1. Generic webhook (HTTP POST) — no credentials needed
 
@@ -195,8 +214,11 @@ authorises via normal OAuth. *However*: corporate tenants usually require
 admin consent, and Microsoft recommends "publisher verification" for multi-tenant
 apps — without it an "unverified" warning appears (similar to Google Testing).
 
-**Recommendation:** leave it for after the pitch — Google already covers the
-e-mail/calendar story in the demo. If you want to prepare it:
+**Status: shipped.** `OutlookSendEmailAction` and `MicrosoftCalendarCreateEventAction` are in
+`infrastructure/integration/actions/`, and `microsoft` is a registered provider since V026. This
+section used to say "leave it for after the pitch — Google already covers the e-mail/calendar story
+in the demo", which was a reasonable call in June and became advice against building something that
+already exists. The steps below are still what you follow to register or re-register the app:
 
 1. <https://portal.azure.com> → **Microsoft Entra ID** → **App registrations** → **New registration**.
 2. Supported account types: **Accounts in any organizational directory and personal
@@ -227,10 +249,20 @@ e-mail/calendar story in the demo. If you want to prepare it:
   environment variables). **Never** paste the credential into the chat, into a commit or into a
   repo file.
 - Propagate it to GitHub Secrets **always via `gh secret set NOME --body ...`**
-  (never a pipe — the PowerShell BOM corrupts it; see project memory) and to Bicep/the app.
+  (never a pipe — the PowerShell BOM corrupts it) and to the host's SOPS-encrypted `secrets.env`.
+  It used to say "and to Bicep/the app"; Bicep went with Azure (ADR 0034/0036), and the path to the
+  running container is now `infra/host/secrets.env` plus the compose file that reads it.
 - Every new integration follows the ADR 0031 pattern: HMAC state, AES-GCM encrypted token in
   the database, server-side refresh.
 
 ## History
 
 Created 2026-06-12 as a catalogue plus tutorials, with the credential flow going through local env vars.
+
+Updated 2026-08-17: the catalogue turned out to have been **fully executed** — thirteen actions and
+nine OAuth providers shipped — while the document still read as a plan, still dated its state to
+June, and still recommended deferring Microsoft, which had shipped. The state table was re-measured
+from the actions directory and the migration `CHECK` constraints, the ranking was relabelled as the
+order that was followed, and the two dead references to Bicep were replaced with the path that
+actually carries a secret to the host today. The credential tutorials were left alone: they are the
+part that is still true and still needed.
