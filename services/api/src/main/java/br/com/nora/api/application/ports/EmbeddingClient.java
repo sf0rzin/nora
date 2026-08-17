@@ -14,6 +14,15 @@ public interface EmbeddingClient {
     float[] embed(String text);
 
     /**
+     * Same call as {@link #embed}, plus whatever the provider reported about the input it billed.
+     * The default delegates to {@link #embed} and reports zero tokens, so a client that cannot
+     * observe usage does not have to implement anything.
+     */
+    default Embedding embedWithUsage(String text) {
+        return new Embedding(embed(text), 0);
+    }
+
+    /**
      * {@code provider:model} identifier of the vector space — stored alongside so only matching
      * ones are compared.
      */
@@ -24,6 +33,14 @@ public interface EmbeddingClient {
      * (no-op).
      */
     boolean isEnabled();
+
+    /**
+     * A vector plus the input tokens the provider charged for it. {@code promptTokens} is 0 when
+     * the provider did not report a count — Gemini's {@code embedContent} returns none — so 0 reads
+     * as unknown, never as free. The cost telemetry of ADR 0024 records it as-is rather than
+     * estimating a number the provider never sent.
+     */
+    record Embedding(float[] vector, int promptTokens) {}
 
     /** Failure generating an embedding (network, credential, unexpected provider response). */
     class EmbeddingException extends RuntimeException {

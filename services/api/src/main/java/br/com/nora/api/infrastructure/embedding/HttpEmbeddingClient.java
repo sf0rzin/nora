@@ -68,6 +68,17 @@ public class HttpEmbeddingClient implements EmbeddingClient {
 
     @Override
     public float[] embed(String text) {
+        return embedWithUsage(text).vector();
+    }
+
+    /**
+     * OpenAI reports {@code usage.prompt_tokens} on the embeddings endpoint and Gemini's {@code
+     * embedContent} reports nothing, so the token count is real on one provider and 0 — meaning
+     * unknown — on the other. We do not estimate one from the character count: a fabricated number
+     * in the cost report is worse than an honest gap.
+     */
+    @Override
+    public Embedding embedWithUsage(String text) {
         if (!isEnabled()) {
             throw new EmbeddingException(
                     "embedding disabled (no credential for provider " + provider + ")");
@@ -81,24 +92,26 @@ public class HttpEmbeddingClient implements EmbeddingClient {
         }
     }
 
-    private float[] embedGemini(String text) throws Exception {
+    private Embedding embedGemini(String text) throws Exception {
         String url = geminiBaseUrl + "/models/" + model + ":embedContent?key=" + apiKey;
         var payload = mapper.createObjectNode();
         payload.put("model", "models/" + model);
         payload.putObject("content").putArray("parts").addObject().put("text", text);
         payload.put("outputDimensionality", dimension);
         JsonNode resp = post(url, payload.toString(), null);
-        return toArray(resp.path("embedding").path("values"));
+        return new Embedding(toArray(resp.path("embedding").path("values")), 0);
     }
 
-    private float[] embedOpenAi(String text) throws Exception {
+    private Embedding embedOpenAi(String text) throws Exception {
         String url = openAiBaseUrl + "/embeddings";
         var payload = mapper.createObjectNode();
         payload.put("input", text);
         payload.put("model", model);
         payload.put("dimensions", dimension);
         JsonNode resp = post(url, payload.toString(), "Bearer " + apiKey);
-        return toArray(resp.path("data").path(0).path("embedding"));
+        return new Embedding(
+                toArray(resp.path("data").path(0).path("embedding")),
+                Math.max(0, resp.path("usage").path("prompt_tokens").asInt(0)));
     }
 
     private JsonNode post(String url, String body, String auth) throws Exception {

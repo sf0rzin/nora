@@ -874,7 +874,8 @@ CREATE TABLE meeting_embeddings (
     meeting_id    VARCHAR2(36) PRIMARY KEY,
     tenant_id     VARCHAR2(36) NOT NULL,
     -- Which model/provider produced the vector. Search only compares vectors from the SAME
-    -- space (same provider + model); switching provider requires a re-backfill.
+    -- space (same provider + model); switching provider requires a re-backfill, which is
+    -- POST /admin/platform/embeddings/backfill since ADR 0042.
     model         VARCHAR2(120) NOT NULL,
     dim           NUMBER(10) NOT NULL,
     -- JSON array of floats. Postgres: TEXT, unvalidated. See the note above.

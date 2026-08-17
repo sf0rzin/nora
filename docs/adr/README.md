@@ -88,3 +88,4 @@ Partially superseded decisions: a successor ADR may mark `Partially supersedes X
 | 0041 | NORA as an MCP server (the inbound path) | accepted (relates to 0031, the outbound path) |
 | 0042 | Vitest in `apps/web`: which parts of the first unit suite are a gate | accepted (delivers the runner 0018 asked for; does not enforce 0018's web threshold table) |
 | 0043 | ADDRESS becomes a redacted type, and the PII corpus gate becomes a decreasing target | accepted (extends 0012; pays the ADDRESS debt ADR 0040 recorded; supersedes neither) |
+| 0044 | The RAG index gets a backfill path, triggered by an operator | accepted (extends 0024; relates to 0012 and 0028) |

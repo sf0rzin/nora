@@ -56,7 +56,6 @@ export const MOCK_FLAGS: FeatureFlag[] = [
   { key: "chat", enabled: true, description: "Chat IA do Core" },
   { key: "analysis", enabled: true, description: "Análise automática de reuniões" },
   { key: "multimodal", enabled: false, description: "Ingestão de áudio/vídeo (pós-MVP)" },
-  { key: "search-embeddings", enabled: false, description: "Busca semântica por embeddings" },
 ];
 
 export const MOCK_COST: CostSummary = {

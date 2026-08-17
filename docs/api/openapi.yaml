@@ -878,8 +878,9 @@ paths:
         Two properties a caller must plan for:
 
         - **It can legitimately return an empty list.** Embedding is off when there is no
-          credential configured, and a tenant whose meetings predate the index has nothing stored
-          (migration V021 created the table; there is no backfill). The caller needs a fallback —
+          credential configured, and a tenant whose meetings were analysed before the index existed
+          — or while the provider was failing — has nothing stored for them until an operator runs
+          `POST /admin/platform/embeddings/backfill`. The caller needs a fallback —
           `GET /meetings` is the one the product uses.
         - **Similarity is computed in Java**, over vectors stored as JSON. The `pgvector`
           extension is NOT created in the database, despite the image name.
@@ -1809,6 +1810,67 @@ paths:
               schema: { $ref: '#/components/schemas/BusinessSnapshot' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /admin/platform/embeddings/backfill:
+    get:
+      tags: [Platform Admin]
+      security: []
+      summary: What an embeddings backfill would do
+      description: |
+        Operator only, and free: it makes no call to the embedding provider, only SQL over
+        `meetings` and `meeting_embeddings`. Answers the question the RAG index cannot answer by
+        itself — which tenants are invisible to `GET /meetings/search`, and why.
+
+        A meeting counts as pending when it has an analysed summary and either no vector at all
+        (`missingVector`) or a vector produced by a different provider/model (`staleModel`). The
+        search only compares vectors from the same space, so those two are equally invisible.
+
+        `enabled: false` means no embedding credential is configured: the counters are still real,
+        but `POST` would be refused with `409`. `source` names the database role that answered —
+        `telemetry` (BYPASSRLS) or `primary`. Under RLS enforce without the telemetry datasource
+        the primary role sees no rows, so a `primary` source with all-zero counters is not
+        evidence that there is nothing to do. This endpoint does NOT require the platform database.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmbeddingBackfillPreview' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+    post:
+      tags: [Platform Admin]
+      security: []
+      summary: Runs a bounded embeddings backfill for one tenant
+      description: |
+        Operator only. Indexes up to `limit` pending meetings of `tenantId`, one embedding call
+        each, using the summary already stored on the meeting — it never re-runs the LLM analysis,
+        which is what `POST /meetings/{id}/reprocess` costs today for the same effect.
+
+        Every call is billed, so the shape is deliberate: `tenantId` is required (never implicitly
+        every tenant), `limit` defaults to 25 and is clamped to 100, and a run also stops early
+        when it exhausts a 60s budget or hits 3 consecutive provider failures — `stoppedReason`
+        says which. Idempotent: a meeting that already carries a vector from the current model is
+        not a candidate, so repeating a run costs nothing.
+
+        `remaining` is re-measured after the run rather than subtracted, and the usage is recorded
+        through the same cost telemetry as every other AI call, under `service=embedding-backfill`.
+        The operator's e-mail (`X-Operator-Email`) is written to the audit log.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmbeddingBackfillRequest' }
+      responses:
+        '200':
+          description: OK — the run finished or stopped early, see `stoppedReason`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmbeddingBackfillRun' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
 
   # ----------------------------------------------------------------------------
@@ -3139,6 +3201,71 @@ components:
         tenantsActive: { type: integer, format: int64 }
         productivityAvg: { type: [number, 'null'], description: 'Not computed yet — `null` in v1.' }
         customerConfidenceAvg: { type: [number, 'null'], description: 'Not computed yet — `null` in v1.' }
+    EmbeddingBackfillPreview:
+      type: object
+      required: [enabled, model, source, defaultLimit, maxLimit, tenants]
+      properties:
+        enabled:
+          type: boolean
+          description: 'False when no embedding credential is configured; `POST` then returns 409.'
+        model: { type: string, example: 'gemini:text-embedding-004' }
+        source:
+          type: string
+          enum: [telemetry, primary]
+          description: 'Database role that answered. `primary` under RLS enforce sees no rows.'
+        defaultLimit: { type: integer, description: 'Batch size a `POST` uses when it omits `limit`.' }
+        maxLimit: { type: integer, description: 'Hard ceiling per run.' }
+        analysedMeetings: { type: integer, format: int64 }
+        indexed: { type: integer, format: int64, description: 'Vector present, current model.' }
+        missingVector: { type: integer, format: int64, description: 'Analysed and never indexed.' }
+        staleModel:
+          type: integer
+          format: int64
+          description: 'Vector from another provider/model — as invisible as no vector at all.'
+        tenants:
+          type: array
+          description: 'Worst first. Truncated when `tenantsTruncated` is true.'
+          items: { $ref: '#/components/schemas/EmbeddingTenantIndexStatus' }
+        tenantsTruncated: { type: boolean }
+    EmbeddingTenantIndexStatus:
+      type: object
+      required: [tenantId]
+      properties:
+        tenantId: { type: string, format: uuid }
+        analysedMeetings: { type: integer, format: int64 }
+        indexed: { type: integer, format: int64 }
+        missingVector: { type: integer, format: int64 }
+        staleModel: { type: integer, format: int64 }
+    EmbeddingBackfillRequest:
+      type: object
+      required: [tenantId]
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+          description: 'Required. A backfill spends per meeting, so it is never implicitly global.'
+        limit:
+          type: integer
+          minimum: 1
+          description: 'Meetings to index in this run. Omitted = 25; anything above 100 is clamped.'
+    EmbeddingBackfillRun:
+      type: object
+      required: [tenantId, model, limit, candidates, attempted, indexed, failed, remaining]
+      properties:
+        tenantId: { type: string, format: uuid }
+        model: { type: string }
+        limit: { type: integer, description: 'Effective ceiling after clamping.' }
+        candidates: { type: integer, description: 'Rows the pending query returned.' }
+        attempted: { type: integer, description: 'Rows the loop reached before any early stop.' }
+        indexed: { type: integer }
+        failed: { type: integer }
+        remaining:
+          type: integer
+          format: int64
+          description: 'Re-measured after the run, not subtracted — run again to keep going.'
+        stoppedReason:
+          type: [string, 'null']
+          description: 'Null when the batch finished. Otherwise the budget or the failure streak.'
     ResolvedLlmConfig:
       type: object
       required: [provider, model, baseUrl, enabled]

@@ -1,10 +1,12 @@
 package br.com.nora.api.api.controllers;
 
+import br.com.nora.api.api.dto.platform.PlatformDtos.BackfillRequest;
 import br.com.nora.api.api.dto.platform.PlatformDtos.BindRequest;
 import br.com.nora.api.api.dto.platform.PlatformDtos.BindingResponse;
 import br.com.nora.api.api.dto.platform.PlatformDtos.CreateModelRequest;
 import br.com.nora.api.api.dto.platform.PlatformDtos.ModelResponse;
 import br.com.nora.api.api.security.AuthorizationNotRequired;
+import br.com.nora.api.application.embedding.EmbeddingBackfillService;
 import br.com.nora.api.application.platform.BusinessTelemetryService;
 import br.com.nora.api.application.platform.CostTelemetryService;
 import br.com.nora.api.application.platform.FeatureFlagService;
@@ -61,18 +63,21 @@ public class PlatformAdminController {
     private final HealthTelemetryService health;
     private final BusinessTelemetryService business;
     private final FeatureFlagService flags;
+    private final EmbeddingBackfillService embeddingBackfill;
 
     public PlatformAdminController(
             ModelCatalogService catalog,
             CostTelemetryService cost,
             HealthTelemetryService health,
             BusinessTelemetryService business,
-            FeatureFlagService flags) {
+            FeatureFlagService flags,
+            EmbeddingBackfillService embeddingBackfill) {
         this.catalog = catalog;
         this.cost = cost;
         this.health = health;
         this.business = business;
         this.flags = flags;
+        this.embeddingBackfill = embeddingBackfill;
     }
 
     // ---------- catalog ----------
@@ -167,6 +172,29 @@ public class PlatformAdminController {
             @RequestParam(required = false) String to) {
         OffsetDateTime[] w = window(from, to);
         return business.business(w[0], w[1]);
+    }
+
+    // ---------- RAG index backfill ----------
+
+    /**
+     * What a backfill would do, per tenant, before anything is done. Costs nothing — plain SQL over
+     * the primary database, no call to the embedding provider — so it is the safe half of the pair.
+     */
+    @GetMapping("/embeddings/backfill")
+    public EmbeddingBackfillService.IndexStatus embeddingBackfillPreview() {
+        return embeddingBackfill.preview();
+    }
+
+    /**
+     * Runs a bounded backfill for ONE tenant. Every meeting it reaches costs one embedding call, so
+     * the tenant is required and the batch is capped — see {@link EmbeddingBackfillService}.
+     */
+    @PostMapping("/embeddings/backfill")
+    public EmbeddingBackfillService.RunOutcome embeddingBackfillRun(
+            @RequestBody(required = false) BackfillRequest body,
+            @RequestHeader(value = OPERATOR_HEADER, required = false) String operator) {
+        BackfillRequest request = body == null ? new BackfillRequest(null, null) : body;
+        return embeddingBackfill.run(request.tenantId(), request.limit(), operator);
     }
 
     // ---------- helpers ----------

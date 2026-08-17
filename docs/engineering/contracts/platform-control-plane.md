@@ -144,8 +144,13 @@ All of them require the **admin token**; they record an audit entry with `X-Oper
 [{ "key":"service.chat","enabled":true,"description":"Chat IA do plano Core (BFF /api/chat)",
    "updatedBy":"seed","updatedAt":"…" }]
 ```
-- **Keys have the `service.` prefix** (`service.chat`, `service.analysis`, `service.multimodal`,
-  `service.search-embeddings`) — the resolver reads `service.{service}`. The consumer maps the prefix.
+- **Keys have the `service.` prefix** (`service.chat`, `service.analysis`, `service.multimodal`) —
+  the resolver reads `service.{service}`. The consumer maps the prefix.
+- The set is exactly the set of services with an `llm_config` binding. A fourth key,
+  `service.search-embeddings`, was seeded by V001 and consulted by nothing; platform migration
+  `V002` deletes it (ADR 0042). Embeddings have no binding and no catalog row — their provider,
+  model and credential come from `nora.embedding.*` in the environment, and the absence of that
+  credential is their real off-switch.
 - v1 is read-only (no toggle PUT yet). `updatedBy`/`updatedAt` are additive (can be ignored).
 
 ### Telemetry
@@ -178,6 +183,40 @@ operator-only):
 - **v1:** `productivityAvg`/`customerConfidenceAvg` may come back `null` (not computed yet); the
   consumer must tolerate it. `analyses`/`tenantsActive` are real. RLS caveat: see the runbook /
   production-readiness-gaps (under RLS enforce, this cross-tenant read requires a BYPASSRLS role).
+
+### RAG index backfill (ADR 0042)
+
+`GET /admin/platform/embeddings/backfill` → **200**, and it costs nothing (SQL only, no provider
+call, no platform database):
+```json
+{ "enabled":true,"model":"gemini:text-embedding-004","source":"telemetry",
+  "defaultLimit":25,"maxLimit":100,
+  "analysedMeetings":142,"indexed":18,"missingVector":120,"staleModel":4,
+  "tenants":[{"tenantId":"…","analysedMeetings":42,"indexed":0,"missingVector":42,"staleModel":0}],
+  "tenantsTruncated":false }
+```
+- `missingVector` = analysed and never indexed. `staleModel` = a vector from another
+  provider/model, which the search ignores just as completely. Both are backfill candidates.
+- `enabled:false` = no embedding credential; the counters are still real and the POST returns 409.
+- `source` is `telemetry` or `primary`. Under RLS enforce without the telemetry datasource the
+  primary role sees no rows, so `primary` plus all-zero counters is not proof of an empty backlog.
+
+`POST /admin/platform/embeddings/backfill` → **200**. Body `{ "tenantId":"…", "limit":25 }`:
+```json
+{ "tenantId":"…","model":"gemini:text-embedding-004","limit":25,
+  "candidates":25,"attempted":25,"indexed":24,"failed":1,"remaining":95,"stoppedReason":null }
+```
+- `tenantId` **required** (400 without it): one embedding call is billed per meeting, so a run is
+  never implicitly every tenant. `limit` defaults to 25 and is clamped to 100.
+- Idempotent: a meeting already carrying a vector from the current model is not a candidate.
+- Stops early on a 60s budget or 3 consecutive provider failures; `stoppedReason` says which.
+- `remaining` is re-measured after the run. Run again to continue.
+- **409** when no embedding credential is configured — loud on purpose, since a silent 200 of zeros
+  reads as "nothing to do".
+- Usage is emitted through the same `UsageRecorder` as everything else, with
+  `service=embedding-backfill`; ordinary indexing and search emit `service=embedding`. Both show up
+  in `telemetry/cost?groupBy=service`. The embedding endpoints report a token count on OpenAI and
+  none on Gemini, so `promptTokens` is 0 there and means unknown, not free.
 
 ## 4. Integration notes (for the other Opus)
 

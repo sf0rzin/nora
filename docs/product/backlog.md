@@ -110,7 +110,7 @@ done in.
 | US12 | Extracted tasks and decisions | M | DONE | `actionItems` + `decisions` in `MeetingAnalysisV1` · `GET /tasks` (`TasksController.java:53`) | — |
 | US13 | Identify mentioned participants | S | **PARTIAL** | `Participant` model in `services/nlp-worker/src/nora_nlp/models.py:137-142` (`name`, `role`, `mentionCount`) · migration V004 | No dedup and no participant matching across meetings — the same person named two ways is two participants |
 | US14 | Company context injected into the LLM | M | DONE | `TenantContextController` · migration V005 · injected into the analysis prompt by `AnalysisService` | The chat path reads the same context only since PR #467 — that is US69, recorded separately because it was a distinct gap |
-| US15 | Semantic search via embeddings | S | DONE | `EmbeddingService.java` · `HttpEmbeddingClient.java` · migration V021 (`meeting_embeddings`) · `GET /meetings/search` (`MeetingsController.java:125`) · `RagSearchIntegrationTest` · PR #206 | **Correction to the previous revision, which claimed this runs "via pgvector". It does not.** `V021` stores the vector as a JSON array in a `TEXT` column and `EmbeddingService.cosine` (line 75) computes the similarity in Java over the tenant's rows. The image is `pgvector/pgvector:pg16`, but the extension is never created. Adequate for tens or hundreds of meetings per tenant; an ANN index is the future optimization. Also: there is no backfill, so meetings analysed before PR #206 have no embedding and are invisible to search |
+| US15 | Semantic search via embeddings | S | DONE | `EmbeddingService.java` · `HttpEmbeddingClient.java` · migration V021 (`meeting_embeddings`) · `GET /meetings/search` (`MeetingsController.java:125`) · `RagSearchIntegrationTest` · PR #206 | **Correction to the previous revision, which claimed this runs "via pgvector". It does not.** `V021` stores the vector as a JSON array in a `TEXT` column and `EmbeddingService.cosine` (line 75) computes the similarity in Java over the tenant's rows. The image is `pgvector/pgvector:pg16`, but the extension is never created. Adequate for tens or hundreds of meetings per tenant; an ANN index is the future optimization. Indexing is best-effort and can silently not happen (no credential, provider failing), which used to be permanent — US86 is the path back |
 | US58 | An abandoned analysis is released instead of hanging forever | S | DONE | `StuckAnalysisSweeper.java` — moves to `FAILED` every meeting left untouched in `PROCESSING` beyond the configured window · PR #470 | The window is floored at the worker timeout plus a margin, so a slow-but-healthy analysis is not reaped. Time is the only signal that separates "running" from "abandoned" |
 
 ### E4 — Dashboard & Insights
@@ -122,7 +122,7 @@ done in.
 | US18 | Search by keyword/period | M | DONE | `list` accepts `search`, `status`, `from`, `to` (`MeetingsController.java:291-296`) | — |
 | US19 | Scope-restricted visibility via IAM | M | DONE | `AuthorizationService.isAllowed` + `IamScopingIntegrationTest` · every endpoint gated by `@RequiresPermission` deny-by-default since PR #407 · PR #35 | `PolicyEvaluator` supports `StringEquals`/`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan` |
 | US20 | Root sees everything in the tenant | M | DONE | Bypass in `AuthorizationService` · `PolicyEvaluator` | — |
-| US21 | Trends panel (themes + task load) | C | MISSING | No endpoint and no component | **Reactivated by ADR 0038 §5.** Its ADR 0014 criterion was "after US15 is turned on", and US15 shipped in PR #206 — the criterion was met and nobody noticed. Open scope, not deferred scope. Depends on an embeddings backfill (see US15) to be worth anything |
+| US21 | Trends panel (themes + task load) | C | MISSING | No endpoint and no component | **Reactivated by ADR 0038 §5.** Its ADR 0014 criterion was "after US15 is turned on", and US15 shipped in PR #206 — the criterion was met and nobody noticed. Open scope, not deferred scope. Its real dependency, an embeddings backfill, is US86 — merged, but the panel is only worth anything for a tenant whose backfill has actually been *run* |
 | US59 | Printable meeting report (save as PDF) | S | DONE | `apps/web/src/app/(app)/meetings/[id]/report/page.tsx` + `report/print-button.tsx` — A4 print CSS, native `window.print` dialog, zero PDF libraries · PR #225 | The shell chrome is hidden by a `<style>` scoped to the route rather than by restructuring the `(app)` layout |
 | US60 | Export a meeting as Markdown | S | DONE | `apps/web/src/lib/report/markdown.ts` (`meetingToMarkdown`, `meetingReportFileName`) · `apps/web/src/app/(app)/meetings/[id]/export-menu.tsx` — generated client-side, downloaded via Blob, no server round-trip · PR #225 | — |
 | US61 | Projects view: meetings grouped by tag | C | DONE | `apps/web/src/app/(app)/projects/page.tsx` · PR #165 | Client-side grouping over `MeetingListItem.tags`, with drill-down through `?tag=`. **There is no project entity and no backend**: a "project" is a tag, so renaming or merging one is not possible |
@@ -242,6 +242,7 @@ done in.
 | US83 | See what the AI is costing, per service and per tenant | S | DONE | `POST /internal/platform/usage` (`PlatformInternalController.java:48`, fire-and-forget, always 202) · `GET /admin/platform/telemetry/cost` (`PlatformAdminController.java:150`) · `apps/admin/src/app/telemetry/page.tsx` · ADR 0024 · PR #172 | Cost is computed from the token counts providers report, not from an invoice. ADR 0039 notes that once STT moves to an ephemeral session token the audio path is not measured at all — sessions issued and minutes estimated, not bytes counted |
 | US84 | The operator console is unreachable without operator identity | S | DONE | `apps/admin/` behind Cloudflare Tunnel + Access · ADR 0023, ADR 0025 · `PlatformSecurityIntegrationTest` · **fail-closed by default since PR #471**: with no `CF_ACCESS_*` configured the console answers 403 and renders no data, and the mock path is an explicit opt-in (`NORA_ADMIN_USE_MOCKS`) | `/healthz` stays open on purpose. The app is in the `ci-gate` with lint, typecheck and build since PR #471 |
 | US85 | Platform health and business telemetry | C | DONE | `GET /admin/platform/telemetry/health` (`PlatformAdminController.java:159`) and `/telemetry/business` (line 164) · `GET /admin/platform/flags` (line 115) | Platform-wide, for the operator. The tenant-facing equivalent is US33 and does not exist |
+| US86 | Reindex meetings the RAG index never got | S | DONE | `GET`/`POST /admin/platform/embeddings/backfill` · `EmbeddingBackfillService.java` · platform migration `V002` (retires the dead `service.search-embeddings` flag) · `EmbeddingBackfillIntegrationTest` · ADR 0042 | Indexing at the end of an analysis is best-effort, so a missing credential or a failing provider left a meeting out of `meeting_embeddings` forever — the only remedy was a full reprocess, paying for a whole LLM analysis to obtain one vector. The backfill reindexes from the summary already stored, and the same query covers a change of embedding model. **Operator-triggered on purpose**: it is billed per meeting, so there is no startup catch-up and no scheduled sweep, and a run is one tenant at a time with a ceiling. No console UI yet — it is `curl` behind Cloudflare Access |
 
 ## 3. Workstreams implemented beyond the backlog
 
@@ -284,15 +285,15 @@ then ADR 0038's, argued is worth keeping.
 
 ## 4. State Summary (2026-08-17)
 
-Counted row by row from §2 at commit `4017bb4`.
+Counted row by row from §2 at commit `4017bb4`, plus US86 (ADR 0042).
 
 | MoSCoW | Total | DONE | PARTIAL | MISSING | WONT |
 |---|---|---|---|---|---|
 | **Must Have (M)** | 28 | **28** | 0 | 0 | 0 |
-| **Should Have (S)** | 39 | **29** | **2** (US13, US42) | **8** (US25, US27, US31, US33, US34, US41, US43, US80) | 0 |
+| **Should Have (S)** | 40 | **30** | **2** (US13, US42) | **8** (US25, US27, US31, US33, US34, US41, US43, US80) | 0 |
 | **Could Have (C)** | 12 | **9** | 0 | **3** (US21, US44, US75) | 0 |
 | **Won't Have v1 (W)** | 6 | **1** (US09) | 0 | **1** (US08) | **4** (US05, US47, US50, US51) |
-| **Total** | **85** | **67** | **2** | **12** | **4** |
+| **Total** | **86** | **68** | **2** | **12** | **4** |
 
 **What changed against the 2026-05-14 revision, and why the totals move so much:**
 
@@ -309,11 +310,13 @@ Counted row by row from §2 at commit `4017bb4`.
   vector in a `TEXT` column; pgvector is not in use.
 - **`WONT` is a new status.** ADR 0038 §4 draws a line ADR 0014 collapsed: "deferred" means
   reactivatable under a criterion, and these four are not waiting for anything.
+- **US86 was added after that revision** (ADR 0042), for the same reason the 34 above were: the RAG
+  index had a defect nobody had written down. It is the only row that moves the totals since.
 
 **Effective coverage**
 
 - Must Have: **28 of 28** (100%). The v1.0 MVP of §6 is complete.
-- Should Have: **29 of 39** (74%). The gaps are the four ADR 0038 reactivations (US25, US31, US43,
+- Should Have: **30 of 40** (75%). The gaps are the four ADR 0038 reactivations (US25, US31, US43,
   and US21 in `C`), the MCP server (US27), tenant-facing metrics and export (US33, US34), policy
   templates (US41), tenant-wide erasure and portability (US80), and two partials (US13, US42).
 

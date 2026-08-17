@@ -63,6 +63,18 @@ Without a credential for it the embedding index stays empty, `GET /meetings/sear
 nothing, and the chat falls back to recent meetings instead of retrieved ones — so the citations
 that make block 8 worth showing will not appear.
 
+**Configuring the credential later does not fix the meetings already seeded**, because indexing
+only happens at the end of an analysis. Run the backfill once, after the seed and with the
+credential in place, or block 8 will have nothing to cite:
+
+```bash
+curl -H "X-Internal-Token: $NORA_PLATFORM_ADMIN_TOKEN" \
+  http://localhost:8080/admin/platform/embeddings/backfill          # what it would do
+curl -X POST -H "X-Internal-Token: $NORA_PLATFORM_ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' -d '{"tenantId":"<uuid>"}' \
+  http://localhost:8080/admin/platform/embeddings/backfill          # do it
+```
+
 ### Seeding
 
 ```bash
