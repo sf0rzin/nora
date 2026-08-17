@@ -79,7 +79,7 @@ export default defineConfig({
       // `--cov-fail-under` on `pii_shield.py`.
       //
       // No threshold on `src/lib/api/client.ts` either, and that omission is deliberate rather
-      // than an oversight. The file is one `request()` plus 66 one-line wrappers around it, so a
+      // than an oversight. The file is one `request()` plus 69 one-line wrappers around it, so a
       // file-level percentage measures how many wrappers exist, not how well the shared function
       // is tested: adding twenty endpoints would drop the number and fail the build while
       // changing nothing about the tested behaviour. `request` is covered by

@@ -76,8 +76,15 @@ public class TaskRepositoryAdapter implements TaskRepository {
     @Override
     @Transactional
     public void updateStatus(UUID id, UUID tenantId, ActionItemStatus newStatus) {
+        // `completed_at` (V030) is maintained here because this is the only writer of `status` in
+        // the codebase. Entering DONE stamps it, leaving DONE clears it — so an item reopened
+        // after being finished stops counting as a completion rather than counting twice — and
+        // DONE re-applied to a DONE item keeps the original instant instead of moving it forward.
+        // One statement, so the two columns cannot be left disagreeing.
         em.createNativeQuery(
-                        "UPDATE meeting_action_items SET status = :status, updated_at = NOW() "
+                        "UPDATE meeting_action_items SET status = :status, updated_at = NOW(), "
+                                + "completed_at = CASE WHEN CAST(:status AS text) = 'DONE' "
+                                + "THEN COALESCE(completed_at, NOW()) ELSE NULL END "
                                 + "WHERE id = :id AND tenant_id = :tenantId")
                 .setParameter("status", newStatus.name())
                 .setParameter("id", id)

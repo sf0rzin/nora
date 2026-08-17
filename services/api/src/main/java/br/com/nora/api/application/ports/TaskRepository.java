@@ -29,6 +29,13 @@ public interface TaskRepository {
 
     Optional<TaskRow> findByIdAndTenant(UUID id, UUID tenantId);
 
+    /**
+     * Moves the task to {@code newStatus} and keeps {@code completed_at} (V030) in step: it is
+     * stamped when the task enters DONE and cleared when it leaves. That column, and not {@code
+     * updated_at}, is what the trends panel counts completions on — {@code updated_at} moves on a
+     * title or due-date edit too, so a task finished in March and renamed in June would otherwise
+     * be charted as a June completion.
+     */
     void updateStatus(UUID id, UUID tenantId, ActionItemStatus newStatus);
 
     void updateTitle(UUID id, UUID tenantId, String newTitle);

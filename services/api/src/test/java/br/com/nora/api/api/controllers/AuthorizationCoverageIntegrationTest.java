@@ -134,6 +134,9 @@ class AuthorizationCoverageIntegrationTest {
         calls.get("/tasks");
         calls.patch("/tasks/" + id, json(Map.of("status", "DONE")));
 
+        // trends: an aggregate over the same meetings, gated on the same meeting:read
+        calls.get("/trends");
+
         // workflows — before #51 these seven had no IAM gate at all
         calls.get("/workflows");
         calls.post("/workflows", emptyWorkflowBody());
@@ -318,6 +321,87 @@ class AuthorizationCoverageIntegrationTest {
         List<String> ids = new ArrayList<>();
         listing.get("items").forEach(item -> ids.add(item.get("id").asText()));
         assertThat(ids).containsExactly(visible);
+    }
+
+    /* =============== GET /trends aggregate authorization ============= */
+
+    /**
+     * An aggregate respects the tenant for free and the per-item policy not at all, unless someone
+     * makes it. Six analysed meetings give twelve action items and one shared topic; a Deny over
+     * one meeting has to remove it from the counters and from the theme ranking, not merely hide a
+     * row somewhere else. The scope strategy is asserted too, because the two paths that produce
+     * these numbers are different code and both have to be exercised.
+     */
+    @Test
+    void trendsAggregate_excludesAMeetingCoveredByASpecificDeny() throws Exception {
+        String rootToken = signupAndLogin("trends-root@nora.dev", "Trends Root");
+        UUID tenantId = readClaim(rootToken, "tenantId");
+        List<String> analysed = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            String meeting = uploadMeeting(rootToken, "Discovery " + i, Map.of(), TRANSCRIPT);
+            analysisService.run(UUID.fromString(meeting), tenantId);
+            analysed.add(meeting);
+        }
+
+        JsonNode asRoot = mapper.readTree(getRaw("/trends", rootToken).getBody());
+        assertThat(asRoot.get("scopeStrategy").asText()).isEqualTo("TENANT_UNIFORM");
+        assertThat(asRoot.get("dataState").asText()).isEqualTo("OK");
+        assertThat(asRoot.get("meetings").asLong()).isEqualTo(6);
+        assertThat(asRoot.get("analysedMeetings").asLong()).isEqualTo(6);
+        assertThat(totalOpened(asRoot)).isEqualTo(12);
+        assertThat(asRoot.get("themes").get("sufficient").asBoolean()).isTrue();
+        assertThat(asRoot.get("themes").get("overall").get(0).get("label").asText())
+                .isEqualTo("cobertura");
+        assertThat(asRoot.get("themes").get("overall").get(0).get("meetings").asLong())
+                .isEqualTo(6);
+
+        UUID memberId = insertActiveMember(tenantId, "trends-member@nora.dev", "Trends Member");
+        String member = login("trends-member@nora.dev");
+        String hidden = analysed.get(0);
+        String document =
+                document(
+                        statement("Allow", "meeting:read", arn(tenantId, ":meeting/*"), null),
+                        statement(
+                                "Deny", "meeting:read", arn(tenantId, ":meeting/" + hidden), null));
+        attach(rootToken, memberId, createPolicy(rootToken, "TrendsDenyOne", document));
+
+        JsonNode asMember = mapper.readTree(getRaw("/trends", member).getBody());
+        assertThat(asMember.get("scopeStrategy").asText()).isEqualTo("PER_MEETING_FILTER");
+        assertThat(asMember.get("meetings").asLong()).isEqualTo(5);
+        assertThat(asMember.get("analysedMeetings").asLong()).isEqualTo(5);
+        assertThat(totalOpened(asMember)).isEqualTo(10);
+        assertThat(asMember.get("themes").get("overall").get(0).get("meetings").asLong())
+                .isEqualTo(5);
+    }
+
+    /**
+     * A tenant with meetings but nothing analysed has to say so, instead of drawing an empty chart
+     * that reads as "there was no activity".
+     */
+    @Test
+    void trends_separateNoAnalysedMeetingsFromZeroActivity() throws Exception {
+        String rootToken = signupAndLogin("trends-empty@nora.dev", "Trends Empty");
+
+        JsonNode noMeetings = mapper.readTree(getRaw("/trends", rootToken).getBody());
+        assertThat(noMeetings.get("dataState").asText()).isEqualTo("NO_MEETINGS");
+        assertThat(noMeetings.get("taskLoad").get("hasData").asBoolean()).isFalse();
+
+        uploadMeeting(rootToken, "Not analysed yet", Map.of(), TRANSCRIPT);
+
+        JsonNode notAnalysed = mapper.readTree(getRaw("/trends", rootToken).getBody());
+        assertThat(notAnalysed.get("dataState").asText()).isEqualTo("NO_ANALYSED_MEETINGS");
+        assertThat(notAnalysed.get("themes").get("sufficient").asBoolean()).isFalse();
+        assertThat(notAnalysed.get("themes").get("overall")).isEmpty();
+        // The axis is still dense: an empty period is a series of zeros, not a missing series.
+        assertThat(notAnalysed.get("taskLoad").get("buckets")).isNotEmpty();
+    }
+
+    private static long totalOpened(JsonNode trends) {
+        long total = 0;
+        for (JsonNode bucket : trends.get("taskLoad").get("buckets")) {
+            total += bucket.get("opened").asLong();
+        }
+        return total;
     }
 
     /* ======================== privacy erase ========================= */

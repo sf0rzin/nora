@@ -1006,6 +1006,65 @@ A hardening wave (PRs ~#114–#138, labeled "audit follow-up #N") landed in `mai
 - **Java agent for tracing** — wired in `services/api/Dockerfile:30-36`. It is the **OpenTelemetry** agent, exporting to the local `otel-collector`; the Application Insights agent it replaced went with Azure (ADR 0034), and the swap was a jar swap because that agent ignored `OTEL_EXPORTER_OTLP_ENDPOINT`.
 - **Upload hardening** — magic-byte/extension/path-traversal checking in `MeetingsController` before persisting the transcript.
 
+## §19. Trends panel — temporal aggregation, and authorization over an aggregate (US21)
+
+`GET /trends` (`api/controllers/TrendsController.java`) answers two questions over a time range:
+how much task load each period carried, and which themes keep coming back. Both halves are SQL —
+`application/trends/TrendsService` orchestrates and `infrastructure/persistence/analysis/TrendsRepositoryAdapter`
+runs the GROUP BYs. No model is called on this path.
+
+### Where each half comes from
+
+- **Task load** — `meeting_action_items`, joined to its analysis and its meeting. Opened per bucket
+  is `created_at`; completed per bucket is `completed_at`, the column migration **V030** adds
+  precisely because `updated_at` also moves on a title or due-date edit and would have dated a
+  completion by the last time anyone touched the row. The backlog counters (open, overdue, by
+  priority) are a snapshot at request time and deliberately ignore the range.
+- **Themes** — `meeting_analyses.topics`, the array the analysis already persisted. Two richer
+  sources were considered and rejected for the first cut: clustering `meeting_embeddings`, which
+  needs an LLM to name a cluster and does not scale past a few hundred meetings because the cosine
+  runs in Java over JSON-in-`TEXT` vectors (§8), and asking the model for themes over a batch of
+  summaries, which costs money per query and is not reproducible between runs. **The consequence
+  that matters is a good one:** because the panel reads topics and not vectors, it does not depend
+  on a tenant's RAG backfill (ADR 0044) having been run. The source is reported on the wire as
+  `themes.source`, so replacing it later is a visible change rather than a silent one.
+
+### Authorization over an aggregate
+
+This is the part that can perforate a tenant without looking like it. A number produced by
+`SELECT ... WHERE tenant_id = ?` respects the tenant and **not** the per-item policy: a user with a
+conditional `Deny` over some meetings would see those meetings inside a count they can never open,
+and a count is information. It is the same shape of hole `GET /meetings/search` documents having
+had (§8).
+
+Two remedies were available. The one **not** taken was declaring the panel a tenant-level aggregate
+behind a new action such as `meeting:trends:read` — cheaper, but it invents a permission no policy
+grants, so the panel would be invisible until an operator writes one, and "grant it to whoever may
+see everything" is the kind of rule that gets applied broadly once and outlives its reason.
+
+What ships is the listing's own answer, unchanged: `AuthorizationService.uniformDecision` asks
+whether any statement of this caller can tell two meetings of the tenant apart. When none can —
+Root, or a plain `meeting:read` Allow over the wildcard — the aggregate runs tenant-wide over a
+provably identical set. When one can, `filterAllowed` resolves the visible meetings item by item and
+every query is restricted to those ids, passed as a single `uuid[]` bind rather than an expanded
+`IN` list. The response reports which path answered, in `scopeStrategy`.
+
+### The three ways a panel like this lies, and what is done about each
+
+- **A trend over few points is noise that looks like signal.** No theme ranking is produced below
+  five analysed meetings in the range, and a bucket below three is returned marked `sufficient:
+  false` with an empty list rather than ranked.
+- **`topics` has no normalisation.** `TopicNormalizer` folds case, accents and punctuation, so three
+  spellings of one word stop being three rows. It does **not** merge synonyms, and the response says
+  so (`themes.matching: LEXICAL`) instead of letting the reader assume a clustering.
+- **Time zone.** Buckets are cut with `date_trunc` over `timezone('America/Sao_Paulo', ts)`, not in
+  UTC, so a Friday-evening meeting counts in the week it happened. The zone is returned in the
+  payload so the numbers can be reproduced.
+
+Finally, the empty state is part of the contract rather than of the screen: `dataState` separates
+"no meetings", "meetings but none analysed" and a real period of zero activity, because a chart of
+zeros that actually means "nothing has been analysed yet" is a claim the reader has no way to check.
+
 ## Next architectural refactors
 
 Catalogued technical debt, prioritization and planned successor ADRs live in **`docs/operations/production-readiness-gaps.md`** (written in Sub-phase 1.10, formalized via ADR 0016). Read that document with ADR 0038 §6 beside it: several of its gaps are now **declared deferrals with a written reason** rather than open work, and parts of it still describe Azure primitives (Key Vault, Application Insights, Flexible Server PITR) that no longer exist. Summary of the main ones:

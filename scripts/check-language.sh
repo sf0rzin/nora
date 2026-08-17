@@ -40,6 +40,7 @@ ALLOWED=(
   "apps/web/src/app/(app)/meetings/"            # inline pt-BR UI copy not lifted into strings.ts yet
   "apps/web/src/app/(app)/settings/"            # inline pt-BR UI copy not lifted into strings.ts yet
   "apps/web/src/app/(app)/tasks/"               # inline pt-BR UI copy not lifted into strings.ts yet
+  "apps/web/src/app/(app)/trends/"              # inline pt-BR UI copy not lifted into strings.ts yet
   "apps/web/src/app/(app)/flows/flow-editor.tsx"  # inline pt-BR UI copy not lifted into strings.ts yet
   "apps/web/src/app/(app)/flows/side-panel.tsx"   # inline pt-BR UI copy not lifted into strings.ts yet
   "apps/web/src/app/api/chat/route.ts"          # pt-BR system prompt + UI-facing chat copy

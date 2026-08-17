@@ -1,6 +1,6 @@
 # Data Model — NORA (Postgres 16)
 
-> Actual state of the schema, aligned with **migrations V001–V028** in `services/api/src/main/resources/db/migration/` (full inventory in §5).
+> Actual state of the schema, aligned with **migrations V001–V030** in `services/api/src/main/resources/db/migration/` (full inventory in §5).
 > Each table is mapped to its originating migration. Where there is **drift** between what was documented and what is in the database, it is marked explicitly.
 > Multi-tenancy: `tenant_id` column on every tenant-bound table (ADR 0002). **RLS enabled in the schema (V016, completed in V019; auth-aware scope in V020; extended to every table added since, V021–V024, V028)** — enforcement is opt-in via the `nora_app` role + the `nora.security.rls.enforce` flag; see §RLS.
 > **Soft-delete** (V013): the `tenants`, `users`, `tenant_contexts`, `meetings` tables have `deleted_at`; Spring Data queries filter `deleted_at IS NULL` via `@SQLRestriction`; full UNIQUEs became partial ones (see §4).
@@ -273,7 +273,7 @@ Status: **orphaned**. A comment in `V006:7-9` indicates "removal in a future mig
 
 **Indexes**: `idx_meeting_decisions_analysis(analysis_id)`, `idx_meeting_decisions_tenant(tenant_id)`.
 
-### 2.13 `meeting_action_items` — V005
+### 2.13 `meeting_action_items` — V005, V030
 
 | Column | Type | Notes |
 |---|---|---|
@@ -287,12 +287,15 @@ Status: **orphaned**. A comment in `V006:7-9` indicates "removal in a future mig
 | `source_quote` | `TEXT NOT NULL` | quote that supports the item |
 | `status` | `TEXT NOT NULL DEFAULT 'OPEN'` | **CHECK: `OPEN`, `IN_PROGRESS`, `DONE`** (V005:92-93) |
 | `position` | `INTEGER NOT NULL CHECK (>= 0)` | |
-| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
-| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+| `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | when the analysis extracted the item — the "opened" axis of the trends panel |
+| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | last touch of ANY column (status, title, due date) |
+| `completed_at` | `TIMESTAMPTZ` **(V030)** | when the item entered `DONE`; NULL while it is not. Written by `TaskRepositoryAdapter.updateStatus`, the only writer of `status`: stamped on entering DONE, cleared on leaving it |
 
-**Indexes**: `idx_meeting_action_items_analysis(analysis_id)`, `idx_meeting_action_items_tenant(tenant_id)`, `idx_meeting_action_items_status(tenant_id, status)`.
+**Indexes**: `idx_meeting_action_items_analysis(analysis_id)`, `idx_meeting_action_items_tenant(tenant_id)`, `idx_meeting_action_items_status(tenant_id, status)`, `idx_meeting_action_items_tenant_created(tenant_id, created_at)` **(V030)**, `idx_meeting_action_items_tenant_completed(tenant_id, completed_at) WHERE completed_at IS NOT NULL` **(V030, partial)**.
 
 > **Drift corrected**: the old doc listed `status IN (..., 'CANCELLED')`. **CANCELLED does not exist** in the real CHECK constraint (V005:92-93). Valid statuses: only `OPEN`, `IN_PROGRESS`, `DONE`.
+
+> **`completed_at` is not `updated_at`, and that is why it exists.** The trends panel (US21) charts completions per period, and `updated_at` moves on a title or due-date edit as well — a task finished in March and renamed in June would have been charted as a June completion. Rows that were already `DONE` when V030 ran were seeded from the `updated_at` they carried, which is an **upper bound** on the real instant and not a measurement; from V030 onward the value is exact. There is deliberately **no** `CHECK ((status = 'DONE') = (completed_at IS NOT NULL))`: those seeded rows are precisely the ones such a constraint could not have been created against without `NOT VALID`.
 
 > **Drift removed**: the `assignee_user_id UUID` column does not exist; only `assignee TEXT` (raw name).
 
@@ -903,6 +906,7 @@ ADR 0002 promised RLS in production; **V016 delivered it in the schema**, **V019
 | **V026** | integration providers wave 2: provider CHECK → the current nine (+ `microsoft, telegram, trello`). Telegram pairs by code (`access_token` holds the bot's `chat_id`) and Trello uses a user-pasted token; same table and cipher |
 | **V027** | composite FK: `iam_user_groups` and `iam_user_policies` `.(tenant_id, user_id)` → `users(tenant_id, id)` (same remedy as V015 for `meetings`), closing cross-tenant group/policy attachment. Deletes offending pre-existing rows with `RAISE NOTICE` counts. **Edited after being applied** — carries a checksum warning; a database that ran the earlier version needs `flyway repair` (see §2.17) |
 | **V028** | company-context history (US31): `tenant_context_versions` (PK `(context_id, version)`, immutable, shape of `iam_policy_versions` plus the composite FK of V015/V027), `tenant_contexts.current_version` + its `UNIQUE (tenant_id, id)`, backfill of version 1 for every context that already existed (approximate `created_at`, derived from `updated_at`), and RLS `tenant_isolation`. Ships with the two read endpoints, unlike `iam_policy_versions` |
+| **V030** | trends panel (US21): `meeting_action_items.completed_at` — the completion axis the panel counts on, because `updated_at` also moves on a title or due-date edit — plus `idx_meeting_action_items_tenant_created(tenant_id, created_at)` and the partial `idx_meeting_action_items_tenant_completed(tenant_id, completed_at) WHERE completed_at IS NOT NULL`. Rows already `DONE` are seeded from their `updated_at`, an upper bound rather than a measurement; no `CHECK` pairs `status` with `completed_at`, because those seeded rows are exactly what such a constraint could not be created against. No RLS change: `meeting_action_items` has carried `tenant_isolation` since V019 and a policy applies to the row, not to a column set |
 
 ## 6. Academic considerations (Oracle)
 
