@@ -1,8 +1,10 @@
 ﻿/**
  * Minimal HTTP client for the NORA API.
  *
- * By default in dev mode it uses fixtures (NEXT_PUBLIC_USE_MOCKS=true). When false,
- * it does a real fetch against NEXT_PUBLIC_API_BASE_URL.
+ * Fixtures are OPT-IN: only NEXT_PUBLIC_USE_MOCKS=true serves them. Anything else —
+ * including the variable being unset — does a real fetch against NEXT_PUBLIC_API_BASE_URL.
+ * This docstring said the opposite until 2026-08-17; the inversion, and why, is explained
+ * at the USE_MOCKS declaration below.
  *
  * Round 2 / Subphase 1.3 A:
  * - Auth is sent via httpOnly cookies (`nora_access`, `nora_refresh`)

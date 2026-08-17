@@ -137,7 +137,7 @@ Internal-only — only the Spring backend talks to it. Hosted in `nora-worker-de
 
 ## R
 
-**RAG** — Retrieval-Augmented Generation. AI pattern where the LLM prompt is enriched with relevant documents retrieved from a knowledge base. In NORA, used to bring **tenant context** (products, glossary, competitors, stakeholders) into the prompt, plus semantic search over meetings. **Delivered (US15, PR #206)**: provider-agnostic embeddings (Gemini/OpenAI) persisted via pgvector (migration V021) and retrieved by an HTTP embedding client (`EmbeddingService.java`, `HttpEmbeddingClient.java`). The Core chat consumes `/meetings/search` as RAG context. (It does not use Azure AI Search.)
+**RAG** — Retrieval-Augmented Generation. AI pattern where the LLM prompt is enriched with relevant documents retrieved from a knowledge base. In NORA, used to bring **tenant context** (products, glossary, competitors, stakeholders) into the prompt, plus semantic search over meetings. **Delivered (US15, PR #206)**: provider-agnostic embeddings (Gemini/OpenAI) produced by an HTTP embedding client (`EmbeddingService.java`, `HttpEmbeddingClient.java`) and persisted by migration V021. The Core chat consumes `/meetings/search` as RAG context. (It does not use Azure AI Search.) **It does not use `pgvector` either** — V021 stores the vector as a JSON array in a `TEXT` column and `EmbeddingService.cosine` computes the similarity in Java. The container image is `pgvector/pgvector:pg16` and the extension is deliberately never created (ADR 0034 §excluded scope).
 
 **Refresh token** — **Long-lived** token (30 days, stateful UUID) used to renew the access JWT (15min). Persisted in `iam_refresh_tokens` (migration V011). httpOnly cookie `nora_refresh`. Short access + long refresh = a balanced security pattern.
 
@@ -175,7 +175,7 @@ Internal-only — only the Spring backend talks to it. Hosted in `nora-worker-de
 
 ## V
 
-**V001 - V021** — Current Flyway migrations (canonical source: `docs/engineering/data-model.md`). Each one idempotent and immutable, sequentially numbered. Highlights: V013 = soft-delete, V014 = refresh-token rotation, V015 = composite isolation FK, V016 = Row-Level Security (schema), V018 = invitation token hash, V019/V020 = full RLS + auth-aware scope, V021 = `meeting_embeddings` (pgvector). Customer Confidence is persisted (see the **Customer Confidence** entry).
+**V001 - V027** — Current Flyway migrations (canonical source: `docs/engineering/data-model.md`). Sequentially numbered and forward-only. Highlights: V013 = soft-delete, V014 = refresh-token rotation, V015 = composite isolation FK, V016 = Row-Level Security (schema), V017 = Customer Confidence, V018 = invitation token hash, V019/V020 = full RLS + auth-aware scope, V021 = `meeting_embeddings` (a JSON array in a `TEXT` column — **not** `pgvector`), V022 = chat sessions, V023 = Flows, V024-V026 = OAuth integration connections and the provider CHECK growing to nine, V027 = composite IAM FK. V027 carries a checksum warning in its own header: it was edited after being applied, which is the one documented exception to immutability. Customer Confidence is persisted (see the **Customer Confidence** entry).
 
 ## W
 
@@ -196,3 +196,4 @@ Implemented in PolicyEvaluator with glob-style matching.
 |---|---|---|
 | 1.0 | 2026-05-14 | **Initial creation**. Canonical glossary covering product terms (Customer Confidence, Productivity Score, Account Health, MoSCoW, Tenant), architecture (DDD, RAG, JSON Schema strict, Multi-tenancy, RLS), IAM (IAM AWS-style, Effect, Conditions, Wildcard, Deny-first eval, PolicyEvaluator), Azure infra (Container Apps, Key Vault, UAI, OIDC, Soft-delete, Service Principal, rg-nora-dev), implementation (NlpWorker, PII Shield, TF-IDF baseline, packages/nlp-baseline, Speech Token Broker, Refresh token), and process (ADR, Sub-phase, Flyway/V001-V012, BlackHole, AUTH_FILTER_HARD_CAP). 50+ terms in total |
 | 1.1 | 2026-06-06 | Doc x code reconciliation + standardization |
+| 1.2 | 2026-08-17 | **Targeted correction only, made while reconciling `docs/engineering/standards.md`.** Two entries claimed things the code does not do: **RAG** said the embeddings are "persisted via pgvector" (they are a JSON array in a `TEXT` column, scored in Java — the extension is never created), and **V001 - V021** stopped six migrations short of the tree and repeated the same pgvector claim. This file has **not** had a full pass: entries such as WireMock still list Azure Speech among the services it stubs, and no task in the current documentation trail claims this document |
