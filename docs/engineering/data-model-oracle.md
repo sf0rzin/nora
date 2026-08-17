@@ -3,9 +3,9 @@
 > A mirror of the Postgres schema in **Oracle 19c+ (PL/SQL DDL)** syntax.
 > NORA runs **on Postgres in production** (see `data-model.md`). This document is an academic deliverable for FIAP's Database Design course, which requires Oracle modeling.
 > Each table corresponds 1:1 to the schema documented in `data-model.md`, with the type and syntax adaptations described in §15.
-> It covers migrations **V001–V016** (including soft-delete V013, refresh token rotation V014, composite FK V015 and Row-Level Security V016 — see §18 for the Oracle equivalent of RLS via VPD/DBMS_RLS). Full inventory in §17. The canonical list of migrations (which goes beyond V016, up to V021) is in `data-model.md`.
+> It covers migrations **V001–V016** (including soft-delete V013, refresh token rotation V014, composite FK V015 and Row-Level Security V016 — see §18 for the Oracle equivalent of RLS via VPD/DBMS_RLS). Full inventory in §17. The canonical list of migrations (which goes beyond V016, up to V027) is in `data-model.md`.
 >
-> **Note (scope of this doc):** the migrations after V016 — Customer Confidence (delivered full-stack), full/auth-aware-scope RLS, invitation token hash and `meeting_embeddings` (semantic search) — have not yet been mapped to Oracle syntax. This is a debt of the academic mirror, not of the product: the features are delivered and documented in the canonical Postgres schema in `data-model.md` (Customer Confidence in `§2.29-2.33`).
+> **Note (scope of this doc):** the migrations after V016 — Customer Confidence (delivered full-stack), full/auth-aware-scope RLS, invitation token hash, `meeting_embeddings` (semantic search), the chat tables, NORA Flows and the OAuth integration connections, plus the V027 composite FK — have not yet been mapped to Oracle syntax. This is a debt of the academic mirror, not of the product: the features are delivered and documented in the canonical Postgres schema in `data-model.md` (Customer Confidence in `§2.29-2.33`, V022–V027 in `§2.35-2.39`).
 
 ## 1. `TENANTS`
 
