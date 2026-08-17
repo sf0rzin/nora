@@ -119,7 +119,7 @@ reason to keep it correct:
 |---|---|---|
 | The stack, verified against the manifests | [`AGENTS.md`](../../AGENTS.md) §Stack and §Current scope | Each row names the file it was read out of, so it fails loudly when a manifest moves |
 | What is deployed, and on what | [`README.md`](../../README.md) §Current state, [ADR 0036](../adr/0036-substrate-is-a-single-bare-metal-host.md) | The substrate is an architectural decision, and decisions belong in ADRs |
-| Per-story delivery status | [`docs/product/backlog.md`](backlog.md) | It is the artefact that carries DONE / PARTIAL / MISSING per user story. **Caveat, true on 2026-08-17:** it has not yet been reconciled against ADR 0038, so it still shows US05, US50 and US51 as "deferred as a block via ADR 0014". This document follows the accepted ADR; where the two disagree, the ADR is the authority and the backlog is the stale one |
+| Per-story delivery status | [`docs/product/backlog.md`](backlog.md) | It is the artefact that carries DONE / PARTIAL / MISSING / WONT per user story. It was rewritten against the code on 2026-08-17 and reconciled with ADR 0038 — US05, US50 and US51 are `WONT` there, not "deferred via ADR 0014". Where the two documents disagree, the accepted ADR is the authority |
 | The schema, and how far the migrations go | [`docs/engineering/data-model.md`](../engineering/data-model.md) | Canonical, and mirrored for the Oracle deliverable |
 | What was decided and when | [`docs/adr/README.md`](../adr/README.md) | The canonical ADR index |
 | What happened, in order | [`docs/product/roadmap.md`](roadmap.md) §1 History | History belongs in the history section, and stays there |
@@ -328,10 +328,10 @@ happened. All three are gone.
 Two documents own the answer now, and this one only points at them, so that the plan cannot drift
 in three places at once:
 
-- [`docs/product/roadmap.md`](roadmap.md) — the sub-phase history and what is ahead. **Caveat, true
-  on 2026-08-17:** its §2 has not been reconciled against ADR 0038 either, and still plans against
-  `rg-nora-prod`, Azure Monitor and that same missing DR runbook. Read §1 (history) as accurate and
-  §2 (what is ahead) as pending.
+- [`docs/product/roadmap.md`](roadmap.md) — the delivery history and what is ahead. Its §2 was
+  rewritten on 2026-08-17: the plan against `rg-nora-prod`, Azure Monitor and a DR runbook that was
+  never written is deleted rather than rescheduled, and what is ahead is now stated against ADR 0038
+  and the real substrate.
 - [ADR 0038](../adr/0038-post-pitch-scope-realignment.md) — the scope decision underneath it: what
   is closed (§4), what came back into scope (§5) and what is a declared deferral with a written
   reason (§6). Where the roadmap and the ADR disagree, the ADR is the authority.
@@ -352,3 +352,4 @@ transcription to **cloud STT** ([ADR 0039](../adr/0039-cloud-stt-openai-ephemera
 | **1.0** | **2026-05-14** | **Rewrite after the real Azure deploy (Sub-phase 1.9). Corrects drift: Desktop supports macOS via BlackHole (PR #37 — it is no longer "Does not support macOS in the MVP"). Adds the "Current State" section with real endpoints + operational IAM + Productivity Score full-stack + test coverage. Adds the "Upcoming Sub-phases" section with a link to the roadmap. Replaces the previous doc `docs/visao-do-produto.md` (moved to `docs/product/vision.md`).** |
 | 1.1 | 2026-06-06 | Doc x code reconciliation + standardisation |
 | **1.2** | **2026-08-17** | **Reconciliation against the August 2026 realignment (ADR 0038–0041).** Plan box rewritten to what each plan has, with a table recording what it used to promise and what closed it: SSO (US05), aggregated Account Health (US50/US51) and the Enterprise SLA/DPA are **WONT** by ADR 0038 §4; "Commercial Next Best Action" is removed as never built and never tracked; "Competitive Radar" and "Team analytics" are restated at their true size. Records that the Core/Enterprise split is commercial framing that the code does not enforce. §3 "Current State" replaced: the dated Azure snapshot is deleted in favour of pointers to the documents that maintain each fact, with the reason written out. §4/§5 reconciled — Desktop is Windows-only, transcription is on-device **today** with ADR 0039 decided and unbuilt, the PII promise is scoped to text and analysis and the transcription provider is a declared subprocessor (ADR 0040), RAG does **not** use pgvector, RLS is enforced on the deployed stack and deferred only as the repository default, retention `0` means OFF. §6: per-department Company Context and attribute-tagged desktop capture removed as never built, and the "Real example" qualified — the condition evaluator is real, but no shipped UI writes the meeting `attributes` it reads. §7 rewritten around the two directions — OAuth outbound shipped (ADR 0031), MCP inbound decided and unbuilt (ADR 0041). §11 replaced by pointers to the roadmap and ADR 0038 |
+| 1.3 | 2026-08-17 | Two time-boxed caveats retired, both written hours earlier and both now expired: §3 said the backlog had not been reconciled against ADR 0038 (it was rewritten against the code the same day), and §11 said the roadmap's §2 still planned against `rg-nora-prod`, Azure Monitor and a missing DR runbook (that section was rewritten). Nothing else changed |

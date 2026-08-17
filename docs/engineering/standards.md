@@ -98,7 +98,7 @@ nora/
 |---|---|
 | Product vision (Is/Is Not, Does/Does Not, Geoffrey Moore) | `docs/product/vision.md` |
 | Prioritized backlog (MoSCoW + real status DONE/PARTIAL/MISSING) | `docs/product/backlog.md` |
-| Living roadmap (history of sub-phases 1.0–1.10 + future 1.11+) | `docs/product/roadmap.md` |
+| Delivery history (sub-phases 1.0–1.11, then by theme) + what is ahead | `docs/product/roadmap.md` |
 | NORA glossary (canonical terms: Productivity Score, Customer Confidence, IAM Policy, etc.) | `docs/product/glossary.md` |
 | Technical architecture (DDD layers, end-to-end flows, stack rationale) | `docs/engineering/architecture.md` |
 | Data Science pipeline for the TOTVS transcripts (EDA + TF-IDF + LLM) | `notebooks/totvs_transcricoes_eda.py` |
