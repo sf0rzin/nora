@@ -307,27 +307,29 @@ apps/web/src/
 |---|---|
 | **Backend** | Pure domain unit tests, integration with Postgres via Testcontainers, integration tests for tenant/scope authorization (`IamScopingIntegrationTest`), WireMock to stub the worker |
 | **Worker** | Pipeline unit tests, schema validation (jsonschema), synthetic transcript fixtures in `data/synthetic/` |
-| **Frontend** | (TBD — no runner declared in `package.json`). Sub-phase 1.11+ may add Vitest |
+| **Frontend** | Playwright e2e (`apps/web/e2e/`): security headers, route protection, CSP violations, run by the `web` job against `next start`. No unit runner — Vitest is decided and not yet built |
 | **Contracts** | Valid JSON examples in `docs/api/examples/` for worker↔API payloads |
 
 ### Test coverage targets (audit §12, ADR 0018)
 
-| Area | Sustained target |
-|---|---|
-| **Critical areas** (IAM, Auth, PII, LLM analyzer) | **> 85%** |
-| Other backend areas | > 60% |
-| NLP Worker | > 85% (current: 87%) |
-| **Backend branch coverage** | > 70% (current: 53%) |
-| Web Next.js | TBD (no runner yet; target after Sub-phase 1.11+) |
-| Desktop client | out of scope here (maintained by @pollotherunner) |
+ADR 0018 is accepted and immutable; the targets below are its, unchanged. The **measured** column is not — it is re-taken on every CI run and the figures here are the ones that run last reported.
 
-**Current state (2026-05-13):**
+| Area | Sustained target (ADR 0018) | Measured 2026-08-17 |
+|---|---|---|
+| **Critical areas** (IAM, Auth, PII, LLM analyzer) | **> 85%** | IAM packages 90.9% instr · Auth/identity packages 93.8% instr · PII shield 96.6% stmt · `llm_analyzer.py` 84.7% stmt |
+| Other backend areas | > 60% | overall backend 77.2% instruction / 78.1% line |
+| NLP Worker | > 85% | **92.4%** statement over `nora_nlp` |
+| **Backend branch coverage** | > 70% | **61.6%** — still short of the target, by 8.4 points |
+| Web Next.js | TBD | unmeasured — Playwright e2e exists, coverage instrumentation does not |
+| Desktop client | out of scope here (maintained by @pollotherunner) | not measured |
 
-- NLP Worker: **87%** line (54 tests).
-- Spring backend: **67%** line / **53%** branch (174 tests). Critical areas already exceed 90% (`InvitationService` 98.1%, `PolicyEvaluator` 95.8%, `AuthService` 93.2%, `AuthorizationService` 89.9%).
-- Web: 0% (no runner).
+**Where these come from.** `scripts/report-coverage.sh` runs in the `api` and `worker` CI jobs and prints the figures to the job log and to the run summary page. It reads the report the test run just wrote (`target/site/jacoco/jacoco.csv`, `.coverage`) rather than measuring anything itself, so the same command on a workstation gives the same number. Read the current figures there; the date above is when this table was last copied from a run, not a promise about today.
 
-> **Caveat (2026-05-21):** numbers measured on 2026-05-13, **before** the #114–#138 hardening wave (RLS aspect, token rotation, RS256/JWKS, composite FK, auth audit) that touched critical Auth/IAM areas. **Re-measure** (`mvn verify` + `pytest`) before quoting them in the pitch; the worker still does not declare `pytest-cov` (to be added — ADR 0018).
+**Two of these are gates. The rest are reports.** `mvn verify` fails on the JaCoCo rule over `PolicyEvaluator` (instruction >= 90%, branch >= 75%) and the worker job fails on `--cov-fail-under=90` over `pii_shield`. Nothing fails on any other row, including the branch-coverage row that misses its target.
+
+**Counters are not interchangeable.** JaCoCo's *instruction* coverage is what the backend gate counts and what the backend figures above use; coverage.py reports *statement* coverage for the worker. A line percentage and an instruction percentage are different numbers for the same code — quoting one under the other's name is how "67%" survived three months without anyone being able to say what it measured.
+
+> **Superseded caveat (2026-05-21), kept as the record of what went wrong:** the previous figures — worker 87% (54 tests), backend 67% line / 53% branch (174 tests), all measured 2026-05-13 — carried the instruction "**re-measure** before quoting them in the pitch" and were quoted for three months without it. The instruction was correct and unenforceable; a CI step replaced it. Also now stale in that caveat: the worker *does* declare `pytest-cov`.
 
 ### Definition of done
 

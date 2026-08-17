@@ -36,9 +36,12 @@ The `1.X` numbering corresponds to a coherent delivery slice, normally 1+ merged
 - **200+ PRs** merged into `main` (latest: #206 Chat RAG on 2026-06-05; includes the "audit follow-up" hardening wave #114–#138 post-1.10)
 - **ADRs**: see the canonical index in `docs/adr/README.md` (single source of truth for the count and the status). ADR 0006 partially superseded by 0015; the post-1.10 hardening was documented retroactively in ADR 0019 (tenant isolation defense-in-depth), 0020 (token rotation) and 0021 (soft-delete)
 - **Migrations**: current schema described in `docs/engineering/data-model.md` (single source). Recent milestones: V016 RLS (schema), V017 Customer Confidence, V018 invite token hash, V019/V020 full RLS + auth-aware scope, V021 `meeting_embeddings`
-- **NLP Worker**: 87% coverage (54 tests) — *measured 2026-05-13, to be re-measured post-#114-#138*
-- **Spring backend**: 67% coverage (174 tests); critical IAM/Auth areas >90% — *same, to be re-measured*
-- **Next.js web**: 0% (no runner; debt for 1.12)
+- **NLP Worker**: **92.4%** statement coverage over `nora_nlp` (863 tests) — *measured 2026-08-17*. The PII shield alone is at **96.6%**, and it is the only worker scope CI gates (`--cov-fail-under=90`)
+- **Spring backend**: **77.2%** instruction / **61.6%** branch / 78.1% line (578 tests) — *measured 2026-08-17*. The areas ADR 0018 names critical are above their target: IAM packages **90.9%** instruction, Auth/identity packages **93.8%**, `PolicyEvaluator` **96.3%** instruction / 86.0% branch
+- **Next.js web**: no coverage figure exists. There is an automated suite — three Playwright e2e specs (security headers, route protection, CSP violations) run by the `web` job — but no coverage instrumentation, so the honest statement is *unmeasured*, not "0%". Unit-level coverage via Vitest is decided and not yet built
+- These three lines are no longer hand-measured. `scripts/report-coverage.sh` runs in the `api` and `worker` jobs on every CI run and prints the current figures to the job log and the run summary page; re-read them there rather than trusting the date above
+
+> The previous figures on these lines — worker 87%, backend 67% with 53% branch — were measured on **2026-05-13** and carried unchanged for three months. Both went up, so leaving them stale was not harmless in only one direction: the document was understating work that had been done. Worth recording alongside that: the old backend figure was written down as *instruction* coverage in ADR 0018 and as *line* coverage in `docs/engineering/standards.md`, which is two different numbers under one label. The lines above name the counter.
 - **Azure dev cost**: R$110-180/month (within the R$500 of Azure for Students)
 
 ## 2. Upcoming Sub-phases — 1.11, 1.12, 1.13+
@@ -112,3 +115,4 @@ Some decisions about **how** we work (not **what** to deliver) that affect the r
 |---|---|---|
 | 1.0 | 2026-05-14 | **Initial creation** as a living roadmap. Replaces `docs/plano-de-execucao.md` (discontinued — it described a week-by-week split between two developers, outside the current real flow). Consolidates the history of the 11 Sub-phases (1.0-1.10) with a cross-check of audit `2026-05-13-audit-pre-subfase-1.10.md` §11. Defines the upcoming Sub-phases 1.11 (Demo Polish Plan A), 1.12 (Production Hardening), 1.13+ (post-pitch) with explicit scope and prerequisites. Includes the long-term vision (3 horizons H1-H3) and process notes |
 | 1.1 | 2026-06-06 | Doc x code reconciliation + standardisation |
+| 1.2 | 2026-08-17 | Cumulative metrics: coverage re-measured in CI after three months of "to be re-measured". Backend 77.2% instruction / 61.6% branch (was 67% / 53%), worker 92.4% (was 87%), web restated as unmeasured rather than 0%. `scripts/report-coverage.sh` now publishes all of it on every run, so the figures stop being a snapshot |

@@ -71,7 +71,7 @@ api/            <- controllers REST, DTOs, exception handlers
 
 ### Why DDD in strict layers
 
-- **Pure testability in the domain:** `PolicyEvaluator` has 95.8% coverage (audit §12) because it does not require a Spring container.
+- **Pure testability in the domain:** `PolicyEvaluator` is at 96.3% instruction / 86.0% branch coverage (measured 2026-08-17 by `scripts/report-coverage.sh` in the `api` job) because it does not require a Spring container.
 - **Infrastructure substitutability:** swapping JJWT for another JWT provider is just implementing `JwtIssuer`. Same for the LLM (ADR 0004).
 - **Predictable onboarding:** a new dev always finds the business rule in `application/` or `domain/`, never in `infrastructure/` or `api/`.
 
