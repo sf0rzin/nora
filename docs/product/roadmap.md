@@ -137,15 +137,20 @@ customer would use, and is the proof that the context is configurable.
 ### 2.2 The rubric artefacts (in progress, mostly landed)
 
 Not a feature slice. The FIAP jury reads the backlog, the data model, the architecture and the API
-specification, and on 2026-08-16 all four described a product from two quarters earlier. Most of
-this is merged (#478–#484, listed in §1). What is still open:
+specification, and on 2026-08-16 all four described a product from two quarters earlier. **All of it
+is now merged**, and the list that used to sit here — four open items — is closed:
 
-- the Oracle mirror of the data model (`docs/engineering/data-model-oracle.md`), which covers
-  V001–V016 while the schema is at V027, and says so in its own header;
-- `docs/challenge/fiap-challenge-2026.md`, which still writes the 2026-06-15 pitch in the future
-  tense and carries three unverified deadlines;
-- the coverage measurement described in §1 (PR #477);
+- the Oracle mirror of the data model (`docs/engineering/data-model-oracle.md`) covered V001–V016
+  while the schema was at V027; it is complete through V030 (#485);
+- `docs/challenge/fiap-challenge-2026.md` wrote the 2026-06-15 pitch in the future tense and carried
+  three unverified deadlines; the pitch is recorded as held and the unverified dates became a named
+  section of open questions with an owner per row;
+- the coverage measurement is taken on every CI run rather than quoted from May (#477);
 - items (e) and (f) above.
+
+What remains is **not** a repository task: the FIAP milestones after the pitch are unknown, and
+finding out means reading the 2026 rubric. `docs/challenge/fiap-challenge-2026.md` says which four
+questions those are.
 
 ### 2.3 The decided builds
 
