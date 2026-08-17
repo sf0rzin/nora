@@ -1,6 +1,6 @@
 # ADR 0035 — Local STT: Whisper embedded in Tauri (Rust), running on the client machine
 
-- **Status:** accepted
+- **Status:** superseded by 0039
 - **Date:** 2026-08-07
 - **Supersedes:** ADR 0009 (Speech Token Broker — entirely: the broker, the endpoint, the rate limit and
   the credential cease to exist)
