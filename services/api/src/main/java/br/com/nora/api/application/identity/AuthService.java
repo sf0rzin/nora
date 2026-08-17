@@ -427,8 +427,26 @@ public class AuthService {
      * <p>Reuse detection: if the presented token is already revoked (and still within the TTL)
      * outside the window above, we assume a compromised chain (attacker exfiltrated the cookie and
      * used an old token). We revoke the whole family and log WARN.
+     *
+     * <p><b>{@code noRollbackFor} is the load-bearing part of that last paragraph.</b> The reuse
+     * branch revokes the family and then THROWS, and {@link AuthException.RefreshTokenInvalid} is a
+     * RuntimeException — so under a plain {@code @Transactional} the throw rolled the revocation
+     * back. Production did detect the reuse and did log the WARN, and the whole family stayed
+     * valid: the stolen chain kept working. The control reported itself as having acted while
+     * undoing its own remediation, which is worse than not having it, because the WARN says the
+     * session was cut.
+     *
+     * <p>It went unnoticed because the reuse test drives a fake in-memory repository, where there
+     * is no transaction to roll back — the revocation is a mutation of a list and always sticks.
+     * Only a test against a real database can see this, which is why the regression test for it
+     * lives in {@code RefreshFlowIntegrationTest} and not beside the others.
+     *
+     * <p>Every throw of {@code RefreshTokenInvalid} in here is either before any write or IS the
+     * revocation case, so committing on it is exactly right: the exception is a normal outcome of
+     * this method rather than a failure that should undo work. Anything added later that writes
+     * before a throw has to revisit this.
      */
-    @Transactional
+    @Transactional(noRollbackFor = AuthException.RefreshTokenInvalid.class)
     public RefreshResult refresh(String refreshTokenPlain) {
         if (refreshTokenPlain == null || refreshTokenPlain.isBlank()) {
             throw new AuthException.RefreshTokenInvalid();
