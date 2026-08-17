@@ -1333,7 +1333,11 @@ END;
 ## 22. Oracle ≡ Postgres inventory
 
 Every migration V001–V032 appears in exactly one row below, so the two schemas can be checked
-against each other line by line.
+against each other line by line — with one hole that is deliberate: **there is no V031.** US41
+reserved the number and then shipped policy templates as a code catalogue with no table, so nothing
+was ever written under it. The gap is left as it is rather than closed by renumbering, because a
+skipped version costs Flyway nothing and moving V032 down would change the checksum of a migration
+that may already have run.
 
 | # | Table | Postgres (migration) | Oracle (§ in this doc) |
 |---|---|---|---|
