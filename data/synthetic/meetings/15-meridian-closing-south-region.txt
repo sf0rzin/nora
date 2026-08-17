@@ -1,0 +1,56 @@
+Reunião: Retorno do Conselho e fechamento — Meridian × Central Log Transportes
+Data: 2026-08-07
+Horário: 11:00 — 11:42
+Participantes: Rafael Costa (Meridian — Account Executive Sul), Camila Souza (Meridian — Diretora Comercial), Eduardo Bastos (Central Log Transportes — Diretor de Operações), Priscila Nardi (Central Log Transportes — Gerente Fiscal)
+
+Eduardo: Bom dia. O Conselho foi ontem. Está aprovado com vocês.
+
+Rafael: Que ótima notícia. Obrigado, Eduardo.
+
+Eduardo: Foi a comparação de 36 meses que virou. Quando o Conselho viu os R$ 427.000,00 de maio dentro da conta, a diferença de mensalidade virou detalhe.
+
+Priscila: E o meu voto técnico foi por causa da contingência. Eu emiti com a conexão derrubada e funcionou. Não é slide, eu vi.
+
+Camila: E o ponto da carta de correção no lote?
+
+Rafael: Confirmado com a engenharia e já está configurado. A Priscila validou na sexta.
+
+Priscila: Validei. Sai no lote agora.
+
+Camila: Então vamos ao contrato. O que ficou aprovado?
+
+Eduardo: Meridian Fiscal e Meridian Frota para os 214 veículos próprios, R$ 31.000,00 por mês, contrato de 36 meses com reajuste anual por índice. Implantação em duas ondas.
+
+Rafael: E o paralelo?
+
+Eduardo: Ficou em 45 dias, não os 30 que a Priscila queria nem os 60 originais. O Marcos aceitou porque vocês assumiram a dupla digitação do fiscal no período.
+
+Rafael: Assumimos. Fica com a nossa equipe de implantação.
+
+Camila: Eduardo, tem uma segunda conversa que eu quero abrir agora, não daqui a seis meses. Vocês têm 60 agregados fora do contrato.
+
+Eduardo: Temos. E é um problema. Hoje a gente não enxerga custo por quilômetro do agregado, só do próprio.
+
+Camila: O Meridian Frota trata agregado no mesmo cadastro. É uma extensão de licença, não é um projeto novo.
+
+Eduardo: Qual a ordem de grandeza?
+
+Camila: Mais R$ 4.200,00 por mês pelos 60. Mas eu não quero fechar isso hoje. Quero que vocês vejam o próprio rodando primeiro e decidam com número na mão.
+
+Eduardo: Isso eu respeito. Vamos deixar pra conversar na revisão de 90 dias.
+
+Priscila: E o Portal do Embarcador? Meus clientes ligam pra perguntar onde está a carga.
+
+Rafael: O Portal está incluído no Fiscal para até 40 embarcadores. Acima disso vira licença.
+
+Priscila: Quarenta cobre uns 80% do nosso volume. Serve pra começar.
+
+Rafael: Então o combinado é: eu mando a minuta do contrato hoje, kick-off de implantação dia 18 de agosto, onda fiscal até 30 de setembro, onda frota até 15 de novembro.
+
+Eduardo: Fechado. Vou pedir pro jurídico revisar a minuta ainda esta semana.
+
+Camila: E eu vou agendar a revisão de 90 dias já na assinatura, pra não ficar solta.
+
+Eduardo: Ótimo. Rafael, uma última coisa, e é elogio: você não cobriu o preço da TotalSys e falou que a integração de telemetria era pior que a deles. Isso pesou no Conselho. Vendedor que fala o que não tem é vendedor que a gente desconta depois.
+
+Rafael: Obrigado, Eduardo. Vou mandar a minuta até o fim do dia.

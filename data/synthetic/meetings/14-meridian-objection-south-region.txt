@@ -1,0 +1,60 @@
+Reunião: Sessão técnica e negociação — Meridian × Central Log Transportes
+Data: 2026-07-24
+Horário: 14:00 — 15:05
+Participantes: Rafael Costa (Meridian — Account Executive Sul), Eduardo Bastos (Central Log Transportes — Diretor de Operações), Priscila Nardi (Central Log Transportes — Gerente Fiscal), Marcos Iung (Central Log Transportes — Coordenador de TI)
+
+Rafael: Boa tarde. Priscila, você emitiu contra o ambiente que eu preparei?
+
+Priscila: Emiti. Trezentos e poucos CT-e ao longo de terça e quarta. A contingência funcionou como você falou, eu derrubei a conexão duas vezes e ele não parou.
+
+Rafael: Ótimo. E o fechamento?
+
+Priscila: Aí é que está. O lote saiu, mas ele não trouxe as cartas de correção que a gente emitiu no período de teste. Tive que buscar na mão.
+
+Rafael: Isso é configuração de evento, não é limitação. Mas anotado, eu vou confirmar com a engenharia antes de você levar isso pro Conselho como risco.
+
+Marcos: Rafael, tenho um problema maior. Eu olhei a integração de telemetria e ela é por arquivo. A gente hoje tem webhook com o fornecedor atual. Voltar pra arquivo é retrocesso.
+
+Rafael: É por arquivo mesmo, Marcos. Foi decisão de produto pra não amarrar cliente a um fornecedor de telemetria. Eu não vou dizer que tem webhook porque não tem.
+
+Marcos: Então a gente vai ter que manter um integrador no meio. Isso é custo que não estava na conta.
+
+Eduardo: Rafael, preciso ser transparente com você. A TotalSys esteve aqui na segunda-feira.
+
+Rafael: Imaginei. O que eles trouxeram?
+
+Eduardo: Proposta de R$ 21.000,00 por mês, com telemetria por webhook nativo, e implantação em 45 dias. Está R$ 9.000,00 abaixo do meio da faixa que você me passou.
+
+Rafael: Eles falaram de contingência de CT-e?
+
+Eduardo: Falaram que a SEFAZ raramente cai.
+
+Priscila: Isso me irritou, sinceramente. Ficamos quatro dias parados em maio.
+
+Rafael: Eduardo, eu não vou cobrir os R$ 21.000,00. Se a decisão for preço de mensalidade, vocês devem fechar com a TotalSys, e eu digo isso sem ironia. O que eu peço é que a comparação seja de 36 meses e inclua o custo dos quatro dias de maio, que vocês já mediram.
+
+Eduardo: Justo. Mas o Conselho olha mensalidade, não olha TCO.
+
+Rafael: Então me deixa preparar a comparação no formato que o Conselho lê. Se depois disso a decisão for a TotalSys, tudo bem.
+
+Marcos: Tem outra coisa. Vocês falaram em duas ondas, fiscal primeiro. Quanto tempo entre a primeira e a segunda?
+
+Rafael: Sessenta dias com o legado em paralelo.
+
+Marcos: Sessenta dias rodando dois sistemas é sessenta dias de dupla digitação pro meu time de suporte. A TotalSys propôs corte único em 45 dias.
+
+Eduardo: Esse ponto pesa. O corte único é mais arriscado, mas é mais curto.
+
+Rafael: É mais curto e é mais arriscado, e no seu caso o risco é emissão fiscal parada. Eu prefiro perder o negócio a vender corte único num cliente com 4.100 CT-e por dia.
+
+Eduardo: Anotado. Olha, o Conselho é dia 6 de agosto. Preciso do material até dia 1º.
+
+Rafael: Você tem até dia 1º. Vou entregar três coisas: a comparação de 36 meses, a confirmação da engenharia sobre carta de correção no lote, e um plano de onda revisado tentando encurtar o paralelo.
+
+Priscila: Se o paralelo cair pra 30 dias eu consigo defender internamente.
+
+Rafael: Vou tentar 30. Não prometo.
+
+Eduardo: Rafael, sendo honesto com você: hoje eu estou dividido. A TotalSys está mais barata e mais rápida. Vocês estão mais seguros no ponto que mais me machucou este ano. Não sei o que o Conselho vai escolher.
+
+Rafael: Prefiro saber disso agora do que no dia 7.
