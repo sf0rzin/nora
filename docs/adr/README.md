@@ -93,3 +93,4 @@ Partially superseded decisions: a successor ADR may mark `Partially supersedes X
 | 0046 | Finish the declared scope, and empty the limbo ADR 0038 left | accepted (extends 0038 §5; supersedes nothing) |
 | 0047 | Scheduled Flows: a restricted vocabulary, a claimed run, and a window that outlives a crash | accepted (successor record to 0030 §5; supersedes nothing) |
 | 0048 | Participant identity: deterministic matching over the declared roster | accepted (implements US13 of 0046 §1; relates to 0012 and 0029; supersedes nothing) |
+| 0049 | Permission boundaries: a cap that never grants, and the four questions a cap raises | accepted (successor record to 0007; supersedes nothing) |

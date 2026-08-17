@@ -185,6 +185,12 @@ class AuthorizationCoverageIntegrationTest {
         calls.post(
                 "/iam/simulate",
                 json(Map.of("userId", id, "action", "meeting:read", "resource", "arn")));
+        // US44: three actions of their own, so a principal without policies is refused before the
+        // service ever resolves the subject — including the read, because which policy caps whom
+        // is part of the attachment graph.
+        calls.get("/iam/users/" + id + "/boundary");
+        calls.put("/iam/users/" + id + "/boundary", json(Map.of("policyId", id)));
+        calls.delete("/iam/users/" + id + "/boundary");
         // US41: a constant catalogue, so it rides on iam:policy:read instead of its own action.
         // Constant is not the same as public — without that grant it is refused like the rest.
         calls.get("/iam/policy-templates");

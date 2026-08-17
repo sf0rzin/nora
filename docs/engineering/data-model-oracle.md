@@ -3,9 +3,9 @@
 > A mirror of the Postgres schema in **Oracle 19c+ (PL/SQL DDL)** syntax.
 > NORA runs **on Postgres in production** (see `data-model.md`). This document is an academic deliverable for FIAP's Database Design course, which requires Oracle modeling.
 > Each table corresponds 1:1 to the schema documented in `data-model.md`, with the type and syntax adaptations described in §20.
-> It covers migrations **V001–V032** — the whole canonical schema, including soft-delete (V013), refresh token rotation (V014), the three composite FKs (V015, V027, V029), the hashed invitation token (V018), Customer Confidence (V017), semantic search (V021), chat sessions (V022), NORA Flows (V023) and the run state of its scheduled trigger (V032), the OAuth integration connections (V024–V026), the company-context history (V028), the inbound MCP credential (V029), the trends panel's completion timestamp (V030) and Row-Level Security (V016/V017/V019/V020/V021–V024/V028/V032 — Oracle equivalent via VPD/DBMS_RLS in §23). Full inventory in §22.
+> It covers migrations **V001–V033** — the whole canonical schema, including soft-delete (V013), refresh token rotation (V014), the three composite FKs (V015, V027, V029), the hashed invitation token (V018), Customer Confidence (V017), semantic search (V021), chat sessions (V022), NORA Flows (V023) and the run state of its scheduled trigger (V032), the OAuth integration connections (V024–V026), the company-context history (V028), the inbound MCP credential (V029), the trends panel's completion timestamp (V030), the permission boundaries of US44 (V033) and Row-Level Security (V016/V017/V019/V020/V021–V024/V028/V033/V032 — Oracle equivalent via VPD/DBMS_RLS in §23). Full inventory in §22.
 
-> **Note (scope of this doc), checked 2026-08-17:** the mirror is **complete up to V032**. Every table documented in `data-model.md` §2 has Oracle DDL here, and every migration V001–V032 has a row in §22. Two things are deliberately **not** mirrored, and both are Postgres-side operational objects rather than schema: the role provisioning in `services/api/src/main/resources/db/operational/R001__provision_app_roles.sql` (the Oracle counterpart is a privilege grant, not a script — see §23.4) and the **separate control-plane database** of ADR 0022 (`services/api/src/main/resources/db/platform/`), which `data-model.md` does not cover either. This file carries **44 tables** (`grep -c '^CREATE TABLE '`) against the **42** `### 2.x` sections of `data-model.md`: the two counts differ by design, because §2.3 (`roles` + `user_roles`) and §2.23 (`iam_user_invitations` + `iam_invitation_groups`) each document two tables. A looser `grep -c 'CREATE TABLE'` returns 47, matching three prose mentions as well.
+> **Note (scope of this doc), checked 2026-08-17:** the mirror is **complete up to V033**. Every table documented in `data-model.md` §2 has Oracle DDL here, and every migration V001–V033 has a row in §22. Two things are deliberately **not** mirrored, and both are Postgres-side operational objects rather than schema: the role provisioning in `services/api/src/main/resources/db/operational/R001__provision_app_roles.sql` (the Oracle counterpart is a privilege grant, not a script — see §23.4) and the **separate control-plane database** of ADR 0022 (`services/api/src/main/resources/db/platform/`), which `data-model.md` does not cover either. This file carries **45 tables** (`grep -c '^CREATE TABLE '`) against the **43** `### 2.x` sections of `data-model.md`: the two counts differ by design, because §2.3 (`roles` + `user_roles`) and §2.23 (`iam_user_invitations` + `iam_invitation_groups`) each document two tables. A looser `grep -c 'CREATE TABLE'` returns 48, matching three prose mentions as well.
 
 ## 1. `TENANTS`
 
@@ -651,6 +651,58 @@ CREATE TABLE iam_audit_events (
 
 CREATE INDEX idx_iam_audit_events_tenant_created
     ON iam_audit_events (tenant_id, created_at DESC);
+```
+
+### 12.1 `IAM_PERMISSION_BOUNDARIES` (V033) — the policy that caps a user
+
+Postgres source: `data-model.md` §2.43. ADR 0049, US44.
+
+A boundary **limits**: an action passes only if the user's own policies allow it *and* this
+document allows it. It never grants, and a **missing row means unrestricted**, never deny-all.
+
+Three things carry over unchanged and are worth naming, because each is a decision rather than a
+translation:
+
+- **The PK is `user_id` alone.** `users.id` is unique, so the primary key *is* the "at most one
+  boundary per user" rule. Nothing in either schema can hold a second one, so no code has to decide
+  what two would mean.
+- **Both FKs are composite**, in the shape V015/V027 established (§2, §12). The `(tenant_id,
+  policy_id)` one needs a composite target on `iam_policies`, which V033 adds as
+  `iam_policies_tenant_id_id_uk`; Oracle needs the same constraint, and it is the only addition
+  this table makes to an existing one.
+- **The policy FK is `ON DELETE NO ACTION`**, which Oracle spells by simply omitting the delete
+  clause — its only two options are `CASCADE` and `SET NULL`, and the default *is* no action. Under
+  a cascade, deleting a policy would silently remove somebody's cap; here the delete fails and the
+  API answers `409 IAM_POLICY_IN_USE_AS_BOUNDARY`. The Postgres side spells it explicitly to make
+  the intent unmissable in a review; the two behave identically.
+
+```sql
+-- Target of the composite FK below. Adds no new uniqueness (id is already the PK) —
+-- it exists only so (tenant_id, policy_id) has something to reference.
+ALTER TABLE iam_policies ADD CONSTRAINT iam_policies_tenant_id_id_uk UNIQUE (tenant_id, id);
+
+CREATE TABLE iam_permission_boundaries (
+    -- The PK is the "at most one boundary per user" rule.
+    user_id      VARCHAR2(36) PRIMARY KEY,
+    tenant_id    VARCHAR2(36) NOT NULL,
+    -- The policy acting as the cap. Reachable only through the composite FK below,
+    -- so it can never point at another tenant's policy.
+    policy_id    VARCHAR2(36) NOT NULL,
+    attached_by  VARCHAR2(36),
+    attached_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    updated_at   TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+
+    CONSTRAINT iam_pb_user_fk FOREIGN KEY (tenant_id, user_id)
+        REFERENCES users (tenant_id, id) ON DELETE CASCADE,
+    -- No delete clause = NO ACTION: deleting the policy must not silently remove the cap.
+    CONSTRAINT iam_pb_policy_fk FOREIGN KEY (tenant_id, policy_id)
+        REFERENCES iam_policies (tenant_id, id),
+    CONSTRAINT iam_pb_tenant_fk   FOREIGN KEY (tenant_id)   REFERENCES tenants(id) ON DELETE CASCADE,
+    CONSTRAINT iam_pb_attached_fk FOREIGN KEY (attached_by) REFERENCES users(id)
+);
+
+CREATE INDEX idx_iam_permission_boundaries_tenant ON iam_permission_boundaries (tenant_id);
+CREATE INDEX idx_iam_permission_boundaries_policy ON iam_permission_boundaries (policy_id);
 ```
 
 ## 13. Invitations and refresh tokens
@@ -1332,12 +1384,15 @@ END;
 
 ## 22. Oracle ≡ Postgres inventory
 
-Every migration V001–V032 appears in exactly one row below, so the two schemas can be checked
-against each other line by line — with one hole that is deliberate: **there is no V031.** US41
-reserved the number and then shipped policy templates as a code catalogue with no table, so nothing
-was ever written under it. The gap is left as it is rather than closed by renumbering, because a
-skipped version costs Flyway nothing and moving V032 down would change the checksum of a migration
-that may already have run.
+Every migration V001–V033 appears in exactly one row below, so the two schemas can be checked
+against each other line by line, **with one hole and it is deliberate.** `V031` has no file: US41
+reserved the number, then shipped policy templates as a code catalogue with no table, and `V032`
+took the next number while it sat empty. US44 first filled the hole and that made its migration
+**out of order** — a database holding V032 sees a lower pending version and Flyway refuses to boot.
+The remedy considered was `spring.flyway.out-of-order: true`, and it was rejected for loosening the
+ordering guarantee of every future migration to avoid renaming one unreleased file. US44 is `V033`,
+the next free number. **A reserved number that goes unused stays unused**; `data-model.md` §5
+carries the detail.
 
 | # | Table | Postgres (migration) | Oracle (§ in this doc) |
 |---|---|---|---|
@@ -1368,8 +1423,9 @@ that may already have run.
 | 25 | tenant_context_versions + `tenant_contexts.current_version` (company-context history, US31) | V028 | §10 |
 | 26 | mcp_tokens (inbound MCP credential, US27) | V029 | §13.1 |
 | 27 | `meeting_action_items.completed_at` + its two aggregation indexes (trends panel, US21) | V030 | §11 |
-| 28 | workflow_schedules (run state of a scheduled flow, US75) | V032 | §18.1 |
-| 29 | Row-Level Security (RLS → VPD/DBMS_RLS), all waves | V016, V017, V019, V020, V021, V022, V023, V024, V028, V032 | §23 |
+| 28 | iam_permission_boundaries + `iam_policies` composite UNIQUE (permission boundaries, US44) | V033 | §12.1 |
+| 29 | workflow_schedules (run state of a scheduled flow, US75) | V032 | §18.1 |
+| 30 | Row-Level Security (RLS → VPD/DBMS_RLS), all waves | V016, V017, V019, V020, V021, V022, V023, V024, V028, V033, V032 | §23 |
 
 > **V027 carries a checksum warning on the Postgres side that has no Oracle counterpart.** The
 > migration was edited after it had already been applied, so a database that ran the earlier
@@ -1378,12 +1434,12 @@ that may already have run.
 > records the detail, including that V027 **deletes** the pre-existing cross-tenant rows the new
 > constraint cannot accept, reporting the counts via `RAISE NOTICE`.
 
-## 23. Row-Level Security (V016 → V032) — Oracle equivalent: VPD / DBMS_RLS
+## 23. Row-Level Security (V016 → V033 → V032) — Oracle equivalent: VPD / DBMS_RLS
 
 In Postgres, migration V016 enables **Row-Level Security (RLS)**: each tenant-owned table gains `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + a `tenant_isolation` policy whose predicate is `tenant_id = nora.current_tenant_id()`. The function reads a **session GUC** (`nora.current_tenant_id`) set by the Spring **`TenantRlsAspect`** via `SET LOCAL` at the start of each `@Transactional`. Enforcement is **opt-in in prod**: it only becomes real when the API connects with a dedicated role **without `BYPASSRLS`** (`nora_app NOBYPASSRLS`) and `nora.security.rls.enforce=true`; the owner/admin (used in dev/Testcontainers) bypasses by default, leaving the RLS schema inert without breaking tests.
 
-V016 was the first of nine waves, not the whole story — **§23.4 has the full coverage**, including
-the 13 tables V020 later took back out of enforcement.
+V016 was the first of ten waves, not the whole story — **§23.4 has the full coverage**, including
+the 14 tables V020 later took back out of enforcement.
 
 The native equivalent in Oracle is **VPD (Virtual Private Database)**, also called *Fine-Grained Access Control (FGAC)*, configured via **`DBMS_RLS.ADD_POLICY`** + a **policy function** that returns a dynamic predicate (`WHERE` clause). The session context (Postgres's GUC) becomes an Oracle **application context** (`CREATE CONTEXT … USING …`), read with `SYS_CONTEXT`.
 
@@ -1468,11 +1524,11 @@ END;
 
 The remaining tenant-owned tables covered by V016 follow **exactly the same pattern** (`DBMS_RLS.ADD_POLICY` with `NORA_TENANT_PREDICATE`): `tenant_contexts`, `refresh_tokens`, `iam_groups`, `iam_policies`, `iam_user_invitations`, `meeting_analyses` and `meeting_participants`. The `tenants` table is the only special case (it filters by `id`, not `tenant_id`) — and the same is true of every table added in the later waves listed in §23.4, none of which needs a different predicate.
 
-### 23.4 Full coverage: nine waves, and the 13 tables V020 took back out
+### 23.4 Full coverage: ten waves, and the 14 tables V020 took back out
 
-**36 tables carry a `tenant_isolation` policy**, added over nine migrations. Those 36, plus the
+**37 tables carry a `tenant_isolation` policy**, added over ten migrations. Those 37, plus the
 5 cascade-boundary children that deliberately get none, the 2 legacy tables outside the model and
-`mcp_tokens` (V029, below), account for all 44 tables in this document.
+`mcp_tokens` (V029, below), account for all 45 tables in this document.
 
 | Wave | Count | Tables |
 |---|---|---|
@@ -1484,6 +1540,7 @@ The remaining tenant-owned tables covered by V016 follow **exactly the same patt
 | **V023** | 2 | `workflows`, `workflow_executions` |
 | **V024** | 1 | `integration_connections` |
 | **V028** | 1 | `tenant_context_versions` |
+| **V033** | 1 | `iam_permission_boundaries` — created directly in the end state V020 left its family in: policy defined, never enabled |
 | **V032** | 1 | `workflow_schedules` |
 
 **No policy, by design (5):** `iam_invitation_groups`, `meeting_goal_expected_outcomes`,
@@ -1502,7 +1559,7 @@ request under enforcement — in Oracle exactly as in Postgres, since `SYS_CONTE
 as the GUC. Isolation for that table is the application's `tenant_id` predicate plus the composite
 FK to `users(tenant_id, id)`.
 
-#### V020 disables 13 of the 36 — and it is a scope decision, not a retreat
+#### V020 disables 14 of the 37 — and it is a scope decision, not a retreat
 
 ADR 0028 narrowed enforcement to **business data + PII**, the tables touched only by authenticated
 requests or by the analysis pipeline, both of which set the tenant context. V020 turns RLS **off**
@@ -1510,10 +1567,10 @@ on two families that cannot be enforced without breaking flows that have no JWT 
 invitation acceptance, lookup by token hash, and the onboarding writes to authorization config:
 
 - **(A) Identity, 6:** `users`, `tenants`, `email_verification_tokens`, `password_reset_tokens`, `refresh_tokens`, `iam_user_invitations`.
-- **(B) IAM authorization, 7:** `iam_groups`, `iam_policies`, `iam_user_groups`, `iam_group_policies`, `iam_user_policies`, `iam_policy_versions`, `iam_audit_events`.
+- **(B) IAM authorization, 8:** `iam_groups`, `iam_policies`, `iam_user_groups`, `iam_group_policies`, `iam_user_policies`, `iam_policy_versions`, `iam_audit_events`, and `iam_permission_boundaries` since V033 — which was created directly in that end state (policy defined, never enabled) rather than enabled and then disabled.
 
 The policies stay **defined but inert**, so re-enabling is one statement rather than a recreation.
-Isolation on those 13 continues through the application's `tenant_id` filter. **23 tables** are left
+Isolation on those 14 continues through the application's `tenant_id` filter. **23 tables** are left
 under enforcement.
 
 Note what that means for §23.3: `USERS` is one of the 13. It is kept in the example above because it

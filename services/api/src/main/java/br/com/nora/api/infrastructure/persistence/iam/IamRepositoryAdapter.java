@@ -6,6 +6,7 @@ import br.com.nora.api.domain.iam.Effect;
 import br.com.nora.api.domain.iam.IamAuditEvent;
 import br.com.nora.api.domain.iam.IamGroup;
 import br.com.nora.api.domain.iam.IamPolicy;
+import br.com.nora.api.domain.iam.PermissionBoundary;
 import br.com.nora.api.domain.iam.PolicyDocument;
 import br.com.nora.api.domain.iam.PolicyStatement;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -359,6 +360,73 @@ public class IamRepositoryAdapter implements IamRepository {
             out.add(new AttachedPolicy((UUID) r[0], (String) r[1], doc.statements()));
         }
         return out;
+    }
+
+    // ===================== permission boundary (US44) =====================
+
+    /**
+     * The user's cap, joined to the policy that expresses it. {@code empty} is the answer for the
+     * overwhelming majority of users and means unrestricted, which is why the join is an inner one
+     * and no row is synthesised: there is nothing to represent.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    @SuppressWarnings("unchecked")
+    public Optional<PermissionBoundary> findBoundaryForUser(UUID userId, UUID tenantId) {
+        String sql =
+                "SELECT b.policy_id, p.name, p.document::text, b.attached_by, b.attached_at "
+                        + "FROM iam_permission_boundaries b "
+                        + "JOIN iam_policies p ON p.id = b.policy_id AND p.tenant_id = b.tenant_id "
+                        + "WHERE b.user_id = :u AND b.tenant_id = :t";
+        List<Object[]> rows =
+                em.createNativeQuery(sql)
+                        .setParameter("u", userId)
+                        .setParameter("t", tenantId)
+                        .getResultList();
+        if (rows.isEmpty()) {
+            return Optional.empty();
+        }
+        Object[] r = rows.get(0);
+        PolicyDocument doc = parseDocument((String) r[2]);
+        return Optional.of(
+                new PermissionBoundary(
+                        userId,
+                        (UUID) r[0],
+                        (String) r[1],
+                        doc.statements(),
+                        (UUID) r[3],
+                        toOdt(r[4])));
+    }
+
+    /**
+     * Upsert on the primary key: replacing a boundary is one statement, so there is no instant at
+     * which the user is momentarily uncapped.
+     */
+    @Override
+    @Transactional
+    public void setBoundaryForUser(UUID userId, UUID policyId, UUID tenantId, UUID attachedBy) {
+        em.createNativeQuery(
+                        "INSERT INTO iam_permission_boundaries"
+                                + " (user_id, tenant_id, policy_id, attached_by) VALUES (:u, :t,"
+                                + " :p, :by) ON CONFLICT (user_id) DO UPDATE SET policy_id ="
+                                + " EXCLUDED.policy_id, attached_by = EXCLUDED.attached_by,"
+                                + " updated_at = NOW()")
+                .setParameter("u", userId)
+                .setParameter("t", tenantId)
+                .setParameter("p", policyId)
+                .setParameter("by", attachedBy)
+                .executeUpdate();
+    }
+
+    @Override
+    @Transactional
+    public void removeBoundaryForUser(UUID userId, UUID tenantId) {
+        em.createNativeQuery(
+                        "DELETE FROM iam_permission_boundaries WHERE user_id = :u"
+                                + " AND tenant_id = :t")
+                .setParameter("u", userId)
+                .setParameter("t", tenantId)
+                .executeUpdate();
     }
 
     // ===================== audit =====================

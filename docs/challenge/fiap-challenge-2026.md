@@ -35,7 +35,7 @@ This page documents:
 
 NORA delivers elements that go beyond the typical academic rubric:
 
-- **AWS-style IAM** (ADR 0007) — an authorization model of Root + Users + Groups + Policies with Effect/Action/Resource/Condition, built in-house. Policy versioning + audit trail
+- **AWS-style IAM** (ADR 0007) — an authorization model of Root + Users + Groups + Policies with Effect/Action/Resource/Condition, built in-house. Policy versioning + audit trail, a simulator that names the statement that decided (US43), and a **permission boundary** per user: a policy that caps what that user can do, so an action passes only if their own policies allow it *and* the boundary does (US44, ADR 0049)
 - **BR-aware PII Shield** (ADR 0012, ADR 0043) — redaction of EMAIL, CPF, CNPJ, PHONE, CREDIT_CARD, ADDRESS and PERSON_NAME before LLM calls. What makes it a differentiator is not the type list but that it is **measured against an adversarial corpus**: the leak rate went 9.60% → 2.12% while false redaction did not rise, both measured on a byte-identical corpus, and the test now carries a dated goal (1.0% leak by 2027-06-30) instead of a ceiling
 - **Provider-agnostic LLM** (ADR 0004) — an abstraction that survived being exercised twice for real, which is the only evidence that an abstraction works: the provider moved OpenAI direct → Azure OpenAI → back to OpenAI direct when Azure went (ADR 0034/0036), and transcription moved from an on-device engine to a streaming cloud API (ADR 0039/0045) without the analysis pipeline changing
 - **Mandatory strict JSON Schema** (ADR 0003) — LLM output validated server-side, no free-form text cross-service

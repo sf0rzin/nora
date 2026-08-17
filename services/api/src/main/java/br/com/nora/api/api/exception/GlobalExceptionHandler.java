@@ -252,6 +252,9 @@ public class GlobalExceptionHandler {
                     case "IAM_GROUP_NOT_FOUND", "IAM_POLICY_NOT_FOUND", "IAM_USER_NOT_FOUND" ->
                             HttpStatus.NOT_FOUND;
                     case "IAM_NAME_TAKEN" -> HttpStatus.CONFLICT;
+                    case "IAM_BOUNDARY_SELF" -> HttpStatus.CONFLICT;
+                    case "IAM_BOUNDARY_ON_ROOT" -> HttpStatus.CONFLICT;
+                    case "IAM_POLICY_IN_USE_AS_BOUNDARY" -> HttpStatus.CONFLICT;
                     case "IAM_FORBIDDEN" -> HttpStatus.FORBIDDEN;
                     case "IAM_AUTHORIZATION_NOT_DECLARED" -> HttpStatus.FORBIDDEN;
                     default -> HttpStatus.BAD_REQUEST;

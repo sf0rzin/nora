@@ -26,6 +26,11 @@ import java.util.regex.Pattern;
  *   <li>Default: DENY.
  * </ol>
  *
+ * <p>A principal may also carry a PERMISSION BOUNDARY (US44, ADR 0049): a policy that CAPS it. The
+ * rules above then decide a first time over the principal's own statements and, only if that answer
+ * was ALLOW, a second time over the boundary document — the result is the intersection. A boundary
+ * never grants, and a principal without one is unaffected in every method of this class.
+ *
  * <p>Wildcards: {@code *} (zero or more characters) and {@code ?} (one character) are supported in
  * {@code action} and {@code resource}.
  *
@@ -97,6 +102,28 @@ public final class PolicyEvaluator {
             }
         }
         return anyAllow;
+    }
+
+    /**
+     * The list pre-check for a principal that carries a PERMISSION BOUNDARY (US44).
+     *
+     * <p>Both sides have to admit the set. The boundary is asked the same weak question, and a
+     * {@code false} from it means no member of the set can survive the cap — so the 403 it produces
+     * is one the per-item check would have produced for every row anyway. The pre-check therefore
+     * still never rejects what the per-row check would serve, which is the property this method
+     * exists to keep.
+     *
+     * @param boundary the boundary's statements, or {@code null} for a principal with none
+     */
+    public static boolean hasAnyAllow(
+            List<PolicyStatement> statements,
+            List<PolicyStatement> boundary,
+            String action,
+            String resourceSet) {
+        if (!hasAnyAllow(statements, action, resourceSet)) {
+            return false;
+        }
+        return boundary == null || hasAnyAllow(boundary, action, resourceSet);
     }
 
     /**
@@ -252,6 +279,30 @@ public final class PolicyEvaluator {
         return Optional.of(anyAllow);
     }
 
+    /**
+     * The listing shortcut for a principal that carries a PERMISSION BOUNDARY (US44).
+     *
+     * <p>This overload is not a convenience — leaving the boundary out of it would be a hole. A
+     * present-and-true answer tells the caller to SKIP the per-item filter and serve the whole set
+     * from SQL, so a cap that is only applied per item would never run. The two answers are
+     * combined the only way an intersection can be: a uniform deny on the user's own statements
+     * stands (a boundary cannot grant it back), a uniform allow is handed to the boundary, and any
+     * doubt on either side falls back to item-by-item evaluation, which applies the cap.
+     *
+     * @param boundary the boundary's statements, or {@code null} for a principal with none
+     */
+    public static Optional<Boolean> uniformDecision(
+            List<PolicyStatement> statements,
+            List<PolicyStatement> boundary,
+            String action,
+            String wildcardResource) {
+        Optional<Boolean> own = uniformDecision(statements, action, wildcardResource);
+        if (boundary == null || own.isEmpty() || !own.get()) {
+            return own;
+        }
+        return uniformDecision(boundary, action, wildcardResource);
+    }
+
     /** How a resource pattern relates to the set {@code prefix + <any id>}. */
     private enum Coverage {
         /** Matches EVERY member of the set. */
@@ -311,29 +362,88 @@ public final class PolicyEvaluator {
     }
 
     /**
-     * The same evaluation as {@link #isAllowed}, keeping the statement that decided (US43).
+     * Full evaluation of a principal that carries a PERMISSION BOUNDARY (US44, ADR 0049).
      *
-     * <p>This is the ONE traversal. {@code isAllowed} is this method's {@code allowed()} and
-     * nothing else, so the explanation a simulation displays cannot disagree with the decision the
-     * request pipeline takes. An explanation produced by a second pass over the statements would
-     * drift the first time either side changed, and a simulator that lies is worse than none.
-     *
-     * <p>Which statement gets reported: the Deny that short-circuited or, when the answer is allow,
-     * the FIRST matching Allow. Order among several matching Allows carries no meaning for the
-     * decision, so any one of them explains it equally well.
-     *
-     * <p>The Root bypass is NOT here. It is decided one layer up, and {@link
-     * PolicyDecision.Reason#ROOT_BYPASS} is the value this evaluator never returns.
+     * @param boundary the boundary document's statements, or {@code null} for a principal with no
+     *     boundary — absence is UNRESTRICTED, never deny-all
+     */
+    public static boolean isAllowed(
+            List<PolicyStatement> statements,
+            List<PolicyStatement> boundary,
+            String action,
+            String resource,
+            Map<String, String> requestContext) {
+        return explain(statements, boundary, action, resource, requestContext).allowed();
+    }
+
+    /**
+     * The same evaluation as {@link #isAllowed}, keeping the statement that decided (US43). For a
+     * principal with no permission boundary, which is every principal until one is attached.
      */
     public static PolicyDecision explain(
             List<PolicyStatement> statements,
             String action,
             String resource,
             Map<String, String> requestContext) {
+        return explain(statements, null, action, resource, requestContext);
+    }
+
+    /**
+     * The evaluation, with the statement that decided (US43) and the permission boundary applied
+     * (US44).
+     *
+     * <p>This is the ONE traversal. {@code isAllowed} is this method's {@code allowed()} and
+     * nothing else, so the explanation a simulation displays cannot disagree with the decision the
+     * request pipeline takes. An explanation produced by a second pass over the statements would
+     * drift the first time either side changed, and a simulator that lies is worse than none. The
+     * boundary is applied HERE for the same reason: a cap enforced in the request pipeline and not
+     * in the simulator would make the simulator answer "no statement matched" about a request the
+     * gate refused for a completely different reason.
+     *
+     * <p><strong>The boundary is an intersection and never a grant.</strong> It is consulted only
+     * after the user's own statements have already answered ALLOW; a deny stands on its own and is
+     * reported with its own reason, so a boundary can never turn one into an allow. That ordering
+     * is the whole property, and it is why the code cannot be rearranged into "evaluate both, OR
+     * the results".
+     *
+     * <p>A {@code null} boundary means NO BOUNDARY, and the decision is exactly what it was before
+     * this parameter existed. An EMPTY boundary is a different thing: a cap that permits nothing,
+     * which denies. The document parser refuses a policy with zero statements, so the empty case is
+     * unreachable through the API — it is defined this way because the fail-closed reading is the
+     * one that costs access rather than granting it.
+     *
+     * <p>Which statement gets reported: the Deny that short-circuited or, when the answer is allow,
+     * the FIRST matching Allow. Order among several matching Allows carries no meaning for the
+     * decision, so any one of them explains it equally well.
+     *
+     * <p>The Root bypass is NOT here. It is decided one layer up, and {@link
+     * PolicyDecision.Reason#ROOT_BYPASS} is the value this evaluator never returns. Neither does it
+     * cap a Root: see ADR 0049 §2.
+     */
+    public static PolicyDecision explain(
+            List<PolicyStatement> statements,
+            List<PolicyStatement> boundary,
+            String action,
+            String resource,
+            Map<String, String> requestContext) {
+        Map<String, String> ctx = requestContext == null ? Collections.emptyMap() : requestContext;
+        PolicyDecision own = evaluate(statements, action, resource, ctx);
+        if (!own.allowed() || boundary == null) {
+            return own;
+        }
+        PolicyDecision capped = evaluate(boundary, action, resource, ctx);
+        return capped.allowed() ? own : PolicyDecision.cappedByBoundary(capped);
+    }
+
+    /** One pass over one set of statements. Used for the user's own set and for the boundary. */
+    private static PolicyDecision evaluate(
+            List<PolicyStatement> statements,
+            String action,
+            String resource,
+            Map<String, String> ctx) {
         if (statements == null || statements.isEmpty()) {
             return PolicyDecision.noStatements();
         }
-        Map<String, String> ctx = requestContext == null ? Collections.emptyMap() : requestContext;
         int firstAllow = -1;
         for (int i = 0; i < statements.size(); i++) {
             PolicyStatement s = statements.get(i);

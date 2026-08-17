@@ -5,6 +5,7 @@ import {
   ApiRequestError,
   type AuditEventDto,
   type GroupDto,
+  type PermissionBoundaryDto,
   type PolicyDto,
   type PolicyTemplateDto,
   type SimulationDto,
@@ -17,11 +18,14 @@ import {
   deletePolicy,
   detachPolicyFromGroup,
   detachPolicyFromUser,
+  getPermissionBoundary,
   listAuditEvents,
   listGroups,
   listPolicies,
   listPolicyTemplates,
   removeGroupMember,
+  removePermissionBoundary,
+  setPermissionBoundary,
   simulatePolicy,
   updatePolicyDocument,
 } from "@/lib/api/client";
@@ -51,6 +55,11 @@ const REASON_COPY: Record<SimulationDto["reason"], string> = {
   NO_MATCHING_STATEMENT:
     "Nenhum statement aplicável correspondeu à ação, ao recurso ou à condição. Negado por padrão.",
   NO_STATEMENTS: "O usuário não tem nenhuma policy anexada. Negado por padrão.",
+  BOUNDARY_NOT_PERMITTED:
+    "As policies do usuário permitiam, mas o permission boundary não cobre esta ação. O limite" +
+    " nunca concede: ele só restringe.",
+  BOUNDARY_EXPLICIT_DENY:
+    "As policies do usuário permitiam, e um statement Deny do permission boundary correspondeu.",
 };
 
 type ContextPair = { key: string; value: string };
@@ -119,6 +128,12 @@ export default function IamPage() {
   const [simResult, setSimResult] = useState<SimulationDto | null>(null);
   const [simError, setSimError] = useState<string | null>(null);
   const [simRunning, setSimRunning] = useState(false);
+  // permission boundary (US44) — same reasoning as the simulator: it is its own piece of state,
+  // because a full refresh after a read would throw away the answer that was just asked for.
+  const [boundaryUserId, setBoundaryUserId] = useState("");
+  const [boundaryPolicyId, setBoundaryPolicyId] = useState("");
+  const [boundary, setBoundary] = useState<PermissionBoundaryDto | null>(null);
+  const [boundaryError, setBoundaryError] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -176,6 +191,32 @@ export default function IamPage() {
       setSimError(toMessage(err));
     } finally {
       setSimRunning(false);
+    }
+  }
+
+  /** US44 — reads the cap of the user in the field. A user with none answers, explicitly, none. */
+  async function loadBoundary() {
+    setBoundaryError(null);
+    setBoundary(null);
+    try {
+      setBoundary(await getPermissionBoundary(boundaryUserId.trim()));
+    } catch (err) {
+      setBoundaryError(toMessage(err));
+    }
+  }
+
+  /**
+   * US44 — a write followed by the read that shows what it did. The re-read is not cosmetic: the
+   * API refuses a boundary on the Root and on the caller itself, so the only honest confirmation
+   * that a write landed is asking the server what the boundary is now.
+   */
+  async function runBoundary(action: () => Promise<unknown>) {
+    setBoundaryError(null);
+    try {
+      await action();
+      await loadBoundary();
+    } catch (err) {
+      setBoundaryError(toMessage(err));
     }
   }
 
@@ -596,6 +637,87 @@ export default function IamPage() {
         </div>
       </section>
 
+      {/* ===== Permission boundary (US44) ===== */}
+      <section className="space-y-3">
+        <h2 className="text-lg font-medium">Permission boundary</h2>
+        <p className="text-sm text-slate-500">
+          Uma policy que <strong>limita</strong> o que um usuário pode fazer. A ação só passa se as
+          policies do usuário permitirem <em>e</em> o boundary permitir — ele nunca concede. Sem
+          boundary o usuário fica sem limite, que é o estado normal. O Root do tenant não pode ser
+          limitado, e ninguém define o próprio boundary.
+        </p>
+
+        <div className="space-y-2 rounded-md border border-slate-200 p-3 text-sm">
+          <div className="grid gap-2 md:grid-cols-2">
+            <input
+              value={boundaryUserId}
+              onChange={(e) => setBoundaryUserId(e.target.value)}
+              placeholder="user id"
+              className="rounded-md border border-slate-300 px-3 py-1.5"
+            />
+            <input
+              value={boundaryPolicyId}
+              onChange={(e) => setBoundaryPolicyId(e.target.value)}
+              placeholder="policy id do limite"
+              className="rounded-md border border-slate-300 px-3 py-1.5"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50"
+              onClick={() => {
+                if (!boundaryUserId.trim()) return;
+                void loadBoundary();
+              }}
+            >
+              Consultar
+            </button>
+            <button
+              type="button"
+              className="rounded-md bg-slate-900 px-3 py-1.5 text-white hover:bg-slate-800"
+              onClick={() => {
+                if (!boundaryUserId.trim() || !boundaryPolicyId.trim()) return;
+                void runBoundary(() =>
+                  setPermissionBoundary(boundaryUserId.trim(), boundaryPolicyId.trim()),
+                );
+              }}
+            >
+              Definir limite
+            </button>
+            <button
+              type="button"
+              className="rounded-md border border-slate-300 px-3 py-1.5 hover:bg-slate-50"
+              onClick={() => {
+                if (!boundaryUserId.trim()) return;
+                void runBoundary(() => removePermissionBoundary(boundaryUserId.trim()));
+              }}
+            >
+              Remover limite
+            </button>
+          </div>
+
+          {boundaryError && (
+            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-red-700">
+              {boundaryError}
+            </p>
+          )}
+
+          {boundary &&
+            (boundary.policyId ? (
+              <p className="text-slate-600">
+                Limitado pela policy{" "}
+                <span className="font-medium text-slate-800">{boundary.policyName}</span>{" "}
+                <span className="text-slate-400">({boundary.policyId})</span>
+              </p>
+            ) : (
+              <p className="text-slate-600">
+                Este usuário não tem permission boundary: sem limite, decidem só as policies dele.
+              </p>
+            ))}
+        </div>
+      </section>
+
       {/* ===== Policy simulator (US43) ===== */}
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Simulador de policy</h2>
@@ -702,6 +824,14 @@ export default function IamPage() {
             ) : (
               <p className="text-xs text-slate-500">
                 Nenhum statement decidiu. Statements avaliados: {simResult.statementsEvaluated}.
+              </p>
+            )}
+
+            {simResult.boundaryPolicyName && (
+              <p className="text-xs text-slate-500">
+                Este usuário tem permission boundary:{" "}
+                <span className="font-medium text-slate-700">{simResult.boundaryPolicyName}</span>.
+                Nada além do que essa policy cobre é permitido, quaisquer que sejam as outras.
               </p>
             )}
 

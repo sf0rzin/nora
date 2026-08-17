@@ -55,7 +55,7 @@ src/
     api/chat/route.ts           # BFF: the only server route, holds the provider key
   components/                   # flat, no feature folders
   lib/
-    api/client.ts               # fetch wrapper; 74 exported functions
+    api/client.ts               # fetch wrapper; 78 exported functions
     api/types.ts                # types mirroring OpenAPI
   fixtures/                     # two files, see "Mock mode" above
   styles/                       # tokens.css + components.css
@@ -92,7 +92,7 @@ keeps them apart.
 **What each one covers, and what neither does.** The Playwright suite checks routing, response
 headers and CSP violations against a real `next start` — no product behaviour, by design (see the
 note at the top of `e2e/fixtures.ts`). The Vitest suite covers eight `src/lib` modules: the
-`request()` function that all 74 exported wrappers in `src/lib/api/client.ts` go through, the
+`request()` function that all 78 exported wrappers in `src/lib/api/client.ts` go through, the
 Markdown report builder, the task-list CSV/Markdown exporter, the BFF's PII redaction, the password
 policy, the trends panel's date/axis helpers and the IAM policy-document conversion that the form
 editor is built on. **No page and no component has a unit test**, which is why whole-app coverage is

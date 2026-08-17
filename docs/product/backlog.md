@@ -38,7 +38,7 @@
 | **E5** | Task Management | Core | Extracted tasks, status, assignment, due date, export |
 | **E6** | Interoperability — inbound MCP, outbound OAuth | Core | Two directions that used to be one epic. **Outbound**: NORA acts on other tools through OAuth connectors (ADR 0031). **Inbound**: external MCP clients query NORA (ADR 0041, read-only first cut, migration V029) |
 | **E7** | Enterprise Administration | Enterprise | Tenant configuration, company context, corporate domain |
-| **E8** | Enterprise IAM (AWS-style) | Enterprise | Root user, Users, Groups and Policies (Effect/Action/Resource[/Condition]) managed by the tenant itself |
+| **E8** | Enterprise IAM (AWS-style) | Enterprise | Root user, Users, Groups and Policies (Effect/Action/Resource[/Condition]) managed by the tenant itself, plus a per-user permission boundary that caps them (US44) |
 | **E9** | Meeting Productivity | Core + Enterprise | Opt-in assessment: the user declares the objective and expected outcomes; NORA measures coverage and assigns a Productivity Score |
 | **E10** | Customer Confidence | Enterprise | The customer's/lead's confidence in the company, assessed per meeting. The aggregate on top of it (Account Health) was closed by ADR 0038 §4 |
 | **E11** | Conversational Assistant | Core | Chat over the workspace: streaming answers grounded in the tenant's own meetings and company context, with persistent sessions |
@@ -176,10 +176,10 @@ done in.
 | US38 | Add/remove users from groups | M | DONE | `IamController.java:94` / line 102 · composite FK on `iam_user_groups` since V027 | — |
 | US39 | Clear HTTP 403 when out of scope | M | DONE | `GlobalExceptionHandler` · `AuthorizationCoverageIntegrationTest` asserts every endpoint is gated | Stability of the error-message detail is not asserted |
 | US40 | IAM audit log | M | DONE | `IamController.listAudit` (line 207) · `iam_audit_events` table in V006 | The auth audit log (login/refresh/logout) exists separately since PR #118; there is still no single global `audit_events` table |
-| US41 | Policy templates | S | DONE | `GET /iam/policy-templates` (`IamController.listPolicyTemplates`) · `PolicyTemplateCatalog` in `domain/iam/` · `PolicyTemplateCatalogTest` · `IamPolicyTemplatesIntegrationTest` · the templates block on `apps/web/src/app/(app)/settings/iam/page.tsx` | **Reactivated by ADR 0046 §1**, and delivered as a **code-shipped catalogue: no `is_template` column, no table, no migration** — the reserved V031 was deliberately not taken. A flagged row would still be an attachable policy id, so the attach path would need a new branch to refuse it. Named cost: no per-tenant customisation and no "save as template". There is also no instantiate endpoint — the client posts the template document to `POST /iam/policies`, so the resulting policy is created and evaluated by the same code as a hand-written one |
+| US41 | Policy templates | S | DONE | `GET /iam/policy-templates` (`IamController.listPolicyTemplates`) · `PolicyTemplateCatalog` in `domain/iam/` · `PolicyTemplateCatalogTest` · `IamPolicyTemplatesIntegrationTest` · the templates block on `apps/web/src/app/(app)/settings/iam/page.tsx` | **Reactivated by ADR 0046 §1**, and delivered as a **code-shipped catalogue: no `is_template` column, no table, no migration** — the reserved V033 was deliberately not taken. A flagged row would still be an attachable policy id, so the attach path would need a new branch to refuse it. Named cost: no per-tenant customisation and no "save as template". There is also no instantiate endpoint — the client posts the template document to `POST /iam/policies`, so the resulting policy is created and evaluated by the same code as a hand-written one |
 | US42 | Visual policy editor (form-based) | S | DONE | `apps/web/src/components/policy-form-editor.tsx` beside the Monaco editor · conversion and round trip in `apps/web/src/lib/iam/policy-document.ts` with `policy-document.test.ts` · form/JSON toggle in `apps/web/src/app/(app)/settings/iam/page.tsx` · PR #55 shipped the JSON half | **Reactivated by ADR 0046 §1.** The form offers only the five condition operators `PolicyEvaluator` implements — a sixth would build an Allow that never allows — and it REFUSES to open a document it cannot represent exactly instead of dropping fields on save. Building it exposed a read/write asymmetry: `GET /iam/policies` emitted the domain record's names (`actions`, `resources`, `"ALLOW"`) while the write side parses `action`/`resource`, so the existing edit action loaded a document its own schema rejected. Fixed in the same PR |
 | US43 | Policy simulator ("can user X do Y on Z?") | S | DONE | `POST /iam/simulate` (`IamController.java`), gated by its own `iam:policy:simulate` action · `PolicyEvaluator.explain` · simulator section in `apps/web/src/app/(app)/settings/iam/page.tsx` · `IamSimulationIntegrationTest` | The answer carries the reason and the deciding statement, and the Root case is reported as `ROOT_BYPASS` instead of a mute `true`. `isAllowed` is `explain(...).allowed()`, so the explanation cannot drift from the decision. No user picker: no endpoint lists the tenant's users, so the field takes a user id like the rest of the screen |
-| US44 | Permission boundaries | C | MISSING | No code | **Reactivated by ADR 0046 §1**, on a thinner argument than the other six and the ADR says so: it does need an organizational hierarchy nothing else asks for. What changed is that a boundary is the one IAM concept a reviewer looks for and does not find |
+| US44 | Permission boundaries | C | DONE | `GET`/`PUT`/`DELETE /iam/users/{userId}/boundary` (`IamController`) · the five-argument overloads of `PolicyEvaluator.explain`/`isAllowed`/`hasAnyAllow`/`uniformDecision` · migration **V033** (`iam_permission_boundaries`) · ADR 0049 · `PolicyEvaluatorBoundaryTest` + `IamPermissionBoundaryIntegrationTest` · the boundary block on `apps/web/src/app/(app)/settings/iam/page.tsx` | **Reactivated by ADR 0046 §1**, on the thinnest argument of the seven and the ADR says so. Built as **one concept, not a hierarchy**: at most one boundary per **user** and none on groups (two group boundaries combine wrongly in both directions), the cap applied inside the single traversal US43 established so the simulator reports it (`BOUNDARY_NOT_PERMITTED`, `BOUNDARY_EXPLICIT_DENY`) instead of a misleading "no statement matched", and **absence = unrestricted**, never deny-all. Named limits: the tenant **Root is not capped** and a boundary aimed at it is refused (a cap on Root has no key, and there is no support desk); AWS's `iam:PermissionsBoundary` condition key is **not** built, so a delegated admin with `iam:attachment:create` can still create an unbounded user — what a boundary guarantees is that the admin cannot escalate *themselves*; one extra query per authorization decision |
 
 ### E9 — Meeting Productivity
 
@@ -293,10 +293,10 @@ number of stories.
 | MoSCoW | Total | DONE | PARTIAL | MISSING | WONT |
 |---|---|---|---|---|---|
 | **Must Have (M)** | 28 | **28** | 0 | 0 | 0 |
-| **Should Have (S)** | 40 | **34** | **2** (US13, US42) | **4** (US33, US34, US41, US80) | 0 |
-| **Could Have (C)** | 12 | **10** | 0 | **2** (US44, US75) | 0 |
+| **Should Have (S)** | 40 | **38** | **1** (US13) | **1** (US80) | 0 |
+| **Could Have (C)** | 12 | **12** | 0 | 0 | 0 |
 | **Won't Have v1 (W)** | 6 | **1** (US09) | 0 | 0 | **5** (US05, US08, US47, US50, US51) |
-| **Total** | **86** | **73** | **2** | **6** | **5** |
+| **Total** | **86** | **79** | **1** | **1** | **5** |
 
 > **The numerals in this table are recomputed by script**, not by hand, after the parallel branches
 > of the 2026-08 wave merge. Each branch sees only its own delivery, so a branch that recounted the
@@ -333,12 +333,12 @@ number of stories.
 **Effective coverage**
 
 - Must Have: **28 of 28** (100%). The v1.0 MVP of §6 is complete.
-- Should Have: **34 of 40** (85%). The remaining gaps are tenant-facing metrics and export (US33,
-  US34), policy templates (US41), tenant-wide erasure and portability (US80), and two partials
-  (US13, US42). All four of the ADR 0038 reactivations have landed — the last of them, US21, in
-  `C` — and US27 left this list when the MCP server shipped.
-- Could Have: **10 of 12** (83%), pending the recount that follows this wave's parallel deliveries.
-  What is left is permission boundaries (US44); scheduled flows (US75) shipped under ADR 0047.
+- Should Have: **38 of 40** (95%). The two that remain are tenant-wide erasure and portability
+  (US80, a declared deferral under ADR 0038 §6h rather than open work) and one partial, US13. All
+  four of the ADR 0038 reactivations have landed, US27 left this list when the MCP server shipped,
+  and US33, US34, US41 and US42 left it under ADR 0046 §1.
+- Could Have: **12 of 12** (100%). Scheduled flows (US75) shipped under ADR 0047 and permission
+  boundaries (US44) under ADR 0049 — the last of the seven stories ADR 0046 §1 reactivated.
 
 ## 5. Scope decisions in force
 
@@ -363,7 +363,7 @@ section now points rather than copies: **the ADR decides, the backlog records.**
 | US34 — Consolidated period report | **Reactivated**, and delivered — client-side, no endpoint | ADR 0046 §1 |
 | US41 — Policy templates | **Reactivated**, and delivered — code-shipped catalogue, no migration | ADR 0046 §1 |
 | US42 — Form-based policy editor | **Reactivated**, and delivered — form beside the JSON editor | ADR 0046 §1 |
-| US44 — Permission boundaries | **Reactivated**, on the thinnest argument of the seven, and the ADR says so | ADR 0046 §1 |
+| US44 — Permission boundaries | **Reactivated** on the thinnest argument of the seven, and **delivered** — migration V033; the five questions a cap raises are decided in ADR 0049 | ADR 0046 §1 · ADR 0049 |
 | US13 — Mentioned participants | **Reactivated**, and delivered — deterministic matching over the declared roster, no new migration | ADR 0046 §1 · ADR 0048 |
 | US75 — Flows on a schedule (cron) | **Reactivated**, and built — the scheduler's five undocumented semantics are decided in ADR 0047 | ADR 0046 §1 · ADR 0047 |
 | US08 — Audio/video upload | **WONT** — batch transcription is a second provider surface, not a small addition to a streaming one | ADR 0046 §2 |

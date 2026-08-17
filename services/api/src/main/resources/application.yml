@@ -24,6 +24,15 @@ spring:
     # (breaking dev/test, which use dynamic DATASOURCE_*). By default, spring.flyway inherits
     # spring.datasource. At cutover, Bicep injects SPRING_FLYWAY_URL/USER/PASSWORD (= admin) via
     # env (relaxed binding) -> then Flyway uses the admin while the datasource points at nora_app.
+    #
+    # !! THE THREE KEYS BELOW ARE INERT, AND HAVE BEEN SINCE THEY WERE WRITTEN !!
+    # They are indented under `spring.jpa`, not under `spring.flyway`, so Spring binds them into
+    # JpaProperties, which ignores unknown fields, and Flyway has always run on its own defaults:
+    # `enabled=true` and `locations=classpath:db/migration` happen to match the intent, and
+    # `baseline-on-migrate` does NOT — its real value is `false`. They are left exactly where they
+    # are on purpose: moving `baseline-on-migrate` would be the first time it ever took effect,
+    # against databases nobody has re-tested, which is a change that needs its own decision rather
+    # than a silent reindent inside an unrelated story (US44, ADR 0049).
     enabled: true
     baseline-on-migrate: true
     locations: classpath:db/migration

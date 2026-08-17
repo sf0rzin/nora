@@ -4,6 +4,7 @@ import br.com.nora.api.domain.iam.AttachedPolicy;
 import br.com.nora.api.domain.iam.IamAuditEvent;
 import br.com.nora.api.domain.iam.IamGroup;
 import br.com.nora.api.domain.iam.IamPolicy;
+import br.com.nora.api.domain.iam.PermissionBoundary;
 import br.com.nora.api.domain.iam.PolicyStatement;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -68,6 +69,24 @@ public interface IamRepository {
      * overload; the simulator (US43) needs it in order to name the policy that decided.
      */
     List<AttachedPolicy> collectAttachedPoliciesForUser(UUID userId, UUID tenantId);
+
+    // ----- permission boundary (US44) -----
+
+    /**
+     * The user's permission boundary, or {@code empty} when the user has none — and {@code empty}
+     * means UNRESTRICTED, not deny-all (ADR 0049 §5).
+     *
+     * <p>Deliberately not part of {@link #collectStatementsForUser}. That collector's result is
+     * handed to the evaluator as the set of GRANTS, and a boundary that arrived through it would
+     * grant everything it was written to forbid.
+     */
+    Optional<PermissionBoundary> findBoundaryForUser(UUID userId, UUID tenantId);
+
+    /** Sets or replaces the user's boundary. At most one row per user exists. */
+    void setBoundaryForUser(UUID userId, UUID policyId, UUID tenantId, UUID attachedBy);
+
+    /** Removes the user's boundary. A user with no boundary is unrestricted again. */
+    void removeBoundaryForUser(UUID userId, UUID tenantId);
 
     // ----- audit -----
     void recordAudit(

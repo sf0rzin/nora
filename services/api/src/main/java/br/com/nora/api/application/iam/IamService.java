@@ -5,11 +5,13 @@ import br.com.nora.api.application.ports.UserRepository;
 import br.com.nora.api.domain.iam.IamAuditEvent;
 import br.com.nora.api.domain.iam.IamGroup;
 import br.com.nora.api.domain.iam.IamPolicy;
+import br.com.nora.api.domain.iam.PermissionBoundary;
 import br.com.nora.api.domain.iam.PolicyTemplate;
 import br.com.nora.api.domain.iam.PolicyTemplateCatalog;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -153,12 +155,102 @@ public class IamService {
         return iam.findPolicy(policyId, tenantId).orElseThrow(IamException::policyNotFound);
     }
 
+    /**
+     * Deletes a policy — unless it is somebody's permission boundary (US44).
+     *
+     * <p>The refusal is the database's, not a check written here: V033 points the boundary at
+     * {@code iam_policies} with {@code ON DELETE NO ACTION}, so the {@code DELETE} fails and this
+     * translates it. Written as a pre-check instead, it would be a race — the boundary can be
+     * attached between the check and the delete — and, worse, it would be one more rule that has to
+     * be remembered by whoever adds the next deletion path.
+     *
+     * <p>Under CASCADE this endpoint would have been a way to remove a cap while the audit trail
+     * recorded only "policy deleted".
+     */
     @Transactional
     public void deletePolicy(UUID tenantId, UUID actor, UUID policyId) {
         IamPolicy p = iam.findPolicy(policyId, tenantId).orElseThrow(IamException::policyNotFound);
-        iam.deletePolicy(policyId, tenantId);
+        try {
+            iam.deletePolicy(policyId, tenantId);
+        } catch (DataIntegrityViolationException ex) {
+            throw IamException.policyInUseAsBoundary();
+        }
         iam.recordAudit(
                 tenantId, actor, "iam:policy:delete", "POLICY", policyId, Map.of("name", p.name()));
+    }
+
+    // ========== permission boundary (US44) ==========
+
+    /**
+     * The policy capping {@code userId}, or {@code empty} when that user has none — which is the
+     * normal state and means unrestricted, never deny-all (ADR 0049 §5).
+     *
+     * <p>The subject is resolved inside the CALLER'S tenant first, exactly as {@link #simulate}
+     * does and for the same reason: without it, a user id from another tenant would get a
+     * well-formed "no boundary" instead of a 404, and that answer confirms the id exists.
+     */
+    @Transactional(readOnly = true)
+    public Optional<PermissionBoundary> getBoundary(UUID tenantId, UUID userId) {
+        requireUserOfTenant(tenantId, userId);
+        return iam.findBoundaryForUser(userId, tenantId);
+    }
+
+    /**
+     * Sets or replaces the boundary of {@code userId}. Two subjects are refused, and both refusals
+     * are the security content of this story rather than input validation.
+     *
+     * <p><strong>The caller itself.</strong> A principal that can edit its own cap has no cap: it
+     * would only ever have to widen the boundary before doing whatever the boundary forbade. Note
+     * that this rule is a second line and not the first — a boundary is evaluated against EVERY
+     * action, {@code iam:boundary:set} included, so a cap that simply does not grant that action
+     * already stops its holder from touching anybody's boundary, including a peer's. This refusal
+     * is what closes the remaining case: a delegated admin who legitimately holds {@code
+     * iam:boundary:set} in order to bound their own team.
+     *
+     * <p><strong>The tenant Root.</strong> The Root bypass is applied before any statement is read
+     * (ADR 0049 §2), so a row here would cap nothing. Storing it would be worse than refusing it:
+     * the IAM screen would show a control that does not control.
+     */
+    @Transactional
+    public void setBoundary(UUID tenantId, UUID actor, UUID userId, UUID policyId) {
+        if (actor.equals(userId)) {
+            throw IamException.boundarySelfManaged();
+        }
+        requireUserOfTenant(tenantId, userId);
+        if (users.isRoot(userId, tenantId)) {
+            throw IamException.boundaryOnRoot();
+        }
+        iam.findPolicy(policyId, tenantId).orElseThrow(IamException::policyNotFound);
+        iam.setBoundaryForUser(userId, policyId, tenantId, actor);
+        iam.recordAudit(
+                tenantId,
+                actor,
+                "iam:boundary:set",
+                "BOUNDARY",
+                userId,
+                Map.of("policyId", policyId.toString()));
+    }
+
+    /**
+     * Removes the boundary of {@code userId}, returning that user to unrestricted. Refused for the
+     * caller itself for the reason given in {@link #setBoundary}: removing your own cap is the
+     * simplest way of widening it.
+     */
+    @Transactional
+    public void removeBoundary(UUID tenantId, UUID actor, UUID userId) {
+        if (actor.equals(userId)) {
+            throw IamException.boundarySelfManaged();
+        }
+        requireUserOfTenant(tenantId, userId);
+        iam.removeBoundaryForUser(userId, tenantId);
+        iam.recordAudit(tenantId, actor, "iam:boundary:delete", "BOUNDARY", userId, Map.of());
+    }
+
+    /** The tenant check every boundary operation starts from. A stranger is a 404, never a 403. */
+    private void requireUserOfTenant(UUID tenantId, UUID userId) {
+        users.findById(userId)
+                .filter(u -> u.tenantId().equals(tenantId))
+                .orElseThrow(IamException::userNotFound);
     }
 
     // ========== templates ==========
@@ -256,9 +348,7 @@ public class IamService {
             String action,
             String resource,
             Map<String, String> context) {
-        users.findById(userId)
-                .filter(u -> u.tenantId().equals(tenantId))
-                .orElseThrow(IamException::userNotFound);
+        requireUserOfTenant(tenantId, userId);
         return authz.explain(userId, tenantId, action, resource, context);
     }
 

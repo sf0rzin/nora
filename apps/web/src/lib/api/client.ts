@@ -781,6 +781,48 @@ export async function listAuditEvents(limit = 50): Promise<AuditEventDto[]> {
   return request<AuditEventDto[]>(`/iam/audit?limit=${limit}`);
 }
 
+// ---------- IAM permission boundaries (US44) ----------
+
+/**
+ * The policy capping a user (US44). A boundary LIMITS: an action passes only when the user's own
+ * policies allow it AND the boundary allows it, so attaching the widest boundary in the tenant to
+ * a user with nothing else grants that user nothing.
+ *
+ * `policyId` null means the user has NO boundary, which is unrestricted and is the normal state —
+ * not deny-all. The endpoint answers 200 with the nulls rather than 404, so that "this user has no
+ * cap" stays distinguishable from "there is no such user in your tenant", which is the 404.
+ */
+export interface PermissionBoundaryDto {
+  userId: string;
+  policyId: string | null;
+  policyName: string | null;
+  attachedBy: string | null;
+  attachedAt: string | null;
+}
+
+/** Requires IAM `iam:boundary:read` — which policy caps whom is part of the attachment graph. */
+export async function getPermissionBoundary(userId: string): Promise<PermissionBoundaryDto> {
+  return request<PermissionBoundaryDto>(`/iam/users/${encodeURIComponent(userId)}/boundary`);
+}
+
+/**
+ * Sets or replaces the cap on a user. Requires `iam:boundary:set`, and the API refuses two
+ * subjects whatever the policy says: the caller itself (409 `IAM_BOUNDARY_SELF` — a principal that
+ * can widen its own cap has none) and the tenant Root (409 `IAM_BOUNDARY_ON_ROOT` — the Root bypass
+ * is applied before any statement, so the row would cap nothing).
+ */
+export async function setPermissionBoundary(userId: string, policyId: string): Promise<void> {
+  return request<void>(`/iam/users/${encodeURIComponent(userId)}/boundary`, {
+    method: 'PUT',
+    body: JSON.stringify({ policyId }),
+  });
+}
+
+/** Removes the cap, returning the user to whatever its own policies say. `iam:boundary:delete`. */
+export async function removePermissionBoundary(userId: string): Promise<void> {
+  return request<void>(`/iam/users/${encodeURIComponent(userId)}/boundary`, { method: 'DELETE' });
+}
+
 // ---------- IAM policy simulator (US43) ----------
 
 /** The deciding statement, with the field names the policy document itself uses. */
@@ -801,12 +843,22 @@ export interface SimulationDto {
   action: string;
   resource: string;
   allowed: boolean;
-  reason: 'NO_STATEMENTS' | 'NO_MATCHING_STATEMENT' | 'EXPLICIT_DENY' | 'ALLOW' | 'ROOT_BYPASS';
+  reason:
+    | 'NO_STATEMENTS'
+    | 'NO_MATCHING_STATEMENT'
+    | 'EXPLICIT_DENY'
+    | 'ALLOW'
+    | 'ROOT_BYPASS'
+    | 'BOUNDARY_EXPLICIT_DENY'
+    | 'BOUNDARY_NOT_PERMITTED';
   policyId?: string | null;
   policyName?: string | null;
   statementIndex?: number | null;
   statement?: SimulatedStatementDto | null;
   statementsEvaluated: number;
+  /** The policy capping this user, present whether or not the cap is what decided (US44). */
+  boundaryPolicyId?: string | null;
+  boundaryPolicyName?: string | null;
 }
 
 export interface SimulationRequest {
