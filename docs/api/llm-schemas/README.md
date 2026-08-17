@@ -8,6 +8,8 @@ These schemas are the **source of truth** for the formats the NLP Worker require
 - **Versioning**: breaking changes increment the suffix of the file name (`-v2`).
 
 > **Fidelity caveat (2026-05-21):** `meeting-analysis-v1.schema.json` is the documentary contract, but the worker emits via `build_json_schema_for_analysis()` (`services/nlp-worker/src/nora_nlp/clients/llm.py`) and validates via the Pydantic `MeetingAnalysisV1` (`models.py`). The `customerConfidence` field is present in the schema, **is** emitted by the worker and persisted (see ADR 0015); `participants` and `baselineTerms` are emitted by the worker and were added to the schema in this reconciliation. Changing a field here requires synchronizing Pydantic + the inline builder.
+>
+> **`participants` is emitted and consumed by nothing (recorded 2026-08-17, ADR 0048).** The distinction the paragraph above draws between "emitted" and "persisted" is load-bearing for this one field, so it is spelled out: `WorkerDtos.AnalyzeResponse` in `services/api` has no `participants` member, the backend never reads the array, and the names in it are `[[PERSON_NAME_n]]` placeholders anyway because the shield runs before the analyzer. Participant identity (US13) is decided in the API over the roster declared on upload. The field is kept rather than removed because removing it is a contract change that belongs to whoever next versions this schema.
 
 | File | Content |
 |---|---|

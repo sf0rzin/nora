@@ -1373,6 +1373,81 @@ not stop a flow they already created.** Deactivating or deleting the flow does, 
 tenant leaving `allActiveTenantIds`. Re-evaluating the creator's policy at fire time was rejected in
 ADR 0047 §6 — it invents an offline principal resolution IAM does not have, and it would make a flow
 stop silently months later, which is the class of failure this story exists to end.
+## §24. Participant identity — matching on the right side of the PII Shield (US13, ADR 0048)
+
+`GET /meetings/participants` (`api/controllers/MeetingsController.java`) answers "who appears across
+these meetings, and in which ones", collapsing the roster entries that denote one person. The rule
+lives in `domain/meeting/ParticipantMatcher`, the projection in
+`application/meeting/ParticipantIdentityService`, and the query in
+`infrastructure/persistence/meeting/ParticipantRepositoryAdapter`. **No model is called on this
+path, and no new table was created.**
+
+### Which side of the shield this runs on, and why there was no choice
+
+Three facts about the tree decide the design, and each is checkable:
+
+1. `routers/analyze.py` redacts **first**. The analyzers receive `safe_req`, whose transcript is the
+   redacted text, so the `participants` array a meeting analysis carries is extracted from a string
+   where every person name is already a `[[PERSON_NAME_n]]` placeholder.
+2. `_redact_person_names` gives **every occurrence its own number** — the docstring says so, calling
+   it an explicit scope decision. Two mentions of the identical string are different placeholders.
+   Worker-side matching is therefore not hard, it is impossible: there is no key to join on.
+3. `WorkerDtos.AnalyzeResponse` has no `participants` field. The backend never read that array and
+   never persisted it.
+
+So the only participant names NORA holds are the ones a user typed into the upload form, in
+`meeting_participants` (V004). Matching runs there, on the API side, and **NORA builds no
+person-identity index over transcript text** — a privacy property ADR 0048 §2 states as a decision
+rather than leaving as an artefact of where the code happened to land.
+
+### The rule, and which way it fails
+
+Deterministic: normalisation (case, accents, whitespace, leading honorific, pt-BR genitive
+particles, trailing `(annotation)`), then an e-mail identifier that outranks every name rule, then
+equal normalised names, then a shared first-and-last token pair — the rule that joins `Ana Paula
+Silva` to `Ana Silva`. A differing e-mail vetoes a name merge, and a lone first name never absorbs a
+full name.
+
+**It fails towards splitting**, which is the mirror image of the shield's own default. `pii_shield`
+fails towards redacting because over-redaction costs one degraded analysis and under-redaction sends
+a name to a provider. Here the asymmetry runs the other way: over-splitting shows one person twice,
+which is the defect this story fixes and is visible and harmless, while over-merging attributes one
+person's meetings to another — a privacy failure that looks like the feature working. Every identity
+therefore reports the `variants` that produced it, so a merge can be inspected in the response that
+made it.
+
+The declared roster itself is never rewritten. `GET /meetings/{id}` returns it exactly as typed,
+because it is a record of what the user entered; the collapse is applied to the listing's avatar
+stack and to this endpoint, which are views.
+
+### Retention: the absence of a table is the mechanism
+
+An identity is a **projection**, computed on read and stored nowhere. That is deliberate and is what
+makes ADR 0029 erasure carry it: `DELETE /privacy/meetings/{id}` hard-deletes a meeting and the V004
+FK cascade purges its `meeting_participants`, so erasing the last meeting a person appeared in makes
+the identity stop being computable in the same transaction. A persisted identity table would have
+needed its own orphan cleanup on both erasure paths — an identity is one-to-many with participants,
+and a row cascade does not remove the parent — and an identity outliving every meeting that produced
+it is a privacy defect of the kind that surfaces months later.
+`ParticipantIdentityIntegrationTest.erasingTheLastMeetingErasesThePerson` is the assertion that
+fails if a future change starts persisting one without a cascade.
+
+The cost is named rather than left to be discovered: an identity cannot be corrected, because there
+is nothing persisted to record a correction on. That is a real future story, and it reintroduces
+exactly the lifetime problem avoided here.
+
+### Authorization over an aggregate, again
+
+A person is derived from several meetings, so "Ana was in 9 meetings" is a fact about meetings and a
+count is information. The endpoint reuses §19's answer without inventing anything:
+`uniformDecision` first, `filterAllowed` over the meetings when a statement can tell two of them
+apart, and the identities computed **only** over the surviving set. The action stays `meeting:read`
+on the meeting ARN, so no new IAM action is invented and an existing policy grants it unchanged.
+
+The visible consequence is deliberate: two users of one tenant can legitimately see different
+people, different counts and different date ranges. The identity `id` is the same for both, because
+it is derived from the person — `sha256` of the e-mail, or of the normalised first/last pair, cut to
+16 hex characters, the same idiom `pii_shield._hash` uses — and not from the visible set.
 
 ## Next architectural refactors
 

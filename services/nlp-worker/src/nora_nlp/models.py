@@ -135,6 +135,22 @@ class Opportunity(BaseModel):
 
 
 class Participant(BaseModel):
+    """A participant as the MODEL saw them, which is not a person (US13, ADR 0048).
+
+    `routers/analyze.py` redacts before the analyzer runs, so `name` is normally a
+    `[[PERSON_NAME_n]]` placeholder --- the prompt says so explicitly (item 12 of
+    `prompts/meeting-analysis-v1.md`). And `_redact_person_names` numbers EVERY occurrence
+    separately, so two mentions of one name are two different placeholders: nothing on this
+    side of the shield can decide that two entries denote the same person, whatever
+    algorithm it uses.
+
+    This array is also consumed by nobody --- `WorkerDtos.AnalyzeResponse` in `services/api`
+    has no `participants` field. Deduplication and matching happen in the API, over the
+    roster the user declared on upload. Kept rather than removed because the field is in the
+    published schema and in the strict JSON Schema sent to the provider; retiring it is a
+    contract change for whoever next versions `meeting-analysis-v1`.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     name: Annotated[str, Field(min_length=2, max_length=120)]

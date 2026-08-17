@@ -1058,6 +1058,46 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /meetings/participants:
+    get:
+      tags: [Meetings]
+      summary: People recognised across the tenant's meeting rosters
+      description: |
+        IAM action: `meeting:read`. Deduplicates and matches the participants declared on the
+        tenant's meetings, so that the same person named two ways is one person (US13, ADR 0048).
+
+        **Matching is deterministic**, never a model call. Normalisation folds case and accents,
+        drops a leading honorific and the pt-BR genitive particles; an e-mail is an identifier and
+        outranks every name rule; a shared first AND last token joins `Ana Paula Silva` to
+        `Ana Silva`; a differing e-mail vetoes a name merge; and a lone first name never absorbs a
+        full name. Ambiguity leaves two identities rather than merging them, because over-merging
+        attributes one person's meetings to another. `variants` carries every declared spelling
+        that produced the identity, so a wrong merge is visible in the response that made it.
+
+        **The names here are the ones the user typed on upload, and only those.** Names spoken in a
+        transcript are redacted by the PII Shield before anything could group them, and every
+        occurrence gets its own placeholder, so no participant index is built over transcript text.
+
+        **Nothing is stored.** An identity is computed on read from `meeting_participants`, which
+        the V004 cascade purges when a meeting is erased (`DELETE /privacy/meetings/{id}`, ADR
+        0029) or swept by retention — so a person cannot outlive the meetings that produced them.
+        `id` is nevertheless stable across requests: it is derived from the person, not from the
+        request.
+
+        Authorization is per item, as in `GET /meetings/search`: the visible meetings are resolved
+        first and the identities are computed only over those. Two users of one tenant can
+        therefore legitimately see different people, different `meetingCount` values and different
+        date ranges — a count is information, and a caller must not see inside a meeting they were
+        refused. `id` is the same for both, because it does not depend on the visible set.
+      responses:
+        '200':
+          description: OK (empty when no meeting in scope declares a participant)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ParticipantIdentityListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /meetings:
     get:
       tags: [Meetings]
@@ -3138,6 +3178,55 @@ components:
         displayName: { type: string }
         email: { type: [string, 'null'], format: email }
         isInternal: { type: boolean }
+    ParticipantIdentityListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ParticipantIdentity' }
+    ParticipantIdentity:
+      type: object
+      description: |
+        One person, recognised across meeting rosters (US13, ADR 0048). Computed on read and
+        stored nowhere — see the endpoint description.
+      required: [id, displayName, isInternal, variants, meetingCount, meetings]
+      properties:
+        id:
+          type: string
+          description: |
+            Stable opaque handle, 16 hex characters. Derived from the person (the e-mail when
+            there is one, the normalised first/last name pair otherwise) rather than from the
+            request, so it survives a later meeting adding a middle name — and it deliberately
+            does not spell a name out in an identifier. It is NOT a database key: nothing
+            persists it.
+        displayName:
+          type: string
+          description: The canonical spelling — the declared variant carrying the most name tokens.
+        email: { type: [string, 'null'], format: email }
+        isInternal:
+          type: boolean
+          description: True when ANY contributing roster entry declared the person internal.
+        variants:
+          type: array
+          description: Every distinct declared spelling that produced this identity, sorted.
+          items: { type: string }
+        meetingCount:
+          type: integer
+          description: |
+            Meetings the person appears in, across the whole visible set. Never truncated — a
+            person in two hundred meetings reports two hundred while `meetings` lists ten.
+        firstSeenAt: { type: [string, 'null'], format: date-time }
+        lastSeenAt: { type: [string, 'null'], format: date-time }
+        meetings:
+          type: array
+          description: The ten most recent meetings the person appears in.
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              title: { type: string }
+              startedAt: { type: [string, 'null'], format: date-time }
     MeetingUploadResponse:
       type: object
       required: [id, tenantId, title, ownerId, processingStatus, createdAt]

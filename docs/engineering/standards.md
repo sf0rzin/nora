@@ -137,7 +137,7 @@ services/api/src/main/java/br/com/nora/api/
 │   ├── iam/               # IamPolicy, PolicyEvaluator, PolicyStatement
 │   ├── identity/          # User, Email value object, PasswordPolicy, RefreshToken
 │   ├── integration/       # OAuth connection model (ADR 0031)
-│   ├── meeting/           # Meeting, Participant, ProcessingStatus, Transcript
+│   ├── meeting/           # Meeting, Participant, ParticipantMatcher/Identity, ProcessingStatus, Transcript
 │   │   └── productivity/  # MeetingGoal, ProductivityAssessment (ADR 0005)
 │   ├── platform/          # control-plane model (ADR 0022-0024)
 │   ├── tenant/            # Tenant

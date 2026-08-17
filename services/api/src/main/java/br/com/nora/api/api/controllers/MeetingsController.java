@@ -13,6 +13,7 @@ import br.com.nora.api.api.dto.meeting.MeetingListResponse;
 import br.com.nora.api.api.dto.meeting.MeetingSearchResponse;
 import br.com.nora.api.api.dto.meeting.MeetingUploadMetadata;
 import br.com.nora.api.api.dto.meeting.MeetingUploadResponse;
+import br.com.nora.api.api.dto.meeting.ParticipantIdentityResponse;
 import br.com.nora.api.api.dto.meeting.ProductivityAssessmentResponse;
 import br.com.nora.api.api.dto.meeting.SplitPreviewDtos;
 import br.com.nora.api.api.security.AuthorizationNotRequired;
@@ -30,12 +31,16 @@ import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.meeting.MeetingGoalService;
 import br.com.nora.api.application.meeting.MeetingService;
 import br.com.nora.api.application.meeting.MeetingService.UploadCommand;
+import br.com.nora.api.application.meeting.ParticipantIdentityService;
 import br.com.nora.api.application.meeting.TranscriptSplitService;
 import br.com.nora.api.application.ports.MeetingRepository.MeetingFilter;
 import br.com.nora.api.application.ports.MeetingRepository.PagedMeetings;
+import br.com.nora.api.application.ports.TrendsRepository.Scope;
 import br.com.nora.api.domain.customer.CustomerConfidenceAssessment;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.Participant;
+import br.com.nora.api.domain.meeting.ParticipantIdentity;
+import br.com.nora.api.domain.meeting.ParticipantMatcher;
 import br.com.nora.api.domain.meeting.ProcessingStatus;
 import br.com.nora.api.infrastructure.nlp.SplitDtos;
 import br.com.nora.api.infrastructure.nlp.WorkerDtos;
@@ -88,6 +93,7 @@ public class MeetingsController {
     private final Validator validator;
     private final AuthorizationService authz;
     private final EmbeddingService embeddings;
+    private final ParticipantIdentityService participantIdentities;
 
     public MeetingsController(
             MeetingService meetings,
@@ -99,7 +105,8 @@ public class MeetingsController {
             ObjectMapper objectMapper,
             Validator validator,
             AuthorizationService authz,
-            EmbeddingService embeddings) {
+            EmbeddingService embeddings,
+            ParticipantIdentityService participantIdentities) {
         this.meetings = meetings;
         this.analyses = analyses;
         this.meetingGoals = meetingGoals;
@@ -110,6 +117,7 @@ public class MeetingsController {
         this.validator = validator;
         this.authz = authz;
         this.embeddings = embeddings;
+        this.participantIdentities = participantIdentities;
     }
 
     private static String meetingResource(UUID tenantId, UUID meetingId) {
@@ -170,6 +178,69 @@ public class MeetingsController {
                                                 m.processingStatus().name()))
                         .toList();
         return new MeetingSearchResponse(items);
+    }
+
+    /**
+     * The people who appear across the tenant's meeting rosters, deduplicated and matched (US13,
+     * ADR 0048). Spring routes {@code /participants} (literal) before {@code /{id}}, the same way
+     * {@code /search} above already relies on.
+     *
+     * <p>It lives on this controller rather than on a {@code /participants} of its own because it
+     * answers a question about meetings and is authorized as one: the action is {@code
+     * meeting:read} and the resource is the meeting, so no new IAM action is invented and an
+     * existing policy grants it without being rewritten.
+     *
+     * <p><b>Aggregate authorization, and it is the whole difficulty of this endpoint.</b> A person
+     * is derived from the rosters of several meetings, and "Ana Paula Silva was in 9 meetings" is a
+     * fact about meetings — a caller carrying a conditional Deny over some of them must not see
+     * those meetings inside a name, a count or a date range. So the visible set is resolved FIRST
+     * and the identities are computed only over it: same shape as {@code GET /trends}, for the same
+     * reason, and the fast path is taken only when the IAM decision provably cannot tell two
+     * meetings of the tenant apart.
+     *
+     * <p>The consequence is deliberate and worth stating: two users of one tenant can legitimately
+     * see different people, different meeting counts and different {@code lastSeenAt} values for
+     * the same person. The identity's {@code id} is stable between them, because it is derived from
+     * the person and not from the visible set.
+     */
+    @GetMapping("/participants")
+    @RequiresPermission(action = "meeting:read", resource = ResourceType.MEETING, anyAllow = true)
+    public ParticipantIdentityResponse participants() {
+        AuthenticatedPrincipal principal = CurrentUser.require();
+        return ParticipantIdentityResponse.from(
+                participantIdentities.list(visibleScope(principal)));
+    }
+
+    /**
+     * Turns the caller's IAM position into the meetings an aggregate may read. Mirrors {@code
+     * TrendsController.resolveScope}, which documents at length why the cheap alternative — a
+     * tenant-level permission of its own — was not taken.
+     */
+    private Scope visibleScope(AuthenticatedPrincipal principal) {
+        UUID tenantId = principal.tenantId();
+        Optional<Boolean> uniform =
+                authz.uniformDecision(
+                        principal.userId(),
+                        tenantId,
+                        "meeting:read",
+                        meetingResource(tenantId, null));
+        if (uniform.isPresent()) {
+            // A uniform Deny cannot reach here — requireAnyAllow refused already — but an
+            // aggregate is not the place to lean on that, so it is spelled out as the empty set.
+            return Boolean.TRUE.equals(uniform.get())
+                    ? Scope.wholeTenant(tenantId)
+                    : Scope.ofMeetings(tenantId, List.of());
+        }
+        List<Meeting> candidates = meetings.listAllForAuthFilter(tenantId, MeetingFilter.empty());
+        List<Meeting> visible =
+                authz.filterAllowed(
+                        principal.userId(),
+                        tenantId,
+                        "meeting:read",
+                        candidates,
+                        m -> meetingResource(tenantId, m.id()),
+                        Meeting::attributes);
+        return Scope.ofMeetings(tenantId, visible.stream().map(Meeting::id).toList());
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -399,13 +470,22 @@ public class MeetingsController {
         return new MeetingListResponse(items, safePage, safeSize, totalItems, totalPages);
     }
 
-    /** Participant names (up to 12) for the avatar stack in the listing. */
+    /**
+     * Participant names (up to 12) for the avatar stack in the listing, deduplicated by {@code
+     * ParticipantMatcher} (US13, ADR 0048) so that one person declared two ways is one avatar.
+     *
+     * <p>This is the only place a meeting's roster is collapsed on the way out. {@code GET
+     * /meetings/{id}} deliberately keeps returning it exactly as it was typed: the roster is a
+     * record of what the user entered, and a fuzzy rule must never be the reason their own input
+     * comes back different. An avatar stack is a display affordance, where a duplicate is pure
+     * noise and a wrong merge costs one circle in a row of twelve.
+     */
     private static List<String> participantNames(Meeting m) {
         if (m.participants() == null) {
             return List.of();
         }
-        return m.participants().stream()
-                .map(Participant::displayName)
+        return ParticipantMatcher.dedupe(m.participants()).stream()
+                .map(ParticipantIdentity::displayName)
                 .filter(n -> n != null && !n.isBlank())
                 .limit(12)
                 .toList();
