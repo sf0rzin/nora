@@ -806,8 +806,9 @@ What a pass tells you, and what it does not:
   worker, the provider call and the database are all working together, and that the tenant filter
   refuses a cross-tenant read.
 - **Does not** prove anything about the browser: no page is rendered, no CSP is evaluated, no
-  JavaScript runs. `apps/web` has no test suite, so that gap is real and this script does not
-  close it.
+  JavaScript runs. The Playwright suite in `apps/web/e2e/` does check headers, route protection
+  and CSP violations, but it runs in CI against a local `next start` — never against the host —
+  so the gap here is real and this script does not close it.
 
 Two smoke tenants are left behind on every run. They are inert — addresses under a domain that
 cannot receive mail — but they accumulate, and there is no tenant-delete endpoint to clean them
