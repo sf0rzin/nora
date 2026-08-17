@@ -2,10 +2,10 @@
 
 > A mirror of the Postgres schema in **Oracle 19c+ (PL/SQL DDL)** syntax.
 > NORA runs **on Postgres in production** (see `data-model.md`). This document is an academic deliverable for FIAP's Database Design course, which requires Oracle modeling.
-> Each table corresponds 1:1 to the schema documented in `data-model.md`, with the type and syntax adaptations described in §15.
-> It covers migrations **V001–V016** (including soft-delete V013, refresh token rotation V014, composite FK V015 and Row-Level Security V016 — see §18 for the Oracle equivalent of RLS via VPD/DBMS_RLS). Full inventory in §17. The canonical list of migrations (which goes beyond V016, up to V027) is in `data-model.md`.
+> Each table corresponds 1:1 to the schema documented in `data-model.md`, with the type and syntax adaptations described in §20.
+> It covers migrations **V001–V027** — the whole canonical schema, including soft-delete (V013), refresh token rotation (V014), the two composite FKs (V015, V027), the hashed invitation token (V018), Customer Confidence (V017), semantic search (V021), chat sessions (V022), NORA Flows (V023), the OAuth integration connections (V024–V026) and Row-Level Security (V016/V017/V019/V020/V021–V024 — Oracle equivalent via VPD/DBMS_RLS in §23). Full inventory in §22.
 >
-> **Note (scope of this doc):** the migrations after V016 — Customer Confidence (delivered full-stack), full/auth-aware-scope RLS, invitation token hash, `meeting_embeddings` (semantic search), the chat tables, NORA Flows and the OAuth integration connections, plus the V027 composite FK — have not yet been mapped to Oracle syntax. This is a debt of the academic mirror, not of the product: the features are delivered and documented in the canonical Postgres schema in `data-model.md` (Customer Confidence in `§2.29-2.33`, V022–V027 in `§2.35-2.39`).
+> **Note (scope of this doc), checked 2026-08-17:** the mirror is **complete up to V027**. Every table documented in `data-model.md` §2 has Oracle DDL here, and every migration V001–V027 has a row in §22. Two things are deliberately **not** mirrored, and both are Postgres-side operational objects rather than schema: the role provisioning in `services/api/src/main/resources/db/operational/R001__provision_app_roles.sql` (the Oracle counterpart is a privilege grant, not a script — see §23.4) and the **separate control-plane database** of ADR 0022 (`services/api/src/main/resources/db/platform/`), which `data-model.md` does not cover either. This file carries **41 tables** (`grep -c '^CREATE TABLE '`) against the **39** `### 2.x` sections of `data-model.md`: the two counts differ by design, because §2.3 (`roles` + `user_roles`) and §2.23 (`iam_user_invitations` + `iam_invitation_groups`) each document two tables. A looser `grep -c 'CREATE TABLE'` returns 44, matching three prose mentions as well.
 
 ## 1. `TENANTS`
 
@@ -193,7 +193,7 @@ CREATE TABLE meetings (
     -- (defense in depth for the ADR 0002 isolation). Oracle supports a composite FK
     -- natively; the target is the UNIQUE users_tenant_id_uk (§2).
     -- Postgres uses ON DELETE RESTRICT; in Oracle the absence of an ON DELETE clause
-    -- is already equivalent to RESTRICT/NO ACTION (see §15).
+    -- is already equivalent to RESTRICT/NO ACTION (see §20).
     CONSTRAINT meetings_owner_fk  FOREIGN KEY (tenant_id, owner_user_id)
         REFERENCES users (tenant_id, id),
     CONSTRAINT meetings_format_chk CHECK (transcript_format IN ('TXT','VTT','SRT')),
@@ -428,6 +428,17 @@ CREATE INDEX idx_meeting_opportunities_tenant   ON meeting_opportunities (tenant
 
 ## 12. AWS-style IAM
 
+> **Composite FK on the two user-attachment tables (V027).** `iam_user_groups` and
+> `iam_user_policies` do **not** carry a simple `user_id → users(id)` FK. V027 replaced it with
+> `(tenant_id, user_id) → users(tenant_id, id)`, the same remedy V015 applied to
+> `meetings.owner_user_id` (§6) and against the same hole: with two independent FKs nothing
+> required the two columns to describe the *same* `users` row, so a user of tenant A could be
+> attached to a group or policy registered under tenant B — and a group carries permissions.
+> The target is the composite `users_tenant_id_uk UNIQUE (tenant_id, id)` already created for
+> V015 (§2), so Oracle needs no new target constraint. `attached_by` stays a **simple** FK on
+> purpose: it is `ON DELETE SET NULL`, and a composite FK would null `tenant_id` too, which is
+> `NOT NULL`.
+
 ```sql
 CREATE TABLE iam_groups (
     id           VARCHAR2(36) DEFAULT SYS_GUID() PRIMARY KEY,
@@ -454,7 +465,10 @@ CREATE TABLE iam_user_groups (
     attached_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
 
     CONSTRAINT iam_ug_pk          PRIMARY KEY (user_id, group_id),
-    CONSTRAINT iam_ug_user_fk     FOREIGN KEY (user_id)     REFERENCES users(id)      ON DELETE CASCADE,
+    -- Composite FK (V027): (tenant_id, user_id) must match one users row.
+    -- Target: users_tenant_id_uk UNIQUE (tenant_id, id), created for V015 (§2).
+    CONSTRAINT iam_ug_user_fk     FOREIGN KEY (tenant_id, user_id)
+        REFERENCES users (tenant_id, id) ON DELETE CASCADE,
     CONSTRAINT iam_ug_group_fk    FOREIGN KEY (group_id)    REFERENCES iam_groups(id) ON DELETE CASCADE,
     CONSTRAINT iam_ug_tenant_fk   FOREIGN KEY (tenant_id)   REFERENCES tenants(id)    ON DELETE CASCADE,
     CONSTRAINT iam_ug_attached_fk FOREIGN KEY (attached_by) REFERENCES users(id)
@@ -530,7 +544,10 @@ CREATE TABLE iam_user_policies (
     attached_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
 
     CONSTRAINT iam_up_pk          PRIMARY KEY (user_id, policy_id),
-    CONSTRAINT iam_up_user_fk     FOREIGN KEY (user_id)     REFERENCES users(id)        ON DELETE CASCADE,
+    -- Composite FK (V027): identical treatment to iam_user_groups, same hole,
+    -- same target (users_tenant_id_uk, §2).
+    CONSTRAINT iam_up_user_fk     FOREIGN KEY (tenant_id, user_id)
+        REFERENCES users (tenant_id, id) ON DELETE CASCADE,
     CONSTRAINT iam_up_policy_fk   FOREIGN KEY (policy_id)   REFERENCES iam_policies(id) ON DELETE CASCADE,
     CONSTRAINT iam_up_tenant_fk   FOREIGN KEY (tenant_id)   REFERENCES tenants(id)      ON DELETE CASCADE,
     CONSTRAINT iam_up_attached_fk FOREIGN KEY (attached_by) REFERENCES users(id)
@@ -561,12 +578,25 @@ CREATE INDEX idx_iam_audit_events_tenant_created
 
 ## 13. Invitations and refresh tokens
 
+> **Invitation token is hashed (V018).** The column created in V010 was `token VARCHAR(128)`
+> holding the raw invitation token. V018 renamed it to `token_hash`, widened it to Postgres
+> `TEXT` and invalidated the legacy PENDING rows, because the invitation token *is* a
+> credential: whoever holds it creates an ACTIVE user in the tenant. The mirror below carries
+> the post-V018 shape — `token_hash VARCHAR2(255)`, the same type this document already uses for
+> `email_verification_tokens`, `password_reset_tokens` and `refresh_tokens` (a SHA-256 hex digest
+> is 64 characters). The Oracle rename would be
+> `ALTER TABLE iam_user_invitations RENAME COLUMN token TO token_hash;`, which Oracle supports
+> with the same syntax as Postgres; the index rename is `ALTER INDEX … RENAME TO …`, also
+> identical.
+
 ```sql
 CREATE TABLE iam_user_invitations (
     id                VARCHAR2(36) PRIMARY KEY,
     tenant_id         VARCHAR2(36) NOT NULL,
     email             VARCHAR2(255) NOT NULL,
-    token             VARCHAR2(128) NOT NULL,
+    -- V018: SHA-256 hex of the invitation token. The raw token exists only in memory
+    -- while the invitation email is built; acceptance hashes what it receives and looks up by hash.
+    token_hash        VARCHAR2(255) NOT NULL,
     status            VARCHAR2(20) DEFAULT 'PENDING' NOT NULL,
     invited_by        VARCHAR2(36) NOT NULL,
     invited_at        TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
@@ -577,12 +607,12 @@ CREATE TABLE iam_user_invitations (
     CONSTRAINT iuv_tenant_fk    FOREIGN KEY (tenant_id)        REFERENCES tenants(id) ON DELETE CASCADE,
     CONSTRAINT iuv_invited_fk   FOREIGN KEY (invited_by)       REFERENCES users(id),
     CONSTRAINT iuv_accepted_fk  FOREIGN KEY (accepted_user_id) REFERENCES users(id),
-    CONSTRAINT iuv_token_uk     UNIQUE (token),
+    CONSTRAINT iuv_token_hash_uk UNIQUE (token_hash),
     CONSTRAINT iuv_status_chk   CHECK (status IN ('PENDING','ACCEPTED','EXPIRED','REVOKED'))
 );
 
 CREATE INDEX idx_iam_invitations_tenant_status ON iam_user_invitations (tenant_id, status);
-CREATE INDEX idx_iam_invitations_token         ON iam_user_invitations (token);
+CREATE INDEX idx_iam_invitations_token_hash    ON iam_user_invitations (token_hash);
 CREATE INDEX idx_iam_invitations_email         ON iam_user_invitations (tenant_id, email);
 
 
@@ -699,7 +729,382 @@ CREATE TABLE meeting_outcome_coverage (
 CREATE INDEX idx_meeting_outcome_coverage_assessment ON meeting_outcome_coverage (assessment_id);
 ```
 
-## 15. Notable Postgres ↔ Oracle differences
+## 15. Customer Confidence (V017)
+
+Postgres source: `data-model.md` §2.29–§2.33. Five tables — the account, the N:N link to the
+meeting, the assessment, and two ordered child lists.
+
+Two translation decisions worth naming before the DDL:
+
+- **`UNIQUE (tenant_id, LOWER(name))` becomes a function-based unique index.** Postgres accepts an
+  expression directly inside a `UNIQUE` index; Oracle does too, but only as a `CREATE UNIQUE INDEX`,
+  never as a table-level `CONSTRAINT`. That is why the constraint moves out of the `CREATE TABLE`
+  body here and does not in, say, `customer_confidence_assessments`, whose UNIQUE is over plain
+  columns. Same effect: get-or-create deduplicates the account case-insensitively per tenant.
+- **`customer_buying_signals` and `customer_objections` have no `tenant_id`, on purpose.** They are
+  direct children of the assessment and are isolated by the `assessment_id` cascade — exactly like
+  `meeting_outcome_coverage` (§14). They therefore get **no VPD policy** in §23 either.
+
+```sql
+CREATE TABLE customer_accounts (
+    id             VARCHAR2(36) DEFAULT SYS_GUID() PRIMARY KEY,
+    tenant_id      VARCHAR2(36) NOT NULL,
+    name           VARCHAR2(255) NOT NULL,
+    owner_user_id  VARCHAR2(36),
+    stage          VARCHAR2(60),
+    created_at     TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    updated_at     TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+
+    CONSTRAINT ca_tenant_fk FOREIGN KEY (tenant_id)     REFERENCES tenants(id) ON DELETE CASCADE,
+    CONSTRAINT ca_owner_fk  FOREIGN KEY (owner_user_id) REFERENCES users(id)   ON DELETE SET NULL
+);
+
+CREATE INDEX idx_customer_accounts_tenant ON customer_accounts (tenant_id);
+
+-- Postgres: CREATE UNIQUE INDEX ... (tenant_id, LOWER(name)).
+-- Oracle indexes expressions the same way, but the uniqueness cannot be written as a
+-- table CONSTRAINT — only as a function-based UNIQUE INDEX. `name` is VARCHAR2 (not CLOB),
+-- which is what makes LOWER() indexable here.
+CREATE UNIQUE INDEX idx_customer_accounts_tenant_name
+    ON customer_accounts (tenant_id, LOWER(name));
+
+
+CREATE TABLE meeting_account_links (
+    meeting_id           VARCHAR2(36) NOT NULL,
+    customer_account_id  VARCHAR2(36) NOT NULL,
+    tenant_id            VARCHAR2(36) NOT NULL,
+
+    CONSTRAINT mal_pk         PRIMARY KEY (meeting_id, customer_account_id),
+    CONSTRAINT mal_meeting_fk FOREIGN KEY (meeting_id)          REFERENCES meetings(id)          ON DELETE CASCADE,
+    CONSTRAINT mal_account_fk FOREIGN KEY (customer_account_id) REFERENCES customer_accounts(id) ON DELETE CASCADE,
+    CONSTRAINT mal_tenant_fk  FOREIGN KEY (tenant_id)           REFERENCES tenants(id)           ON DELETE CASCADE
+);
+
+CREATE INDEX idx_meeting_account_links_tenant  ON meeting_account_links (tenant_id);
+CREATE INDEX idx_meeting_account_links_account ON meeting_account_links (customer_account_id);
+
+
+CREATE TABLE customer_confidence_assessments (
+    id                   VARCHAR2(36) DEFAULT SYS_GUID() PRIMARY KEY,
+    tenant_id            VARCHAR2(36) NOT NULL,
+    meeting_id           VARCHAR2(36) NOT NULL,
+    customer_account_id  VARCHAR2(36) NOT NULL,
+    score                NUMBER(3) NOT NULL,
+    band                 VARCHAR2(10) NOT NULL,
+    -- NULL => first meeting of this account, so there is nothing to compare against.
+    trend                VARCHAR2(10),
+    rationale            CLOB NOT NULL,
+    created_at           TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+
+    CONSTRAINT cca_tenant_fk  FOREIGN KEY (tenant_id)           REFERENCES tenants(id)           ON DELETE CASCADE,
+    CONSTRAINT cca_meeting_fk FOREIGN KEY (meeting_id)          REFERENCES meetings(id)          ON DELETE CASCADE,
+    CONSTRAINT cca_account_fk FOREIGN KEY (customer_account_id) REFERENCES customer_accounts(id) ON DELETE CASCADE,
+    CONSTRAINT cca_score_chk  CHECK (score BETWEEN 0 AND 100),
+    CONSTRAINT cca_band_chk   CHECK (band IN ('LOW','MEDIUM','HIGH')),
+    CONSTRAINT cca_trend_chk  CHECK (trend IS NULL OR trend IN ('IMPROVING','STABLE','DECLINING')),
+    -- A meeting may touch several accounts, but at most one assessment per pair.
+    CONSTRAINT cca_meeting_account_uk UNIQUE (meeting_id, customer_account_id)
+);
+
+CREATE INDEX idx_customer_confidence_tenant ON customer_confidence_assessments (tenant_id);
+
+
+CREATE TABLE customer_buying_signals (
+    id             VARCHAR2(36) DEFAULT SYS_GUID() PRIMARY KEY,
+    assessment_id  VARCHAR2(36) NOT NULL,
+    type           VARCHAR2(30) NOT NULL,
+    quote          CLOB NOT NULL,
+    weight         NUMBER(4,3),
+    position       NUMBER(5) NOT NULL,
+
+    CONSTRAINT cbs_assessment_fk FOREIGN KEY (assessment_id)
+        REFERENCES customer_confidence_assessments(id) ON DELETE CASCADE,
+    CONSTRAINT cbs_type_chk   CHECK (type IN ('BUDGET_DISCUSSED','TIMELINE_DISCUSSED','STAKEHOLDER_INVOLVED',
+                                              'NEXT_STEP_REQUESTED','REFERENCE_REQUESTED','PROPOSAL_REQUESTED','OTHER')),
+    CONSTRAINT cbs_weight_chk CHECK (weight IS NULL OR (weight >= 0 AND weight <= 1)),
+    CONSTRAINT cbs_pos_chk    CHECK (position >= 0)
+);
+
+CREATE INDEX idx_customer_buying_signals_assessment ON customer_buying_signals (assessment_id);
+
+
+CREATE TABLE customer_objections (
+    id             VARCHAR2(36) DEFAULT SYS_GUID() PRIMARY KEY,
+    assessment_id  VARCHAR2(36) NOT NULL,
+    type           VARCHAR2(30) NOT NULL,
+    quote          CLOB NOT NULL,
+    severity       VARCHAR2(10) NOT NULL,
+    competitor     VARCHAR2(255),
+    position       NUMBER(5) NOT NULL,
+
+    CONSTRAINT cobj_assessment_fk FOREIGN KEY (assessment_id)
+        REFERENCES customer_confidence_assessments(id) ON DELETE CASCADE,
+    CONSTRAINT cobj_type_chk     CHECK (type IN ('PRICE','TIMELINE','AUTHORITY','NEED','COMPETITOR_MENTION',
+                                                 'TRUST','FEATURE_GAP','OTHER')),
+    CONSTRAINT cobj_severity_chk CHECK (severity IN ('LOW','MEDIUM','HIGH')),
+    CONSTRAINT cobj_pos_chk      CHECK (position >= 0)
+);
+
+CREATE INDEX idx_customer_objections_assessment ON customer_objections (assessment_id);
+```
+
+## 16. `MEETING_EMBEDDINGS` (V021) — semantic search
+
+Postgres source: `data-model.md` §2.34.
+
+**There is no vector type in play, in either engine.** This is the one table where a reader is most
+likely to assume otherwise, so it is worth stating plainly: the Postgres side does **not** use
+`pgvector`. The extension is present in the `pgvector/pgvector:pg16` image but is **never created**:
+the only `CREATE EXTENSION` statements in the whole migration set are `pgcrypto` (V001) and `citext`
+(V002). V021 stores the embedding as a **JSON array of floats in a plain `TEXT` column**, with
+cosine similarity computed in Java by `EmbeddingService` over the tenant's rows. That is a
+deliberate scale decision recorded in the V021 header, not an oversight. The Oracle mirror therefore has nothing to translate: Oracle 19c has no vector type
+either (`VECTOR` arrives in 23ai), and none is needed.
+
+One divergence is introduced on purpose and is flagged rather than hidden: the Oracle column carries
+`CHECK (embedding IS JSON)` while the Postgres column is plain `TEXT` with **no** validation. The
+`IS JSON` check is *stricter* than production. It is here because this document's convention (§20)
+is that any JSON-bearing column declares `IS JSON`, and because an academic DDL that silently
+accepts `'not json'` in a column documented as a JSON array would be worse modelling. A reader
+porting the other way should know Postgres does not enforce it.
+
+```sql
+CREATE TABLE meeting_embeddings (
+    -- PK is the meeting itself: one embedding per meeting (vector of the summary/title).
+    meeting_id    VARCHAR2(36) PRIMARY KEY,
+    tenant_id     VARCHAR2(36) NOT NULL,
+    -- Which model/provider produced the vector. Search only compares vectors from the SAME
+    -- space (same provider + model); switching provider requires a re-backfill.
+    model         VARCHAR2(120) NOT NULL,
+    dim           NUMBER(10) NOT NULL,
+    -- JSON array of floats. Postgres: TEXT, unvalidated. See the note above.
+    embedding     CLOB NOT NULL,
+    source_chars  NUMBER(10) DEFAULT 0 NOT NULL,
+    created_at    TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    updated_at    TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+
+    CONSTRAINT me_meeting_fk FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE,
+    CONSTRAINT me_tenant_fk  FOREIGN KEY (tenant_id)  REFERENCES tenants(id)  ON DELETE CASCADE,
+    CONSTRAINT me_json_chk   CHECK (embedding IS JSON)
+);
+
+CREATE INDEX idx_meeting_embeddings_tenant ON meeting_embeddings (tenant_id);
+```
+
+> **`dim` deliberately has no CHECK.** A `dim > 0` constraint would be reasonable modelling, and it
+> is left out precisely because V021 does not have one: this document is a mirror, and inventing
+> constraints makes it a worse mirror. `IS JSON` above is the single exception, and it is there only
+> because §20's own convention demands it of every JSON-bearing column.
+
+## 17. `CHAT_SESSION` and `CHAT_MESSAGE` (V022)
+
+Postgres source: `data-model.md` §2.35–§2.36.
+
+Both table names are **singular**, unlike every other table in the schema. That is what the database
+actually has; the mirror keeps it rather than "fixing" the name.
+
+Three points about the translation:
+
+- **No `DEFAULT SYS_GUID()` on these PKs.** V022 declares `id UUID PRIMARY KEY` with no default —
+  the application assigns the id. The same is true of `workflows`, `workflow_executions`,
+  `integration_connections` (§18, §19) and, since V010/V011, of `iam_user_invitations` and
+  `refresh_tokens` (§13). Where Postgres has `DEFAULT gen_random_uuid()`, this document writes
+  `DEFAULT SYS_GUID()`; where it does not, neither does the mirror.
+- **`role` needs no quoting.** `ROLE` is an Oracle *keyword* (`CREATE ROLE`) but not a **reserved**
+  word — it does not appear in the reserved-word list of the Oracle SQL Language Reference, so it is
+  legal as an unquoted column name. Quoting it as `"ROLE"` would make the identifier case-sensitive
+  everywhere it is referenced, which is a worse trade than leaving it bare. Recorded in §20.
+- **Per-user scoping is not in the database, in either engine.** RLS/VPD isolates by **tenant**. The
+  rule "each user only sees their own sessions" is an application filter (`AND user_id = :userId` in
+  the persistence adapter). A query that forgot it would still pass the policy. The mirror does not
+  invent a policy Postgres does not have — see §23.4.
+
+```sql
+CREATE TABLE chat_session (
+    -- No DEFAULT: the application assigns the id (V022).
+    id          VARCHAR2(36) PRIMARY KEY,
+    tenant_id   VARCHAR2(36) NOT NULL,
+    user_id     VARCHAR2(36) NOT NULL,
+    -- Nullable: stays undefined until the first user message. ChatSession.deriveTitle
+    -- collapses whitespace and cuts at 48 chars — application logic, not a column constraint.
+    title       VARCHAR2(500),
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    updated_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+
+    CONSTRAINT cs_tenant_fk FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    CONSTRAINT cs_user_fk   FOREIGN KEY (user_id)   REFERENCES users(id)   ON DELETE CASCADE
+);
+
+CREATE INDEX idx_chat_session_tenant ON chat_session (tenant_id);
+CREATE INDEX idx_chat_session_user   ON chat_session (user_id);
+-- Sidebar listing: the user's sessions, most recent first. Oracle supports DESC in an index
+-- key the same way Postgres does.
+CREATE INDEX idx_chat_session_user_updated ON chat_session (user_id, updated_at DESC);
+
+
+CREATE TABLE chat_message (
+    id          VARCHAR2(36) PRIMARY KEY,
+    session_id  VARCHAR2(36) NOT NULL,
+    -- Denormalized so the table can carry its own policy. There is deliberately no user_id:
+    -- ownership is inherited from the parent session.
+    tenant_id   VARCHAR2(36) NOT NULL,
+    -- `role` is a keyword but not a reserved word in Oracle: no quoting needed.
+    role        VARCHAR2(20) NOT NULL,
+    content     CLOB NOT NULL,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+
+    CONSTRAINT cm_session_fk FOREIGN KEY (session_id) REFERENCES chat_session(id) ON DELETE CASCADE,
+    CONSTRAINT cm_tenant_fk  FOREIGN KEY (tenant_id)  REFERENCES tenants(id)      ON DELETE CASCADE,
+    -- Lowercase on the wire, as in Postgres. ChatRole maps to and from the enum.
+    CONSTRAINT cm_role_chk   CHECK (role IN ('user','assistant'))
+);
+
+CREATE INDEX idx_chat_message_tenant         ON chat_message (tenant_id);
+CREATE INDEX idx_chat_message_session_created ON chat_message (session_id, created_at);
+```
+
+## 18. `WORKFLOWS` and `WORKFLOW_EXECUTIONS` (V023) — NORA Flows
+
+Postgres source: `data-model.md` §2.37–§2.38. ADR 0030 (engine), ADR 0032 (canvas).
+
+- **`trigger_type` has no CHECK, and the mirror does not add one.** It is plain `TEXT` in Postgres.
+  The valid set lives in the Java `TriggerType` enum and in `WorkflowDefinitionParser`, which
+  refuses `schedule.cron` on save because nothing in the backend schedules a workflow. Writing an
+  Oracle `CHECK` here would document a constraint the production database does not have; the
+  honest mirror leaves the column open and says why. `workflow_executions.status`, by contrast,
+  **is** constrained in the database, so it is constrained here.
+- **The partial index becomes a function-based index.** Postgres has
+  `CREATE INDEX … (tenant_id, trigger_type) WHERE active`; Oracle before 23ai has no partial index,
+  so the same trick this document already uses for `is_root` (§2) and the soft-delete uniques
+  applies. Because `active` is `NUMBER(1)` rather than a real boolean, the predicate is
+  `active = 1`. Rows with `active = 0` index as `(NULL, NULL)` and, in a **non-unique** Oracle
+  index, an all-NULL key is not stored at all — which is precisely the small-index property the
+  Postgres partial index was for.
+
+```sql
+CREATE TABLE workflows (
+    id               VARCHAR2(36) PRIMARY KEY,
+    tenant_id        VARCHAR2(36) NOT NULL,
+    name             VARCHAR2(255) NOT NULL,
+    -- Denormalized out of definition_json for the engine's match index below.
+    -- NO CHECK, matching Postgres: the valid set is enforced in the application.
+    trigger_type     VARCHAR2(60) NOT NULL,
+    -- The full canvas graph (nodes + edges). Postgres JSONB -> CLOB validated as JSON.
+    definition_json  CLOB NOT NULL,
+    active           NUMBER(1) DEFAULT 1 NOT NULL,
+    created_at       TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    updated_at       TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+
+    CONSTRAINT wf_tenant_fk  FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    CONSTRAINT wf_active_chk CHECK (active IN (0,1)),
+    CONSTRAINT wf_def_json   CHECK (definition_json IS JSON)
+);
+
+CREATE INDEX idx_workflows_tenant ON workflows (tenant_id);
+
+-- Engine hot path: the tenant's ACTIVE workflows for a fired trigger.
+-- Postgres: CREATE INDEX ... (tenant_id, trigger_type) WHERE active.
+-- Oracle <23ai has no partial index; a function-based index reproduces it. Inactive rows
+-- produce an all-NULL key, which a non-unique Oracle index does not store.
+CREATE INDEX idx_workflows_tenant_trigger ON workflows (
+    CASE WHEN active = 1 THEN tenant_id    END,
+    CASE WHEN active = 1 THEN trigger_type END
+);
+
+
+CREATE TABLE workflow_executions (
+    id           VARCHAR2(36) PRIMARY KEY,
+    workflow_id  VARCHAR2(36) NOT NULL,
+    -- Own tenant_id so the table can carry its own policy.
+    tenant_id    VARCHAR2(36) NOT NULL,
+    event_type   VARCHAR2(60) NOT NULL,
+    status       VARCHAR2(20) NOT NULL,
+    -- Step-by-step log: array of {at, nodeId, level, message}.
+    log_json     CLOB DEFAULT '[]' NOT NULL,
+    created_at   TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    -- NULL while RUNNING.
+    finished_at  TIMESTAMP WITH TIME ZONE,
+
+    CONSTRAINT wfe_workflow_fk FOREIGN KEY (workflow_id) REFERENCES workflows(id) ON DELETE CASCADE,
+    CONSTRAINT wfe_tenant_fk   FOREIGN KEY (tenant_id)   REFERENCES tenants(id)   ON DELETE CASCADE,
+    CONSTRAINT wfe_status_chk  CHECK (status IN ('RUNNING','SUCCESS','FAILED')),
+    CONSTRAINT wfe_log_json    CHECK (log_json IS JSON)
+);
+
+CREATE INDEX idx_workflow_executions_tenant ON workflow_executions (tenant_id);
+CREATE INDEX idx_workflow_executions_wf     ON workflow_executions (workflow_id, created_at DESC);
+```
+
+## 19. `INTEGRATION_CONNECTIONS` (V024, CHECK expanded in V025 and V026)
+
+Postgres source: `data-model.md` §2.39. ADR 0031.
+
+The provider list arrived in three steps, and the Oracle DDL below states the **current** list
+(V026). The history is worth keeping because each step dropped and recreated the same constraint —
+in Postgres it was created inline in V024 and therefore named by the server
+(`integration_connections_provider_check`); the mirror names it explicitly, which is what makes the
+later `ALTER` predictable instead of a guess at a generated name:
+
+| Migration | Accepted values | Added |
+|---|---|---|
+| **V024** | `google`, `slack` | initial pair |
+| **V025** | + `github`, `notion`, `todoist`, `linear` | wave 1 |
+| **V026** | + `microsoft`, `telegram`, `trello` | wave 2 — the current nine |
+
+The Oracle equivalent of each expansion is the same two statements Postgres used, with identical
+syntax:
+
+```sql
+ALTER TABLE integration_connections DROP CONSTRAINT ic_provider_chk;
+ALTER TABLE integration_connections ADD  CONSTRAINT ic_provider_chk
+    CHECK (provider IN (...));
+```
+
+**One table, three acquisition modes.** Most providers use the OAuth2 authorization-code flow
+(Microsoft with refresh); **Telegram** pairs by code and stores the bot's `chat_id` in
+`access_token` rather than a token; **Trello** uses a token the user pastes. Same table, same
+cipher, different paths in.
+
+```sql
+CREATE TABLE integration_connections (
+    id                VARCHAR2(36) PRIMARY KEY,
+    tenant_id         VARCHAR2(36) NOT NULL,
+    -- Records WHO connected (audit). The connection itself is tenant-level.
+    user_id           VARCHAR2(36) NOT NULL,
+    provider          VARCHAR2(30) NOT NULL,
+    -- Postgres TEXT is unbounded; VARCHAR2(4000) is the ceiling under the default
+    -- MAX_STRING_SIZE = STANDARD. Comfortably above any real scope string or token
+    -- envelope; a deployment expecting longer values would use CLOB instead (§20).
+    scopes            VARCHAR2(4000) NOT NULL,
+    external_account  VARCHAR2(255),
+    -- NOT a raw token: an envelope written by TokenCipher, `enc:v1:base64(iv):base64(ct)`
+    -- (AES-256-GCM, random IV per value). See the encryption note below.
+    access_token      VARCHAR2(4000) NOT NULL,
+    refresh_token     VARCHAR2(4000),
+    -- NULL when the token does not expire.
+    expires_at        TIMESTAMP WITH TIME ZONE,
+    created_at        TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    updated_at        TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+
+    CONSTRAINT ic_tenant_fk   FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+    CONSTRAINT ic_user_fk     FOREIGN KEY (user_id)   REFERENCES users(id)   ON DELETE CASCADE,
+    -- One connection per provider per tenant: reconnecting updates the row, it does not add one.
+    CONSTRAINT uq_integration_tenant_provider UNIQUE (tenant_id, provider),
+    -- Current list (V026). Named explicitly: Postgres generated this name inline in V024.
+    CONSTRAINT ic_provider_chk CHECK (provider IN ('google','slack','github','notion','todoist',
+                                                   'linear','microsoft','telegram','trello'))
+);
+
+CREATE INDEX idx_integration_connections_tenant ON integration_connections (tenant_id);
+```
+
+> **Encryption at rest is the application's job in both engines.** `TokenCipher` writes AES-256-GCM
+> with a random IV per value, keyed from `NORA_INTEGRATIONS_ENC_KEY`; the column type is the same
+> whether the value is ciphertext or a `plain:`-prefixed local-dev fallback, so the prefix is the
+> only way to tell them apart. Nothing here uses Oracle TDE or `DBMS_CRYPTO` — that would be a
+> different design, not a translation of this one, and claiming it would misdescribe the product.
+
+## 20. Notable Postgres ↔ Oracle differences
 
 | Topic | Postgres | Oracle |
 |---|---|---|
@@ -715,11 +1120,21 @@ CREATE INDEX idx_meeting_outcome_coverage_assessment ON meeting_outcome_coverage
 | **Partial index (`WHERE …`)** | native (`CREATE INDEX … WHERE`) | nonexistent; emulate with a function-based index (`CASE WHEN … THEN … END`). Used both for `is_root`/refresh-tokens and for the **partial unique of the soft-delete** (V013): `UNIQUE INDEX (CASE WHEN deleted_at IS NULL THEN col END)`, which frees slug/email/tenant_id for reuse after a soft-delete. |
 | **GIN index for JSONB** | `USING GIN (col jsonb_path_ops)` | `CREATE SEARCH INDEX … FOR JSON` (Oracle Text/JSON Search Index) in 19c+. |
 | **Cascade FK** | `ON DELETE CASCADE` / `ON DELETE RESTRICT` / `ON DELETE SET NULL` | identical (`ON DELETE CASCADE`, `ON DELETE SET NULL`; **`RESTRICT` does not exist** — the default behavior with no clause is equivalent to `NO ACTION`/`RESTRICT`). |
-| **Composite FK** | `FOREIGN KEY (a, b) REFERENCES t(a, b)` (the target needs a composite UNIQUE/PK) | identical — Oracle supports composite FKs natively; the target is the `UNIQUE (tenant_id, id)` (V015, §2). |
-| **Row-Level Security** | `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + `CREATE POLICY … USING (…) WITH CHECK (…)`; context via a session GUC (`SET LOCAL`) + `NOBYPASSRLS` role (V016) | **VPD/FGAC**: `DBMS_RLS.ADD_POLICY` + a PL/SQL policy function that returns the predicate; context via an application context (`SYS_CONTEXT`); bypass via the `EXEMPT ACCESS POLICY` privilege. See §18. |
+| **Composite FK** | `FOREIGN KEY (a, b) REFERENCES t(a, b)` (the target needs a composite UNIQUE/PK) | identical — Oracle supports composite FKs natively; the target is the `UNIQUE (tenant_id, id)` (V015, §2). Used twice: `meetings` (V015, §6) and the two IAM user-attachment tables (V027, §12). |
+| **UNIQUE over an expression** | may be written as `CREATE UNIQUE INDEX … (tenant_id, LOWER(name))` (V017) | the index form is identical, but Oracle cannot express it as a table-level `CONSTRAINT … UNIQUE (…)` — an expression only goes in an index. `customer_accounts` (§15) therefore declares it outside the `CREATE TABLE`. |
+| **Reserved words** | `role`, `type`, `text`, `position` are all usable as column names | Same here, and none of them needed quoting or renaming. `ROLE` (`CREATE ROLE`) and `TYPE` (`CREATE TYPE`) are Oracle **keywords** but **not reserved words** — they are absent from the reserved-word list in the Oracle SQL Language Reference — so `chat_message.role` (§17) and `customer_buying_signals.type` / `customer_objections.type` (§15) stay unquoted. Quoting one as `"ROLE"` would make the identifier case-sensitive at every reference, which is the worse trade. Note that `USER` and `SESSION` **are** reserved, but only as bare words: the columns `user_id` and `session_id` are unaffected. |
+| **Vector / embedding type** | none in use — `pgvector` is **not** created; V021 stores a JSON array of floats in `TEXT` and similarity runs in Java | none needed. Oracle 19c has no vector type either (`VECTOR` arrives in 23ai); the column mirrors as `CLOB` (§16). |
+| **Row-Level Security** | `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + `CREATE POLICY … USING (…) WITH CHECK (…)`; context via a session GUC (`SET LOCAL`) + `NOBYPASSRLS` role (V016) | **VPD/FGAC**: `DBMS_RLS.ADD_POLICY` + a PL/SQL policy function that returns the predicate; context via an application context (`SYS_CONTEXT`); bypass via the `EXEMPT ACCESS POLICY` privilege. See §23. |
+| **Disabling a policy without dropping it** | `ALTER TABLE … DISABLE ROW LEVEL SECURITY` — a **table** property; every policy on the table goes inert at once, and the policies stay defined (V020) | `DBMS_RLS.ENABLE_POLICY(…, enable => FALSE)` — a **per-policy** operation. Near-equivalent, not exact: see §23.4. |
 
-## 16. Portability observations
+## 21. Portability observations
 
+- **Identifier length**: several names in this document exceed 30 bytes — the table
+  `meeting_productivity_assessments` (32) and indexes such as
+  `idx_meeting_outcome_coverage_assessment` (39) and `idx_workflow_executions_tenant`. Oracle
+  raised the identifier limit from 30 to 128 bytes in **12.2**, so this is valid on the 19c+
+  baseline this document targets and would **not** load on 11g. Names were kept identical to the
+  Postgres ones rather than abbreviated, so the two schemas stay diffable.
 - **Identity columns**: Oracle 12c+ supports `GENERATED BY DEFAULT AS IDENTITY` for auto-incrementing sequences. We do not use it here because all PKs are UUIDs.
 - **`updated_at` triggers**: the equivalent of `DEFAULT NOW()` on update (which Postgres handles via a separate trigger, common in Spring apps) would require a PL/SQL `BEFORE UPDATE` trigger on each table. The NORA backend's JPA already sets `updated_at` on commit, so the trigger is not strictly necessary, but in a purely academic deliverable it is good practice:
 
@@ -744,12 +1159,15 @@ END;
 
 - **Extensions**: the Oracle equivalent of `CREATE EXTENSION IF NOT EXISTS "pgcrypto"` is nothing — `SYS_GUID()` is available by default.
 
-## 17. Oracle ≡ Postgres inventory
+## 22. Oracle ≡ Postgres inventory
+
+Every migration V001–V027 appears in exactly one row below, so the two schemas can be checked
+against each other line by line.
 
 | # | Table | Postgres (migration) | Oracle (§ in this doc) |
 |---|---|---|---|
-| 1 | tenants | V001 | §1 |
-| 2 | users | V002, V003, V006 | §2 |
+| 1 | tenants | V001, V009 (`allowed_email_domain`) | §1 |
+| 2 | users | V002, V003 (`email_verified_at`), V006 (`is_root`) | §2 |
 | 3 | roles / user_roles (legacy) | V002 | §3 |
 | 4 | email_verification_tokens | V003 | §4 |
 | 5 | password_reset_tokens | V003 | §5 |
@@ -765,17 +1183,32 @@ END;
 | 15 | soft-delete (`deleted_at` + partial uniques) in tenants/users/tenant_contexts/meetings | V013 | §1, §2, §6, §10 |
 | 16 | refresh_tokens rotation (`family_id`, `replaced_by_id`) | V014 | §13 |
 | 17 | composite FK meetings.(tenant_id, owner_user_id) → users.(tenant_id, id) | V015 | §2, §6 |
-| 18 | Row-Level Security (RLS → VPD/DBMS_RLS) | V016 | §18 |
+| 18 | customer_accounts, meeting_account_links, customer_confidence_assessments, customer_buying_signals, customer_objections | V017 | §15 |
+| 19 | iam_user_invitations.token → token_hash (SHA-256) | V018 | §13 |
+| 20 | meeting_embeddings (semantic search) | V021 | §16 |
+| 21 | chat_session, chat_message | V022 | §17 |
+| 22 | workflows, workflow_executions | V023 | §18 |
+| 23 | integration_connections | V024, V025 + V026 (provider CHECK) | §19 |
+| 24 | composite FK iam_user_groups / iam_user_policies .(tenant_id, user_id) → users.(tenant_id, id) | V027 | §12 |
+| 25 | Row-Level Security (RLS → VPD/DBMS_RLS), all waves | V016, V017, V019, V020, V021, V022, V023, V024 | §23 |
 
-> `tenants.allowed_email_domain` (V009) is included in §1.
+> **V027 carries a checksum warning on the Postgres side that has no Oracle counterpart.** The
+> migration was edited after it had already been applied, so a database that ran the earlier
+> version fails Flyway `validate` until someone runs `flyway repair` once. That is a migration-tool
+> concern, not a schema one: the DDL in §12 is the end state either way. `data-model.md` §2.17
+> records the detail, including that V027 **deletes** the pre-existing cross-tenant rows the new
+> constraint cannot accept, reporting the counts via `RAISE NOTICE`.
 
-## 18. Row-Level Security (V016) — Oracle equivalent: VPD / DBMS_RLS
+## 23. Row-Level Security (V016 → V024) — Oracle equivalent: VPD / DBMS_RLS
 
 In Postgres, migration V016 enables **Row-Level Security (RLS)**: each tenant-owned table gains `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + a `tenant_isolation` policy whose predicate is `tenant_id = nora.current_tenant_id()`. The function reads a **session GUC** (`nora.current_tenant_id`) set by the Spring **`TenantRlsAspect`** via `SET LOCAL` at the start of each `@Transactional`. Enforcement is **opt-in in prod**: it only becomes real when the API connects with a dedicated role **without `BYPASSRLS`** (`nora_app NOBYPASSRLS`) and `nora.security.rls.enforce=true`; the owner/admin (used in dev/Testcontainers) bypasses by default, leaving the RLS schema inert without breaking tests.
 
+V016 was the first of seven waves, not the whole story — **§23.4 has the full coverage**, including
+the 13 tables V020 later took back out of enforcement.
+
 The native equivalent in Oracle is **VPD (Virtual Private Database)**, also called *Fine-Grained Access Control (FGAC)*, configured via **`DBMS_RLS.ADD_POLICY`** + a **policy function** that returns a dynamic predicate (`WHERE` clause). The session context (Postgres's GUC) becomes an Oracle **application context** (`CREATE CONTEXT … USING …`), read with `SYS_CONTEXT`.
 
-### 18.1 Application context (equivalent to the session GUC)
+### 23.1 Application context (equivalent to the session GUC)
 
 ```sql
 -- Package that sets the current tenant in the context (called by the Spring aspect,
@@ -797,7 +1230,7 @@ END nora_session;
 CREATE CONTEXT NORA_CTX USING nora_session;
 ```
 
-### 18.2 Policy function (dynamic predicate)
+### 23.2 Policy function (dynamic predicate)
 
 ```sql
 -- Returns the predicate applied to each row. When the context is not set
@@ -818,7 +1251,7 @@ END nora_tenant_predicate;
 /
 ```
 
-### 18.3 Applying the policy (representative: `meetings` and `users`)
+### 23.3 Applying the policy (representative: `meetings` and `users`)
 
 ```sql
 -- meetings: SELECT/INSERT/UPDATE/DELETE filtered by tenant.
@@ -854,13 +1287,90 @@ END;
 /
 ```
 
-The remaining tenant-owned tables covered by V016 follow **exactly the same pattern** (`DBMS_RLS.ADD_POLICY` with `NORA_TENANT_PREDICATE`): `tenant_contexts`, `refresh_tokens`, `iam_groups`, `iam_policies`, `iam_user_invitations`, `meeting_analyses` and `meeting_participants`. The `tenants` table is the only special case (it filters by `id`, not `tenant_id`).
+The remaining tenant-owned tables covered by V016 follow **exactly the same pattern** (`DBMS_RLS.ADD_POLICY` with `NORA_TENANT_PREDICATE`): `tenant_contexts`, `refresh_tokens`, `iam_groups`, `iam_policies`, `iam_user_invitations`, `meeting_analyses` and `meeting_participants`. The `tenants` table is the only special case (it filters by `id`, not `tenant_id`) — and the same is true of every table added in the later waves listed in §23.4, none of which needs a different predicate.
 
-### 18.4 Operational differences
+### 23.4 Full coverage: seven waves, and the 13 tables V020 took back out
 
-| Aspect | Postgres (V016) | Oracle (VPD) |
+**34 tables carry a `tenant_isolation` policy**, added over seven migrations. Those 34, plus the
+5 cascade-boundary children that deliberately get none and the 2 legacy tables outside the model,
+account for all 41 tables in this document.
+
+| Wave | Count | Tables |
+|---|---|---|
+| **V016** | 10 | `meetings`, `tenants`, `tenant_contexts`, `users`, `refresh_tokens`, `iam_groups`, `iam_policies`, `iam_user_invitations`, `meeting_analyses`, `meeting_participants` |
+| **V017** | 3 | `customer_accounts`, `meeting_account_links`, `customer_confidence_assessments` |
+| **V019** | 15 | `transcripts` (the priority — `raw_text` is PII at rest), `meeting_tags`, `meeting_decisions`, `meeting_action_items`, `meeting_risks`, `meeting_opportunities`, `meeting_goals`, `meeting_productivity_assessments`, `iam_user_groups`, `iam_group_policies`, `iam_user_policies`, `iam_policy_versions`, `iam_audit_events`, `email_verification_tokens`, `password_reset_tokens` |
+| **V021** | 1 | `meeting_embeddings` |
+| **V022** | 2 | `chat_session`, `chat_message` |
+| **V023** | 2 | `workflows`, `workflow_executions` |
+| **V024** | 1 | `integration_connections` |
+
+**No policy, by design (5):** `iam_invitation_groups`, `meeting_goal_expected_outcomes`,
+`meeting_outcome_coverage`, `customer_buying_signals`, `customer_objections` — children with no
+`tenant_id` of their own, isolated through the FK cascade to their parent. In Oracle they get no
+`DBMS_RLS.ADD_POLICY` call for the same reason: `NORA_TENANT_PREDICATE` references a `tenant_id`
+column that does not exist on them.
+
+**Outside the model (2):** `roles` and `user_roles`, the unused V002 RBAC tables (§3).
+
+#### V020 disables 13 of the 34 — and it is a scope decision, not a retreat
+
+ADR 0028 narrowed enforcement to **business data + PII**, the tables touched only by authenticated
+requests or by the analysis pipeline, both of which set the tenant context. V020 turns RLS **off**
+on two families that cannot be enforced without breaking flows that have no JWT — login, signup,
+invitation acceptance, lookup by token hash, and the onboarding writes to authorization config:
+
+- **(A) Identity, 6:** `users`, `tenants`, `email_verification_tokens`, `password_reset_tokens`, `refresh_tokens`, `iam_user_invitations`.
+- **(B) IAM authorization, 7:** `iam_groups`, `iam_policies`, `iam_user_groups`, `iam_group_policies`, `iam_user_policies`, `iam_policy_versions`, `iam_audit_events`.
+
+The policies stay **defined but inert**, so re-enabling is one statement rather than a recreation.
+Isolation on those 13 continues through the application's `tenant_id` filter. **21 tables** are left
+under enforcement.
+
+Note what that means for §23.3: `USERS` is one of the 13. It is kept in the example above because it
+is the clearest illustration of the pattern, but on the real schema its policy is added and then
+disabled.
+
+#### The Oracle equivalent of "policy defined, RLS disabled"
+
+```sql
+-- V020's ALTER TABLE users DISABLE ROW LEVEL SECURITY, in Oracle.
+-- The policy stays in DBA_POLICIES with ENABLE = 'NO' — nothing is dropped, nothing is
+-- recreated when it is turned back on.
+BEGIN
+    DBMS_RLS.ENABLE_POLICY(
+        object_schema => 'NORA',
+        object_name   => 'USERS',
+        policy_name   => 'TENANT_ISOLATION',
+        enable        => FALSE
+    );
+END;
+/
+```
+
+**Is it an exact equivalent? For this schema, yes; in general, no** — and the difference is worth
+stating rather than glossing:
+
+- Postgres's `DISABLE ROW LEVEL SECURITY` is a property of the **table**: every policy on it goes
+  inert at once, and any policy *added later* while RLS is off is also inert. Oracle's
+  `ENABLE_POLICY` acts on **one named policy**: a table with several VPD policies needs one call
+  each, and a policy added afterwards is enabled by default and starts filtering immediately.
+- NORA has exactly **one** policy per table (`tenant_isolation`), so on this schema the two produce
+  the same visible rows and the same reversibility. The gap is latent, not active.
+- The bypass mechanisms are not the same object either: Postgres exempts the table owner and any
+  role with `BYPASSRLS`; Oracle exempts users holding the `EXEMPT ACCESS POLICY` **system
+  privilege**. This is why the Postgres-side role provisioning in `db/operational/R001` has no file
+  to mirror here — the Oracle counterpart is a `GRANT`, not a schema object.
+- `DBMS_RLS.DROP_POLICY` is the destructive alternative and is **not** what V020 corresponds to.
+  Reaching for it would lose the "reversible without recreating" property the migration was
+  written to keep.
+
+### 23.5 Operational differences
+
+| Aspect | Postgres (V016–V024) | Oracle (VPD) |
 |---|---|---|
 | Enabling | `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + `CREATE POLICY` | `DBMS_RLS.ADD_POLICY(...)` per table |
+| Disabling without dropping (V020) | `ALTER TABLE … DISABLE ROW LEVEL SECURITY` — table-level, policies survive | `DBMS_RLS.ENABLE_POLICY(…, enable => FALSE)` — per policy. See §23.4 |
 | Predicate | SQL expression in the policy (`USING (...) WITH CHECK (...)`) | string returned by the PL/SQL **policy function** |
 | Session context | GUC `nora.current_tenant_id` via `SET LOCAL` | application context `NORA_CTX` via `DBMS_SESSION.SET_CONTEXT` |
 | Reading the context | `current_setting('nora.current_tenant_id', true)` | `SYS_CONTEXT('NORA_CTX','tenant_id')` |
