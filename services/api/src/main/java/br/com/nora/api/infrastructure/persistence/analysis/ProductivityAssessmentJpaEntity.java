@@ -45,8 +45,12 @@ public class ProductivityAssessmentJpaEntity {
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
+    // Same unidirectional @OneToMany shape, same reason: `meeting_outcome_coverage.assessment_id`
+    // is NOT NULL (V012), so without this Hibernate's dissociation UPDATE fails when an
+    // assessment is replaced. See the note on MeetingAnalysisJpaEntity's collections — this one
+    // is on the same code path, because a re-analysis rewrites the assessment too.
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    @JoinColumn(name = "assessment_id")
+    @JoinColumn(name = "assessment_id", nullable = false)
     @OrderBy("position ASC")
     private List<OutcomeCoverageJpaEntity> coverage = new ArrayList<>();
 

@@ -45,12 +45,12 @@ public class CustomerConfidenceAssessmentJpaEntity {
     private OffsetDateTime createdAt;
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    @JoinColumn(name = "assessment_id")
+    @JoinColumn(name = "assessment_id", nullable = false)
     @OrderBy("position ASC")
     private List<BuyingSignalJpaEntity> buyingSignals = new ArrayList<>();
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    @JoinColumn(name = "assessment_id")
+    @JoinColumn(name = "assessment_id", nullable = false)
     @OrderBy("position ASC")
     private List<ObjectionJpaEntity> objections = new ArrayList<>();
 

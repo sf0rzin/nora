@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import br.com.nora.api.application.analysis.AnalysisService;
 import br.com.nora.api.application.ports.NlpWorkerClient;
+import br.com.nora.api.domain.analysis.ActionItem;
 import br.com.nora.api.domain.analysis.MeetingAnalysis;
+import br.com.nora.api.domain.analysis.Priority;
 import br.com.nora.api.domain.analysis.Sentiment;
 import br.com.nora.api.domain.meeting.productivity.CoverageStatus;
 import br.com.nora.api.domain.meeting.productivity.MeetingGoal;
@@ -244,6 +246,62 @@ class ProductivityFlowIntegrationTest {
         assertThat(detail.get("goal").get("expectedOutcomes").size()).isEqualTo(1);
     }
 
+    /**
+     * Re-analysing a meeting that already produced action items must succeed.
+     *
+     * <p>Regression test for the defect that made the whole Productivity Score feature
+     * unreachable in production. The analysis collections are unidirectional {@code @OneToMany}
+     * with {@code @JoinColumn}, so deleting the previous analysis made Hibernate DISSOCIATE its
+     * children first — {@code update meeting_action_items set analysis_id=null where
+     * analysis_id=?} — and that column is {@code NOT NULL}:
+     *
+     * <pre>
+     * Analysis pipeline failed meetingId=fde9f04b... cause=could not execute statement
+     * [ERROR: null value in column "analysis_id" of relation "meeting_action_items"
+     *  violates not-null constraint]
+     * </pre>
+     *
+     * <p>{@code MeetingAnalysisRepositoryAdapter.save} deletes any existing analysis before
+     * writing the new one, so this fired on every re-analysis of a meeting that had action items
+     * — and since a goal edit re-queues the analysis, a productivity score could never be
+     * produced for a meeting whose first pass extracted anything.
+     *
+     * <p>Every existing reprocess test in this class passed throughout, because the stub returned
+     * empty collections and there were no children to dissociate. That is why this one asserts on
+     * the CHILD ROWS: the status flipping back to COMPLETED is not enough, the second analysis
+     * has to own its items and the first analysis's rows have to be gone.
+     */
+    @Test
+    void reanalysisOfAMeetingThatHasActionItemsSucceeds() throws Exception {
+        String token = signupAndLogin("reana@nora.dev", "SenhaForte123", "Reana");
+        UUID meetingId = uploadMeeting(token, "Reuniao com action items");
+        UUID tenantId = principalTenantId(token);
+
+        analysisService.run(meetingId, tenantId);
+        JsonNode first = authGet("/meetings/" + meetingId, token).read(HttpStatus.OK);
+        assertThat(first.get("processingStatus").asText()).isEqualTo("COMPLETED");
+        assertThat(first.get("analysis").get("actionItems").size())
+                .as("the fixture must produce a child row, or this test cannot fail")
+                .isEqualTo(1);
+
+        // The second run has to delete the first analysis, children included.
+        analysisService.run(meetingId, tenantId);
+
+        JsonNode second = authGet("/meetings/" + meetingId, token).read(HttpStatus.OK);
+        assertThat(second.get("processingStatus").asText())
+                .as("a re-analysis must not leave the meeting FAILED")
+                .isEqualTo("COMPLETED");
+        assertThat(second.get("analysis").get("actionItems").size()).isEqualTo(1);
+        assertThat(second.get("analysis").get("id").asText())
+                .as("the analysis must have been replaced, not reused")
+                .isNotEqualTo(first.get("analysis").get("id").asText());
+
+        // And exactly one set of children survives — the new one.
+        assertThat(authGet("/tasks", token).read(HttpStatus.OK).get("items").size())
+                .as("orphaned action items from the previous analysis must not linger")
+                .isEqualTo(1);
+    }
+
     @Test
     void aSecondGoalEditThatAlsoRequeuesTheAnalysisSucceeds() throws Exception {
         // The goal upsert and the re-analysis claim in the SAME transaction: the goal write is
@@ -461,7 +519,26 @@ class ProductivityFlowIntegrationTest {
                                     Sentiment.NEUTRAL,
                                     List.of("topico1"),
                                     List.of(),
-                                    List.of(),
+                                    // ONE action item, and it is load-bearing.
+                                    //
+                                    // This stub emitted four empty lists, so an analysis it
+                                    // produced had no child rows at all — and re-analysis is
+                                    // precisely the path that deletes the previous analysis's
+                                    // children. With nothing to delete, every reprocess test in
+                                    // this class passed while production failed on the first one:
+                                    //
+                                    //   ERROR: null value in column "analysis_id" of relation
+                                    //   "meeting_action_items" violates not-null constraint
+                                    //   [update meeting_action_items set analysis_id=null ...]
+                                    //
+                                    // See reanalysisOfAMeetingThatHasActionItemsSucceeds below.
+                                    List.of(
+                                            ActionItem.fresh(
+                                                    "Enviar proposta revisada",
+                                                    "Ana",
+                                                    null,
+                                                    Priority.HIGH,
+                                                    "Eu envio a proposta revisada.")),
                                     List.of(),
                                     List.of(),
                                     "stub-1",

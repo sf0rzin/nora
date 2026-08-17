@@ -62,23 +62,42 @@ public class MeetingAnalysisJpaEntity {
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
+    // `nullable = false` on all four is what makes REPROCESSING work, and it is not cosmetic.
+    //
+    // These are UNIDIRECTIONAL @OneToMany with @JoinColumn: the child entity holds no reference
+    // back. Deleting the parent in that mapping makes Hibernate DISSOCIATE the children first —
+    // `update meeting_action_items set analysis_id=null where analysis_id=?` — and only then
+    // delete them. Every one of these columns is `NOT NULL REFERENCES ... ON DELETE CASCADE`
+    // (V005, V012), so that intermediate UPDATE cannot succeed:
+    //
+    //   ERROR: null value in column "analysis_id" of relation "meeting_action_items"
+    //          violates not-null constraint
+    //
+    // `MeetingAnalysisRepositoryAdapter.save` deletes any existing analysis before writing the
+    // new one, so this fired on EVERY re-analysis of a meeting that already had action items —
+    // which is every analysed meeting. Reprocess failed, and so did setting a goal on an
+    // analysed meeting, because `MeetingGoalService` re-queues the analysis to compute the
+    // Productivity Score. ADR 0005's whole feature was unreachable in production as a result.
+    //
+    // Telling Hibernate the column is not nullable makes it skip the dissociation and delete the
+    // children directly, which is also what the database's own ON DELETE CASCADE would do.
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    @JoinColumn(name = "analysis_id")
+    @JoinColumn(name = "analysis_id", nullable = false)
     @OrderBy("position ASC")
     private List<DecisionJpaEntity> decisions = new ArrayList<>();
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    @JoinColumn(name = "analysis_id")
+    @JoinColumn(name = "analysis_id", nullable = false)
     @OrderBy("position ASC")
     private List<ActionItemJpaEntity> actionItems = new ArrayList<>();
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    @JoinColumn(name = "analysis_id")
+    @JoinColumn(name = "analysis_id", nullable = false)
     @OrderBy("position ASC")
     private List<RiskJpaEntity> risks = new ArrayList<>();
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    @JoinColumn(name = "analysis_id")
+    @JoinColumn(name = "analysis_id", nullable = false)
     @OrderBy("position ASC")
     private List<OpportunityJpaEntity> opportunities = new ArrayList<>();
 
