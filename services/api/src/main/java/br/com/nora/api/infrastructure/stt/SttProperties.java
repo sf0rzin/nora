@@ -25,12 +25,14 @@ public record SttProperties(String defaultLanguage, OpenAi openai, RateLimit rat
     static final String DEFAULT_MODEL = "gpt-live-transcribe";
     static final String DEFAULT_AUDIO_FORMAT = "audio/pcm";
     static final int DEFAULT_SAMPLE_RATE = 24_000;
+
     /**
      * None, because {@link #DEFAULT_MODEL} refuses turn detection: the provider answers {@code 400
      * Turn detection is not supported for this transcription model} and no session is ever minted.
      * The two defaults have to agree, and the model is the half ADR 0045 fixes.
      */
     static final String DEFAULT_TURN_DETECTION = "";
+
     static final int DEFAULT_TTL_SECONDS = 600;
     static final int DEFAULT_TIMEOUT_MS = 5_000;
     static final int DEFAULT_SESSIONS_PER_MINUTE = 12;

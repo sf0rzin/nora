@@ -573,7 +573,6 @@ def test_the_schema_sent_to_the_provider_states_the_date_format():
     ]
     described = due.get("description", "")
     assert "YYYY-MM-DD" in described, (
-        "the schema handed to the model does not say what a dueDate looks like; "
-        f"got {due!r}"
+        f"the schema handed to the model does not say what a dueDate looks like; got {due!r}"
     )
     assert "null" in described, "the schema does not tell the model when to give up and use null"

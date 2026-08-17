@@ -148,9 +148,9 @@ class OpenAiRealtimeSessionBrokerTest {
      * against WireMock, which answers 200 to any body — so the test above, which asserts the
      * payload when turn detection IS configured, passed throughout.
      *
-     * <p>What it pins is therefore the DEFAULTS agreeing with each other, which is the part no
-     * mock can check: whatever {@link SttProperties} falls back to must be a combination the
-     * provider accepts.
+     * <p>What it pins is therefore the DEFAULTS agreeing with each other, which is the part no mock
+     * can check: whatever {@link SttProperties} falls back to must be a combination the provider
+     * accepts.
      */
     @Test
     void theDefaultsSendNoTurnDetection(WireMockRuntimeInfo wm) throws Exception {
