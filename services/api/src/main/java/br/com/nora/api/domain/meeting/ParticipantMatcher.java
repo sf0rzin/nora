@@ -381,7 +381,7 @@ public final class ParticipantMatcher {
         return List.copyOf(tokens.subList(start, tokens.size()));
     }
 
-    /** NFD + strip combining marks + case fold, so "Patrícia" and "Patricia" compare equal. */
+    /** NFD + strip combining marks + case fold, so an accented name matches its plain spelling. */
     private static String fold(String value) {
         String decomposed = Normalizer.normalize(value, Normalizer.Form.NFD);
         return COMBINING_MARKS.matcher(decomposed).replaceAll("").toLowerCase(Locale.ROOT);

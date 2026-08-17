@@ -82,8 +82,7 @@ class ParticipantMatcherTest {
 
         assertThat(identities).hasSize(1);
         assertThat(identities.get(0).email()).isEqualTo("ana@acme.com");
-        assertThat(identities.get(0).variants())
-                .containsExactly("Ana Paula Ribeiro", "Ana Silva");
+        assertThat(identities.get(0).variants()).containsExactly("Ana Paula Ribeiro", "Ana Silva");
     }
 
     @Test
@@ -116,8 +115,7 @@ class ParticipantMatcherTest {
     @Test
     void aLoneFirstNameNeverAbsorbsAFullName() {
         List<ParticipantIdentity> identities =
-                ParticipantMatcher.group(
-                        List.of(at(meetingA, "Ana"), at(meetingB, "Ana Silva")));
+                ParticipantMatcher.group(List.of(at(meetingA, "Ana"), at(meetingB, "Ana Silva")));
 
         assertThat(identities).hasSize(2);
     }
@@ -139,8 +137,7 @@ class ParticipantMatcherTest {
 
         assertThat(identities).hasSize(1);
         assertThat(identities.get(0).displayName()).isEqualTo("Bruno Dias");
-        assertThat(identities.get(0).variants())
-                .containsExactly("Bruno Dias", "Sr. Bruno Dias");
+        assertThat(identities.get(0).variants()).containsExactly("Bruno Dias", "Sr. Bruno Dias");
     }
 
     @Test
