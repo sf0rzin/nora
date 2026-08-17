@@ -312,15 +312,17 @@ serves which service is runtime configuration, not a redeploy.
 
 ## What this demo does not include, and why
 
-- **Live desktop capture and transcription.** The desktop app is mid-migration. ADR 0039 decided
-  that transcription moves to OpenAI's streaming API with an ephemeral session token minted by the
-  backend, and superseded ADR 0035 — but that work has not been done. What is in the tree today is
-  still the ADR 0035 engine: Whisper compiled into the Tauri binary, with a model of roughly 190 MB
-  downloaded on first use and a declared floor of 4 physical cores and 8 GB of RAM.
-  So: do not open the desktop client live on a borrowed laptop, and **do not describe the
-  transcription as cloud-based** — that is not what would be running. If the desktop must appear,
-  use a recording made on a machine where the model was already downloaded, and say which engine
-  it is.
+- **Live desktop capture and transcription.** The migration of ADR 0039 has landed (contract in
+  ADR 0045), so the reason for keeping this off the script has changed and is now smaller: the
+  190 MB first-run download and the 4-core/8 GB floor are gone, and the client streams to the
+  provider on a credential the backend mints. What is left is that it is Windows-only, has never
+  been validated in a real Windows/Teams environment (backlog US09), and needs a working network
+  plus a configured provider credential on the API — three ways for a live demo to fail on
+  somebody else's laptop.
+  If the desktop does appear: **describe it accurately.** The audio goes from the machine straight
+  to the transcription provider and does not pass through NORA's infrastructure, which is also why
+  the cost figures in the operator console are estimates. Do not say the audio stays on the device
+  — that was the previous design (ADR 0035) and it is no longer true.
 - **Audio file upload (US08).** Not built. Text transcripts only.
 - **SSO.** Closed as scope by ADR 0038, not pending.
 - **OAuth integrations authenticating live.** They need real provider credentials and a callback

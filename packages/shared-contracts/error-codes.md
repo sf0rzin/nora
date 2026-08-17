@@ -69,6 +69,7 @@ The NORA backend returns errors in the format:
 
 ### 429 TOO_MANY_REQUESTS
 - `RATE_LIMITED` — auth endpoints (login/signup/reset)
+- `STT_RATE_LIMITED` — per-user budget of realtime STT sessions exhausted (`POST /stt/sessions`). A separate code from `RATE_LIMITED` on purpose: a client hammering login and a client opening transcription sessions in a loop are different situations and the desktop reacts differently to each
 
 ### 500 INTERNAL_ERROR
 - `INTERNAL_ERROR` — fallback (any unhandled Exception)
@@ -76,6 +77,10 @@ The NORA backend returns errors in the format:
 ### 502 BAD_GATEWAY
 - `ANALYSIS_WORKER_UNAVAILABLE` — NLP worker down/timeout
 - `ANALYSIS_INVALID_RESPONSE` — the worker returned invalid JSON
+- `STT_BROKER_ERROR` — the transcription provider refused the session or could not be reached. The provider's own error body is never echoed into `message`
+
+### 503 SERVICE_UNAVAILABLE
+- `STT_NOT_CONFIGURED` — this deployment has no transcription provider credential. A deployment state rather than a bug, and visible rather than silent: without it, a recording would simply never produce text
 
 ## Conventions
 - `code` is UPPER_SNAKE_CASE, maximum 32 chars

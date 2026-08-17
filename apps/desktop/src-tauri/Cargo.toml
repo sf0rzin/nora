@@ -31,43 +31,20 @@ crate-type = ["lib", "cdylib", "staticlib"]
 tauri-build = { version = "2", features = [] }
 
 # ============================================================================
-# FEATURES — STT backend selection
+# NO [features] SECTION, AND THAT IS THE POINT OF ADR 0039/0045
 # ============================================================================
-# `stt-local` is the only backend. The Azure Speech sidecar that used to sit
-# beside it was deleted; `NORA_STT_BACKEND` still exists in stt.rs but now has
-# exactly one valid value, and anything else falls back with a warning.
+# There used to be one here selecting the STT engine: `default = ["stt-local"]`,
+# plus `whisper-vulkan` / `whisper-cuda` / `whisper-openblas` hanging off the
+# optional `whisper-rs` dependency, which vendored whisper.cpp and compiled it
+# from C++ on every build machine. Transcription is now the provider's realtime
+# API over a WebSocket (`stt_cloud.rs`), so there is no engine to select, no GPU
+# backend to opt into, no `sha2` for verifying a 465 MiB model download, and no
+# CMake/MSBuild step in CI.
 #
-# The feature is kept rather than inlined because the GPU features below hang off
-# the optional `whisper-rs` dependency it pulls in.
-#
-# GPU acceleration is explicit opt-in, all of it. There used to be a `metal` feature
-# switched on automatically by a [target.'cfg(target_os = "macos")'.dependencies] section;
-# that section went with macOS support. Vulkan/CUDA stay opt-in because they require the
-# vendor SDK on the BUILD machine (not only on the runtime one), so on by default would
-# break CI.
-#   cargo build --features whisper-vulkan     # with the Vulkan SDK installed
-#   cargo build --features whisper-cuda       # with the CUDA Toolkit installed
-#
-# CPU is always the fallback: with no GPU feature whisper.cpp runs on CPU.
-[features]
-default = ["stt-local"]
-
-# Local STT, in-process, via whisper.cpp (whisper-rs crate).
-stt-local = ["dep:whisper-rs", "dep:sha2"]
-
-# `?` = "if the optional dep is active, turn on its feature" — without the `?` the
-# GPU feature would force-enable whisper-rs even with stt-local turned off.
-whisper-vulkan = ["whisper-rs?/vulkan"]
-whisper-cuda = ["whisper-rs?/cuda"]
-whisper-openblas = ["whisper-rs?/openblas"]
+# Do not reintroduce a feature flag to "keep the option open". The option is
+# recorded in ADR 0035, which is superseded and stays readable.
 
 [dependencies]
-# Pinned at "=0.16.0" on purpose: whisper-rs vendors whisper.cpp as a
-# submodule and a minor bump has swapped the FullParams/State API before
-# (0.13 -> 0.14 renamed the log gate). Bump only with a real cargo check behind it.
-whisper-rs = { version = "=0.16.0", optional = true }
-sha2 = { version = "0.11", optional = true }
-
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-shell = "2"
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "multipart"], default-features = false }
@@ -75,6 +52,13 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 cpal = "0.15"
 tokio = { version = "1", features = ["full"] }
+# Realtime STT transport (ADR 0039/0045). rustls with the bundled webpki roots, NOT native-tls:
+# `reqwest` above is already built with `rustls-tls` and `default-features = false`, so pulling
+# OpenSSL in here would add a C toolchain requirement to a build that has none.
+tokio-tungstenite = { version = "0.28", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+# `StreamExt`/`SinkExt` for the split halves of the socket. Already in the lock as a transitive
+# dependency; declared because this crate now uses it directly.
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 base64 = "0.23"
 uuid = { version = "1", features = ["v4"] }
 rubato = "4.0.0"

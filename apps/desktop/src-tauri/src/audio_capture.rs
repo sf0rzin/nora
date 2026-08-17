@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 
 use crate::audio_resample::{downmix_to_mono, f32_to_i16, MonoResampler};
+use crate::stt::TARGET_SAMPLE_RATE;
 use crate::system_audio;
 
 #[derive(Debug, serde::Serialize, Clone)]
@@ -30,9 +31,9 @@ fn emit_recording_failed(app: &AppHandle) {
 }
 
 pub struct CaptureSinks {
-    /// Receives i16 16kHz mono from the mic.
+    /// Receives mono i16 at [`TARGET_SAMPLE_RATE`] from the mic.
     pub mic_tx: tokio::sync::mpsc::Sender<Vec<i16>>,
-    /// Receives i16 16kHz mono from the system audio (None if disabled).
+    /// Receives mono i16 at [`TARGET_SAMPLE_RATE`] from the system audio (None if disabled).
     pub system_tx: Option<tokio::sync::mpsc::Sender<Vec<i16>>>,
 }
 
@@ -80,12 +81,14 @@ impl AudioCapture {
             return Err("No supported F32 audio config found".to_string());
         }
 
-        // Prefer 16kHz native to avoid resampling entirely
-        if let Some(c) = supported_configs
-            .iter()
-            .find(|c| c.min_sample_rate().0 <= 16000 && c.max_sample_rate().0 >= 16000)
-        {
-            return Ok((*c).with_sample_rate(cpal::SampleRate(16000)).config());
+        // Prefer the pipeline's target rate natively, which skips resampling entirely
+        // (`MonoResampler` bypasses when src == dst).
+        if let Some(c) = supported_configs.iter().find(|c| {
+            c.min_sample_rate().0 <= TARGET_SAMPLE_RATE && c.max_sample_rate().0 >= TARGET_SAMPLE_RATE
+        }) {
+            return Ok((*c)
+                .with_sample_rate(cpal::SampleRate(TARGET_SAMPLE_RATE))
+                .config());
         }
         // Fallback to 48kHz (common on desktops, good quality)
         if let Some(c) = supported_configs
@@ -189,7 +192,7 @@ impl AudioCapture {
                     let sr = config.sample_rate.0;
                     let ch = config.channels;
 
-                    let mut resampler = match MonoResampler::new(sr, 16000) {
+                    let mut resampler = match MonoResampler::new(sr, TARGET_SAMPLE_RATE) {
                         Ok(r) => r,
                         Err(e) => {
                             eprintln!("[audio] failed to create resampler: {}", e);
@@ -280,7 +283,7 @@ impl AudioCapture {
 
                 match system_audio::SystemAudioCapture::start(
                     &source,
-                    16000,
+                    TARGET_SAMPLE_RATE,
                     system_tx,
                     flag,
                 ) {
@@ -307,7 +310,7 @@ impl AudioCapture {
             is_recording: true,
             mic_device: actual_name,
             system_audio_device: system_audio_display_name,
-            sample_rate: 16000,
+            sample_rate: TARGET_SAMPLE_RATE,
         };
 
         // Store current status

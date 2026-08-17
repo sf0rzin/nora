@@ -59,7 +59,7 @@ That is a property of the deploy path, not of the machine. sshd listens on 22 in
 | `deploy-infra.yml` | **deleted** | It existed only for the Bicep `az deployment group create`. `infra/bicep/` was deleted with it (ADR 0036) — Azure is gone, not being decommissioned, so there was nothing left for that IaC to describe. |
 | `cloudflare-setup.yml` | edited | Hostname adjustments: the tunnel now serves the whole stack, not just the admin. |
 | `cloudflare-tunnel.yml` | unchanged | It still issues the connector token. It gained importance: it is now the ingress for everything. |
-| `desktop-release.yml` | edited | Adjustments for the local STT (ADR 0035). **Point of attention:** `whisper-rs` compiles `whisper.cpp`, which requires a C++ toolchain on the runner — this has not yet been validated in a real build. (The matrix was three platforms when this table was written; the client is Windows-only now.) |
+| `desktop-release.yml` | edited | Adjusted for the local STT of ADR 0035, which no longer exists: ADR 0039/0045 moved transcription to the provider's realtime API, so the `whisper-rs` C++ toolchain requirement and the `MAX_PATH` workaround that came with it were removed and the point of attention this row used to raise is closed. (The matrix was three platforms when this table was written; the client is Windows-only now.) |
 
 ## GitHub Secrets and Variables
 

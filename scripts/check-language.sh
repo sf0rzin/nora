@@ -104,7 +104,9 @@ ALLOWED=(
   "packages/nlp-baseline/src/nlp_baseline/stopwords.py"             # pt-BR stopword list (ADR 0010)
   "packages/nlp-baseline/src/nlp_baseline/tokenize.py"              # pt-BR tokenizer rules cite pt-BR examples as data
   "packages/nlp-baseline/src/nlp_baseline/tfidf.py"                 # docstring cites a pt-BR accented character as a worked example
-  "apps/desktop/src-tauri/src/stt_local.rs"                         # pt-BR Whisper hallucination blocklist (silence artefacts)
+  # `apps/desktop/src-tauri/src/stt_local.rs` sat here for its pt-BR Whisper hallucination
+  # blocklist. The file went with ADR 0039/0045, and so does its exemption — an allowlist entry
+  # for a path that no longer exists is an exemption nobody can evaluate.
 
   # --- 5. Applied Flyway migrations: permanently exempt, not a gap ---
   # Flyway checksums the ENTIRE migration body, comments included. Editing an

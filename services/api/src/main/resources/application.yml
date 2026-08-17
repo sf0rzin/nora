@@ -141,6 +141,44 @@ nora:
     dimension: ${NORA_EMBEDDING_DIMENSION:768}
     gemini-api-key: ${GEMINI_API_KEY:}
     openai-api-key: ${OPENAI_API_KEY:}
+  stt:
+    # Realtime speech-to-text (ADR 0039 / ADR 0045). Replaces the deleted `nora.speech` block.
+    # POST /stt/sessions exchanges the key below for a SHORT-LIVED client secret; the desktop then
+    # streams audio straight to the provider. The key stays here — it is never in a response, never
+    # in a log, and never in the desktop binary. If it ever lands in apps/desktop/.env, the whole
+    # design is gone.
+    #
+    # Consequence that must not be softened anywhere it is summarised: with an ephemeral credential
+    # the audio never crosses NORA's infrastructure, so the usage rows this endpoint writes count
+    # SESSIONS ISSUED, not minutes transcribed. The operator console must label them as estimates.
+    default-language: ${NORA_STT_DEFAULT_LANGUAGE:pt}
+    openai:
+      # Falls back to the shared OPENAI_API_KEY so a dev environment needs one variable, not two.
+      # Empty = STT disabled: the endpoint answers 503 STT_NOT_CONFIGURED, which is visible, instead
+      # of a recording that silently never transcribes.
+      api-key: ${NORA_STT_OPENAI_API_KEY:${OPENAI_API_KEY:}}
+      base-url: ${NORA_STT_OPENAI_BASE_URL:https://api.openai.com/v1}
+      # Handed to the desktop in the session response, so a provider endpoint move is a variable
+      # here rather than a desktop release.
+      realtime-url: ${NORA_STT_REALTIME_URL:wss://api.openai.com/v1/realtime?intent=transcription}
+      model: ${NORA_STT_MODEL:gpt-live-transcribe}
+      audio-format: ${NORA_STT_AUDIO_FORMAT:audio/pcm}
+      # MUST match `TARGET_SAMPLE_RATE` in apps/desktop/src-tauri/src/stt.rs. A mismatch does not
+      # fail anywhere — it plays the audio to the provider at the wrong speed and transcribes as
+      # gibberish.
+      sample-rate: ${NORA_STT_SAMPLE_RATE:24000}
+      # Provider-side VAD segments the stream into utterances. Empty would make the client
+      # responsible for committing turns, which is the local-VAD job this migration deletes.
+      turn-detection: ${NORA_STT_TURN_DETECTION:server_vad}
+      # How long the secret may be used to OPEN a connection (provider range 10..7200). An
+      # already-open session is NOT killed when it lapses, so there is no renewal loop; a dropped
+      # connection asks for a new session instead.
+      session-ttl-seconds: ${NORA_STT_SESSION_TTL_SECONDS:600}
+      request-timeout-ms: ${NORA_STT_REQUEST_TIMEOUT_MS:5000}
+    rate-limit:
+      # Per user, per minute. Two tracks open two sessions at once, and each reconnection costs one
+      # more — see SttProperties.RateLimit for why this is 12 and not the Azure broker's 6.
+      sessions-per-minute: ${NORA_STT_SESSIONS_PER_MINUTE:12}
   frontend:
     base-url: ${NORA_FRONTEND_BASE_URL:http://localhost:3000}
   email:

@@ -200,6 +200,46 @@ mod tests {
         );
     }
 
+    /// The ratio the pipeline actually runs at since ADR 0045 moved the target to 24 kHz.
+    ///
+    /// The two tests above stay at 48k→16k on purpose: what they guard is `Fft::new`'s
+    /// all-usize argument list, where a wrong order compiles and feeds silence, and they have
+    /// caught that once. This one is not a duplicate of them — 48→24 is a 2:1 ratio where 48→16
+    /// is 3:1, so it exercises a different sub-chunk arithmetic inside rubato, and it is the one
+    /// a real 48 kHz microphone goes through today.
+    #[test]
+    fn resamples_48k_to_24k_the_ratio_the_pipeline_now_runs_at() {
+        let mut resampler = MonoResampler::new(48_000, 24_000).unwrap();
+        let input = sine(1_000.0, 48_000, 48_000);
+        let mut output = Vec::new();
+        for block in input.chunks(960) {
+            output.extend(resampler.process(block));
+        }
+
+        assert!(!output.is_empty(), "resampling produced no samples at all");
+
+        // Two input frames per output frame; the unfilled tail stays buffered.
+        let expected = input.len() / 2;
+        assert!(
+            output.len() > expected * 9 / 10 && output.len() <= expected,
+            "expected roughly {} frames, got {}",
+            expected,
+            output.len()
+        );
+
+        let peak = output.iter().fold(0.0f32, |acc, s| acc.max(s.abs()));
+        assert!(peak > 0.1, "output is silent (peak {})", peak);
+
+        // A 1 kHz tone is still 1 kHz: ~2000 zero crossings per second, whatever the rate.
+        let seconds = output.len() as f32 / 24_000.0;
+        let crossings_per_second = zero_crossings(&output) as f32 / seconds;
+        assert!(
+            (1_800.0..=2_200.0).contains(&crossings_per_second),
+            "expected about 2000 zero crossings per second, got {}",
+            crossings_per_second
+        );
+    }
+
     #[test]
     fn test_downmix_mono() {
         let interleaved = vec![0.5f32, 0.7f32, 0.3f32, 0.9f32];

@@ -86,6 +86,12 @@ tags:
       token pasted by the user.
   - name: Privacy
     description: LGPD operations — right to erasure over a meeting (ADR 0029).
+  - name: Speech
+    description: |
+      Realtime speech-to-text session broker (ADR 0039, ADR 0045). Mints a short-lived credential
+      the desktop uses to stream audio straight to the transcription provider. The provider account
+      key stays on the server, and the audio never crosses NORA's infrastructure — which is why
+      per-tenant usage here counts sessions issued, not minutes transcribed.
   - name: Platform Admin
     description: |
       Operator control plane, NOT tenant-facing API (ADR 0022, ADR 0024, ADR 0025). Served on a
@@ -1657,6 +1663,50 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
 
   # ----------------------------------------------------------------------------
+  # Realtime STT — the session broker (ADR 0039 / ADR 0045)
+  # ----------------------------------------------------------------------------
+  /stt/sessions:
+    post:
+      tags: [Speech]
+      summary: Mints a short-lived realtime transcription session
+      description: |
+        IAM action: `stt:session:create` over the tenant. Exchanges the server-held provider key
+        for one ephemeral client secret and returns only that secret plus the parameters the client
+        needs to stream matching audio. **The provider account key is never part of any response.**
+
+        One call per stream. The desktop opens one session per track (`mic` and `system`), so a
+        recording with system audio on calls this twice, and a connection dropped mid-meeting is
+        recovered by calling it again — the credential is not renewable into a second session, so
+        every reconnection is a fresh authorization check and a fresh telemetry row.
+
+        `expiresAt` is when the secret can no longer **open** a connection. An already-open session
+        is not terminated by it, so clients must not build a renewal loop around this value.
+
+        Attribution, stated the way ADR 0039 requires: the audio goes desktop → provider and never
+        crosses NORA's infrastructure, so what this endpoint records is a **session issued**, never
+        a minute transcribed. Cost figures derived from it are estimates.
+
+        `429 STT_RATE_LIMITED` when the caller's per-minute session budget is spent,
+        `502 STT_BROKER_ERROR` when the provider refuses, `503 STT_NOT_CONFIGURED` when the
+        deployment has no provider credential at all.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SttSessionRequest' }
+      responses:
+        '200':
+          description: Session created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SttSessionResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/BadGateway' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  # ----------------------------------------------------------------------------
   # Platform Admin — operator control plane (ADR 0022 / 0024 / 0025)
   #
   # NOT tenant API. Admin-token security chain, operator email in X-Operator-Email,
@@ -2836,6 +2886,53 @@ components:
         offTopicRatio: { type: [number, 'null'] }
         decisionDensity: { type: [number, 'null'] }
         rationale: { type: [string, 'null'] }
+    SttSessionRequest:
+      type: object
+      description: |
+        Optional. Everything that costs money — provider, model, audio format, VAD — is resolved
+        server-side; the client only says what language it expects to hear.
+      properties:
+        language:
+          type: string
+          description: |
+            BCP-47 tag as the desktop knows it. Narrowed to the ISO-639-1 primary subtag before it
+            reaches the provider. Absent or unusable falls back to `nora.stt.default-language`.
+          example: pt-BR
+    SttSessionResponse:
+      type: object
+      required: [clientSecret, expiresAt, websocketUrl, provider, model, language, audioFormat, sampleRate]
+      properties:
+        clientSecret:
+          type: string
+          description: |
+            Short-lived credential presented to the provider over the WebSocket. Treat it as a
+            secret: it is not renewable, it is scoped to one session, and it must not be persisted.
+          example: ek_68af296e8e408191a1120ab6383263c2
+        expiresAt:
+          type: string
+          format: date-time
+          description: |
+            When the credential can no longer **open** a connection. An already-open session
+            outlives it — do not build a renewal loop around this value.
+        websocketUrl:
+          type: string
+          description: Provider endpoint to connect to. Resolved server-side so a provider endpoint
+            move does not need a desktop release.
+          example: wss://api.openai.com/v1/realtime?intent=transcription
+        provider: { type: string, example: openai }
+        model: { type: string, example: gpt-live-transcribe }
+        language:
+          type: string
+          description: Primary language subtag actually sent to the provider.
+          example: pt
+        audioFormat: { type: string, example: audio/pcm }
+        sampleRate:
+          type: integer
+          description: |
+            Sample rate in Hz the client must stream. It matches the desktop capture pipeline's
+            target (`TARGET_SAMPLE_RATE`); a mismatch does not fail anywhere, it just transcribes
+            as gibberish.
+          example: 24000
     LiveAnalyzeRequest:
       type: object
       required: [transcriptChunk]
