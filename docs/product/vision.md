@@ -130,9 +130,14 @@ where a reader looks for it: [ADR 0034](../adr/0034-azure-to-proxmox-migration.m
 and the roadmap's history section. What is gone from here is a copy of it that had already drifted
 twice.
 
-**On test coverage, since the old section quoted numbers.** The last measurement of overall coverage
-was `2026-05-13` — worker 87%, backend 67%, web 0% — and it has not been repeated since; those
-figures are quoted here as a date, not as a current fact. What is actually enforced in CI is
+**On test coverage, since the old section quoted numbers.** The old snapshot's figures — worker 87%,
+backend 67%, web 0% — were measured on `2026-05-13` and went three months unrepeated. CI now
+measures them on every run: **worker 92.4% statement over 863 tests; backend 77.1-77.3% instruction
+and 61.5-61.6% branch over 578 tests** (2026-08-17). The backend is quoted as a range because the
+figure jitters between runs of the same commit, which is worth knowing before anyone treats a
+one-decimal move as a regression. `apps/web` is still unmeasured — Playwright e2e only, no coverage
+instrumentation — so its old "0%" was never a measurement either. Current numbers come from
+`scripts/report-coverage.sh`; read the last CI run rather than this paragraph. What is actually enforced in CI is
 narrower and is verifiable: a JaCoCo rule over the single class `PolicyEvaluator` at instruction
 >= 90% / branch >= 75% (`services/api/pom.xml`), and `pytest --cov=nora_nlp.services.pii_shield
 --cov-fail-under=90` over that one module (`.github/workflows/ci.yml:152-154`). `apps/web` has no

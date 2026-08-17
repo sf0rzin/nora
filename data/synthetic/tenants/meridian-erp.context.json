@@ -1,0 +1,57 @@
+{
+  "companyName": "Meridian Sistemas de Gestão",
+  "industry": "B2B SaaS — ERP para logística e transporte",
+  "valueProposition": "Suíte ERP para transportadoras e operadores logísticos brasileiros, com emissão fiscal de CT-e e MDF-e, roteirização e fechamento de frete integrados num único cadastro.",
+  "idealCustomerProfile": "Transportadoras e operadores logísticos com frota própria entre 80 e 600 veículos, faturamento entre R$ 80.000.000,00 e R$ 600.000.000,00, operação em mais de um estado e obrigação de CT-e/MDF-e em volume diário.",
+  "products": [
+    {
+      "name": "Meridian Fiscal",
+      "description": "Emissão e escrituração fiscal de CT-e, MDF-e e NF-e de serviço, com contingência offline e conciliação de eventos da SEFAZ.",
+      "keyDifferentiators": [
+        "Contingência local que continua emitindo CT-e com a SEFAZ fora do ar",
+        "Reconciliação automática de eventos de cancelamento e carta de correção",
+        "Fechamento fiscal do mês em lote, sem exportação manual para a contabilidade"
+      ]
+    },
+    {
+      "name": "Meridian Frota",
+      "description": "Gestão de frota própria e agregada: manutenção preventiva, custo por quilômetro rodado e controle de pneus e combustível.",
+      "keyDifferentiators": [
+        "Custo por quilômetro calculado por veículo, com rateio de manutenção e pneu",
+        "Ordem de manutenção aberta automaticamente por hodômetro ou por horímetro",
+        "Integração com telemetria por arquivo, sem depender de um fornecedor específico"
+      ]
+    },
+    {
+      "name": "Meridian Roteirizador",
+      "description": "Roteirização de coleta e entrega com janelas de atendimento, restrição de acesso urbano e simulação de cenários.",
+      "keyDifferentiators": [
+        "Restrição de circulação por município carregada por tabela editável pelo cliente",
+        "Simulação de cenário antes de aplicar a rota em produção",
+        "Reprogramação de rota no meio do dia sem refazer a carga inteira"
+      ]
+    },
+    {
+      "name": "Meridian Portal do Embarcador",
+      "description": "Portal externo para o cliente da transportadora acompanhar coleta, ocorrência e comprovante de entrega.",
+      "keyDifferentiators": [
+        "Comprovante de entrega digital com foto e assinatura, sem aplicativo dedicado",
+        "Painel de ocorrências por embarcador, com prazo acordado por contrato",
+        "Acesso por convite, sem criar usuário no ERP"
+      ]
+    }
+  ],
+  "competitors": [
+    "TotalSys ERP",
+    "OmniBusiness Cloud",
+    "FlexERP"
+  ],
+  "objectionHandling": [
+    "Quando o cliente alegar preço: comparar custo total de 36 meses incluindo a equipe fiscal alocada hoje, e não a mensalidade isolada.",
+    "Quando o cliente comparar com a TotalSys: o ponto de decisão é a contingência de CT-e. Perguntar quantas horas de emissão o cliente perdeu no último ano com a SEFAZ instável.",
+    "Quando o cliente questionar prazo de implantação: oferecer implantação em duas ondas, fiscal primeiro e frota depois, com o legado rodando em paralelo por 60 dias.",
+    "Quando o cliente disser que o sistema atual atende: pedir o número de retificações fiscais do último trimestre e o tempo de fechamento do mês.",
+    "Quando o cliente mencionar risco de migração de cadastro: propor migração assistida com carga de teste e conferência do cliente antes do corte.",
+    "Quando o cliente pedir desconto para fechar no trimestre: negociar prazo de pagamento e escopo de módulos, nunca a lista de preço."
+  ]
+}

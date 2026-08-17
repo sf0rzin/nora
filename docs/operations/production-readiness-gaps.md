@@ -189,7 +189,7 @@ A dedicated workflow `.github/workflows/rotate-secrets.yml` with a monthly cron 
 
 **Total estimate for Sub-phase 1.12 — Production Hardening: ~1-2 agentic weeks.**
 
-Prerequisites: the **code** items of Sub-phase 1.11 already delivered — Customer Confidence (#148), the AUTH_FILTER fix (silent 500 ceiling removed via batched scanning) and PolicyEvaluator (`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan`). Remaining are (e) seed and (f) demo script, which do not block 1.12.
+Prerequisites: the **code** items of Sub-phase 1.11 already delivered — Customer Confidence (#148), the AUTH_FILTER fix (silent 500 ceiling removed via batched scanning) and PolicyEvaluator (`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan`). Items (e) seed and (f) demo script were delivered on 2026-08-17 (`scripts/seed-demo.sh`, [`../challenge/demo-script.md`](../challenge/demo-script.md)); they never blocked 1.12 either way.
 
 ## Gap 8 — Control plane: business telemetry breaks silently under RLS enforce
 

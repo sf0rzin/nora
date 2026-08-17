@@ -120,6 +120,18 @@ dev-stop: ## Stop the worker, API and web launched by `make dev` (does NOT stop 
 dev-logs: ## Simultaneous tail of the api, worker and web logs
 	@tail -f "$(DEV_LOG_DIR)/api.log" "$(DEV_LOG_DIR)/worker.log" "$(DEV_LOG_DIR)/web.log"
 
+# The demonstration seed. API_BASE is forwarded rather than defaulted here: the script refuses
+# to run without it on purpose (it creates tenants and root users that no endpoint can delete),
+# and a default in this Makefile would put that decision back in the place it was taken out of.
+# For the usual local case that is one variable:
+#
+#     API_BASE=http://localhost:8080 make seed-demo
+#
+# Read the header of scripts/seed-demo.sh before pointing it at anything that is not localhost.
+.PHONY: seed-demo
+seed-demo: ## Populate a running environment with the demo narrative (needs API_BASE, curl, jq)
+	@bash scripts/seed-demo.sh
+
 .PHONY: dev-status
 dev-status: ## Show the status of the registered PIDs
 	@for svc in web api worker; do \

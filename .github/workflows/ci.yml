@@ -36,14 +36,28 @@ jobs:
         id: filter
         with:
           filters: |
+            # `.github/workflows/ci.yml` is in both of these for the fourth time this file has
+            # had to learn the same thing (see the `admin`, `desktop` and `infra` notes below):
+            # without it, a pull request that changes only the api or worker job matches no
+            # filter, the job it edited never runs, and ci-gate goes green having verified
+            # nothing about the change it contains. It was found here the same way — the
+            # coverage-report steps added to both jobs would have shipped unexecuted.
+            #
+            # It is not free: every ci.yml edit now pays for `mvn verify` with Testcontainers,
+            # about five and a half minutes. That is the same bargain `admin`, `desktop` and
+            # `infra` already accepted, and it is cheaper than a job nobody ran.
             api:
               - 'services/api/**'
               - 'docs/api/**'
+              - 'scripts/report-coverage.sh'
+              - '.github/workflows/ci.yml'
             worker:
               - 'services/nlp-worker/**'
               - 'packages/nlp-baseline/**'
               - 'docs/api/llm-schemas/**'
               - 'data/synthetic/**'
+              - 'scripts/report-coverage.sh'
+              - '.github/workflows/ci.yml'
             web:
               - 'apps/web/**'
               - 'packages/**'
@@ -110,6 +124,20 @@ jobs:
         working-directory: services/api
         run: mvn -B verify
 
+      # The backend coverage figure, in the log and on the run summary, on every run.
+      # `mvn verify` already writes `target/site/jacoco/jacoco.csv`; until this step existed,
+      # nothing read it and the only backend coverage number anyone could quote was measured on
+      # 2026-05-13 and carried forward through seventy pull requests. This is a report, not a
+      # gate — the gate is the JaCoCo rule on PolicyEvaluator in pom.xml, and it is untouched.
+      #
+      # `always()`: jacoco:report and the jacoco check are both bound to `verify` with report
+      # declared first, so a build that fails the coverage RULE has still written the CSV. That
+      # is precisely the run whose numbers a reviewer wants. The script exits 0 when there is no
+      # report, so it never adds a second red step to a build that already failed earlier.
+      - name: Coverage report (JaCoCo)
+        if: always()
+        run: bash scripts/report-coverage.sh backend
+
   worker:
     needs: changes
     if: needs.changes.outputs.worker == 'true'
@@ -137,9 +165,20 @@ jobs:
       - name: Format check
         working-directory: services/nlp-worker
         run: ruff format --check .
-      - name: Tests
+      # `--cov=nora_nlp` rides along on the suite that was going to run anyway, so the
+      # worker-wide figure costs no second pytest invocation. There is deliberately NO
+      # `--cov-fail-under` here: this run reports, the next step gates. Adding a global
+      # threshold would be the "mandatory total coverage, no distinction by area" that ADR 0018
+      # considered and rejected, and it is not this task's decision to make.
+      - name: Tests + worker-wide coverage
         working-directory: services/nlp-worker
-        run: pytest
+        run: pytest --cov=nora_nlp --cov-report=term
+      # Reads the `.coverage` the step above left behind and prints both scopes side by side:
+      # the worker-wide number and the pii_shield number the gate below applies to. Printed
+      # together on purpose — quoting the gated module's rate as "the worker's coverage" is the
+      # exact overstatement the documents used to carry.
+      - name: Coverage report (worker-wide vs. the gated module)
+        run: bash scripts/report-coverage.sh worker
       # Coverage gate scoped to the PII Shield (ADR 0012 + ADR 0018: >85% sustained on
       # IAM/Auth/PII). We do NOT enforce global worker coverage on purpose — llm.py and
       # live_analyzer have low coverage and are not PII-critical area. Measured: ~96%;

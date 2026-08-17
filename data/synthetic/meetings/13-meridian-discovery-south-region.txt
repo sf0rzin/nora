@@ -1,0 +1,62 @@
+Reunião: Discovery — Meridian × Central Log Transportes
+Data: 2026-07-06
+Horário: 09:30 — 10:18
+Participantes: Rafael Costa (Meridian — Account Executive Sul), Camila Souza (Meridian — Diretora Comercial), Eduardo Bastos (Central Log Transportes — Diretor de Operações), Priscila Nardi (Central Log Transportes — Gerente Fiscal)
+
+Rafael: Bom dia Eduardo, bom dia Priscila. Obrigado pelo tempo. Antes de eu falar qualquer coisa da Meridian, queria entender a operação de vocês. A Central Log Transportes hoje roda com quantos veículos?
+
+Eduardo: Bom dia Rafael. A gente tem 214 veículos próprios e mais uns 60 agregados que variam bastante mês a mês. Operamos em três estados: Paraná, Santa Catarina e Rio Grande do Sul.
+
+Rafael: E o volume fiscal? Quantos CT-e por dia, em média?
+
+Priscila: Fechamos junho com 4.100 CT-e por dia útil. Em pico de safra chega a 5.500.
+
+Rafael: Certo. E qual é a dor que fez vocês aceitarem essa conversa?
+
+Eduardo: Duas coisas. A primeira é que a gente perdeu quatro dias de faturamento em maio porque a SEFAZ do Paraná ficou instável e o sistema atual não tem contingência. Emissão parada é caminhão parado no pátio.
+
+Priscila: E do meu lado, o fechamento do mês. A gente leva onze dias úteis pra fechar. Onze. Meu time é de seis pessoas e três delas ficam só transportando planilha pro escritório contábil.
+
+Camila: Eduardo, quando você diz quatro dias, isso virou custo mensurado ou é estimativa?
+
+Eduardo: Virou custo mensurado. A controladoria calculou R$ 380.000,00 de receita empurrada pro mês seguinte, mais R$ 47.000,00 de diária de motorista parado. Foi o que me deu orçamento pra procurar alternativa.
+
+Rafael: Então deixa eu ser direto sobre onde a Meridian encaixa. O Meridian Fiscal tem contingência local: com a SEFAZ fora, ele continua emitindo, guarda o evento e reconcilia quando a SEFAZ volta. Não é um modo degradado que você liga na mão, é o comportamento padrão.
+
+Eduardo: Isso resolve o caso de maio inteiro?
+
+Rafael: Resolve o caso de maio. O que ele não resolve é bloqueio de inscrição estadual, que é problema cadastral e não de disponibilidade. Quero deixar claro pra não gerar expectativa errada.
+
+Priscila: E o fechamento?
+
+Rafael: O fechamento fiscal do Meridian sai em lote, direto no layout que a contabilidade consome. Os clientes que a gente tem com volume parecido fecham em três a quatro dias úteis. Não vou prometer que vocês vão de onze pra três no primeiro mês, porque depende da limpeza do cadastro de vocês.
+
+Priscila: Quatro dias úteis já mudaria a vida do meu time.
+
+Camila: Eduardo, qual é o processo de decisão de vocês? Quem mais precisa estar na mesa?
+
+Eduardo: Eu decido operação. Compra acima de R$ 300.000,00 por ano passa pelo Conselho, que reúne toda primeira quinta-feira do mês. E a Priscila tem veto técnico no lado fiscal.
+
+Camila: Então a próxima reunião precisa da Priscila com a mão no produto, não em apresentação.
+
+Eduardo: Exatamente isso.
+
+Rafael: Combinado. Proponho o seguinte: eu preparo um ambiente com o cadastro de vocês carregado, a Priscila emite CT-e de verdade contra o ambiente de homologação da SEFAZ, e a gente derruba a conexão de propósito pra ela ver a contingência funcionando.
+
+Priscila: Isso eu quero ver.
+
+Eduardo: E o investimento? Preciso de uma ordem de grandeza antes de levar pro Conselho.
+
+Rafael: Pra 214 veículos com Fiscal e Frota, a faixa é R$ 28.000,00 a R$ 34.000,00 por mês, dependendo de quantos usuários do Portal do Embarcador vocês querem. Implantação em duas ondas, fiscal primeiro.
+
+Eduardo: Ok. Está dentro do que eu imaginava. Vou levar pro Conselho de agosto.
+
+Camila: Vou mandar hoje o material de arquitetura e a lista de clientes que aceitam ser referência no Sul. Vocês podem falar com eles direto, sem a gente na ligação.
+
+Eduardo: Isso ajuda bastante.
+
+Rafael: Vou agendar a sessão técnica com a Priscila pra semana que vem e preparo o ambiente até quinta.
+
+Priscila: Perfeito. Me manda a lista do que preciso separar de cadastro.
+
+Rafael: Mando ainda hoje.
