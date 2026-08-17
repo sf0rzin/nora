@@ -483,6 +483,17 @@ services:
     environment:
       NORA_ENV: ${NORA_ENV:-prod}
       NEXT_PUBLIC_API_BASE_URL: https://api.${NORA_PUBLIC_DOMAIN:-nora.systems}
+      # SERVER-side base for the BFF. The variable already existed and was never set, so
+      # `route.ts` fell through to NEXT_PUBLIC_API_BASE_URL — the PUBLIC hostname — and every
+      # internal call the chat makes left the host, crossed Cloudflare, came back down the same
+      # tunnel this request arrived on, and reached the API through Caddy. Six calls per message
+      # taking that trip, to talk to a container on the same bridge. Measured from `web`:
+      # 13-95ms via the public URL, 4-6ms via `api:8080`.
+      #
+      # It also made the chat depend on the edge being healthy to answer at all, which is a
+      # dependency loop: the request cannot complete until the tunnel serves a second request
+      # nested inside it. Internal traffic belongs on the internal network.
+      API_BASE_URL: http://api:8080
       NEXT_PUBLIC_USE_MOCKS: "false"
       OTEL_SERVICE_NAME: nora-web
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317

@@ -60,6 +60,25 @@ const MAX_MESSAGE_CHARS = 8_000;
 const MAX_HISTORY_CHARS = 24_000;
 
 /**
+ * Budget for every call this route makes to OUR OWN backend — the session check, the control
+ * plane, and each piece of workspace context. All of them run BEFORE the first byte of the
+ * response is flushed, so any one of them stalling holds the response headers and the request
+ * dies at the edge instead of at the call that caused it.
+ *
+ * Each of those calls is wrapped in try/catch with a documented soft fallback ("on any failure,
+ * uses the env", "falls through to the recents fallback", "returns null"). None of them passed a
+ * signal, and A HANG IS NOT A FAILURE: fetch without one waits indefinitely, the catch never
+ * runs, and the fallback that was supposed to keep the chat up never happens. Observed as POST
+ * /api/chat intermittently taking 45s+ at the origin and 504 at the edge, with no
+ * `[chat] upstream done` line in the log because execution never reached the provider.
+ *
+ * Deliberately short: these are same-host calls that answer in single-digit milliseconds
+ * (measured 4-6ms over the compose network). A second is already pathological, and answering
+ * from the fallback beats not answering.
+ */
+const INTERNAL_CALL_TIMEOUT_MS = 4_000;
+
+/**
  * Request budget per authenticated principal: a fixed window of
  * RATE_LIMIT_WINDOW_MS allowing RATE_LIMIT_MAX requests.
  *
@@ -170,6 +189,7 @@ async function resolveChatModel(): Promise<ModelConfig> {
     const res = await fetch(`${API_BASE_URL}/internal/platform/llm-config?service=chat`, {
       headers: { Accept: "application/json", "X-Internal-Token": PLATFORM_TOKEN },
       cache: "no-store",
+      signal: AbortSignal.timeout(INTERNAL_CALL_TIMEOUT_MS),
     });
     if (!res.ok) return envConfig();
     const cfg = (await res.json()) as Partial<ModelConfig>;
@@ -215,6 +235,7 @@ async function resolveSession(
     const r = await fetch(`${API_BASE_URL}/auth/me`, {
       headers: { Cookie: cookieHeader, Accept: "application/json" },
       cache: "no-store",
+      signal: AbortSignal.timeout(INTERNAL_CALL_TIMEOUT_MS),
     });
     if (!r.ok) return null;
     const me = (await r.json()) as { tenantId?: string; userId?: string };
@@ -237,6 +258,9 @@ function recordUsage(
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Internal-Token": PLATFORM_TOKEN },
     cache: "no-store",
+    // Fire-and-forget, but still bounded: an unbounded request nobody awaits still holds a
+    // socket and a pending timer for as long as the peer keeps the connection open.
+    signal: AbortSignal.timeout(INTERNAL_CALL_TIMEOUT_MS),
     body: JSON.stringify({
       service: "chat",
       provider: cfg.provider,
@@ -272,7 +296,7 @@ async function fetchContextMeetings(
     try {
       const r = await fetch(
         `${API_BASE_URL}/meetings/search?q=${encodeURIComponent(query)}&k=6`,
-        { headers, cache: "no-store" },
+        { headers, cache: "no-store", signal: AbortSignal.timeout(INTERNAL_CALL_TIMEOUT_MS) },
       );
       if (r.ok) {
         const d = (await r.json()) as { items?: MeetingContextItem[] };
@@ -285,7 +309,11 @@ async function fetchContextMeetings(
     }
   }
   try {
-    const r = await fetch(`${API_BASE_URL}/meetings?size=12`, { headers, cache: "no-store" });
+    const r = await fetch(`${API_BASE_URL}/meetings?size=12`, {
+      headers,
+      cache: "no-store",
+      signal: AbortSignal.timeout(INTERNAL_CALL_TIMEOUT_MS),
+    });
     if (r.ok) {
       const d = (await r.json()) as { items?: MeetingContextItem[] };
       return { label: "REUNIÕES RECENTES DO WORKSPACE:", items: (d.items ?? []).slice(0, 12) };
@@ -369,7 +397,11 @@ async function fetchTenantContext(
   headers: Record<string, string>,
 ): Promise<TenantContextPayload | null> {
   try {
-    const r = await fetch(`${API_BASE_URL}/tenant/context`, { headers, cache: "no-store" });
+    const r = await fetch(`${API_BASE_URL}/tenant/context`, {
+      headers,
+      cache: "no-store",
+      signal: AbortSignal.timeout(INTERNAL_CALL_TIMEOUT_MS),
+    });
     if (!r.ok) return null;
     return (await r.json()) as TenantContextPayload;
   } catch {
@@ -520,7 +552,11 @@ async function buildWorkspaceContext(cookieHeader: string, query: string): Promi
     const headers = { Cookie: cookieHeader, Accept: "application/json" };
     const [meetings, tRes, tenantContext] = await Promise.all([
       fetchContextMeetings(headers, query),
-      fetch(`${API_BASE_URL}/tasks`, { headers, cache: "no-store" }),
+      fetch(`${API_BASE_URL}/tasks`, {
+        headers,
+        cache: "no-store",
+        signal: AbortSignal.timeout(INTERNAL_CALL_TIMEOUT_MS),
+      }),
       fetchTenantContext(headers),
     ]);
 
