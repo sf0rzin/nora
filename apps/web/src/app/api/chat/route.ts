@@ -747,6 +747,24 @@ export async function POST(req: Request): Promise<Response> {
     });
   }
 
+  // Phase marker for a request that never finishes.
+  //
+  // This route already says of itself that it "is opaque from outside: Next logs no requests in
+  // production, so a stream that ends carrying nothing looks identical to one that was never
+  // started", and that two wrong diagnoses were shipped by reading the shape of a timeout. A
+  // third was: about half of all requests hang, and from outside the process it was impossible
+  // to tell WHERE. Everything reachable from outside was measured and cleared — the handler runs
+  // (the session check is counted in the API's metrics for hung requests too), the container
+  // sits at 0% CPU, the provider answers 12/12 in under 700ms, all six internal calls return in
+  // under 62ms, DNS resolves in 8ms and TCP connects in 5ms.
+  //
+  // `[chat] upstream done` is written when the stream CLOSES, so a request that dies earlier
+  // leaves nothing at all. This line is written BEFORE each phase, so the last one printed names
+  // the phase that hung.
+  const phaseAt = Date.now();
+  const phase = (name: string) => console.log(`[chat] phase=${name} t=${Date.now() - phaseAt}ms`);
+  phase("session-ok");
+
   // Per-principal request budget. Keyed on the user, falling back to the tenant and then to a
   // shared bucket, so a session the backend describes without ids still consumes a slot instead
   // of skipping the control.
@@ -800,6 +818,7 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
+  phase("resolve-model");
   const cfg = await resolveChatModel();
   if (!cfg.enabled) {
     return new Response(
@@ -823,11 +842,13 @@ export async function POST(req: Request): Promise<Response> {
   // would leak out raw before the history/context redaction gate below.
   const lastUserMsg = [...history].reverse().find((m) => m.role === "user")?.content ?? "";
   const safeQuery = redactPii(lastUserMsg);
+  phase("workspace-context");
   const workspaceContext = await buildWorkspaceContext(cookieHeader, safeQuery);
 
   // PII Shield (ADR 0012): redacts structured PII from the context (meeting and task titles
   // come raw from the upload; the company context is free text typed at /settings/context)
   // and from every history message BEFORE any call to the external LLM provider.
+  phase("redact");
   const safeContext = redactPii(workspaceContext);
   const safeHistory: ChatMessage[] = history.map((m) => ({
     role: m.role,
@@ -851,6 +872,7 @@ export async function POST(req: Request): Promise<Response> {
   const messages: ChatMessage[] = [{ role: "system", content: systemContent }, ...safeHistory];
   // Already resolved in the authentication gate above — no second trip to /auth/me.
   const tenantId = session.tenantId;
+  phase("provider-call");
   const startedAt = Date.now();
 
   let upstream: Response;
