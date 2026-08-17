@@ -443,8 +443,7 @@ class AuthorizationCoverageIntegrationTest {
         assertThat(asMember.get("scopeStrategy").asText()).isEqualTo("PER_MEETING_FILTER");
         assertThat(asMember.get("meetings").asLong()).isEqualTo(2);
         assertThat(asMember.get("analysedMeetings").asLong()).isEqualTo(2);
-        assertThat(asMember.get("ai").get("state").asText())
-                .isEqualTo("WITHHELD_RESTRICTED_SCOPE");
+        assertThat(asMember.get("ai").get("state").asText()).isEqualTo("WITHHELD_RESTRICTED_SCOPE");
         assertThat(asMember.get("ai").get("calls").asLong()).isZero();
     }
 
