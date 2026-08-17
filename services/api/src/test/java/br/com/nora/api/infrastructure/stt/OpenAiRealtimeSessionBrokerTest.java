@@ -139,6 +139,48 @@ class OpenAiRealtimeSessionBrokerTest {
     }
 
     /**
+     * The DEFAULT session carries no turn detection, because the default model refuses it.
+     *
+     * <p>This is a regression test for a production outage of the whole live-transcription feature:
+     * the shipped default paired {@code gpt-live-transcribe} with {@code server_vad}, and every
+     * mint came back {@code 400 Turn detection is not supported for this transcription model}, so
+     * {@code POST /stt/sessions} answered 502 for every caller. The pairing was only ever exercised
+     * against WireMock, which answers 200 to any body — so the test above, which asserts the
+     * payload when turn detection IS configured, passed throughout.
+     *
+     * <p>What it pins is therefore the DEFAULTS agreeing with each other, which is the part no
+     * mock can check: whatever {@link SttProperties} falls back to must be a combination the
+     * provider accepts.
+     */
+    @Test
+    void theDefaultsSendNoTurnDetection(WireMockRuntimeInfo wm) throws Exception {
+        stub(wm.getWireMock(), 200, "{\"value\":\"ek_ephemeral\",\"expires_at\":1786000000}");
+
+        // null for every optional component: exactly what binding an unset environment yields.
+        SttProperties defaults =
+                new SttProperties(
+                        null,
+                        new SttProperties.OpenAi(
+                                KEY, wm.getHttpBaseUrl() + "/v1", null, null, null, 0, null, 0, 0),
+                        null);
+        assertThat(defaults.openai().model()).isEqualTo("gpt-live-transcribe");
+        assertThat(defaults.openai().turnDetection()).isEmpty();
+
+        new OpenAiRealtimeSessionBroker(defaults, MAPPER).openSession("pt");
+
+        LoggedRequest request =
+                wm.getWireMock()
+                        .find(postRequestedFor(urlPathEqualTo("/v1/realtime/client_secrets")))
+                        .get(0);
+        JsonNode input =
+                MAPPER.readTree(request.getBodyAsString())
+                        .path("session")
+                        .path("audio")
+                        .path("input");
+        assertThat(input.path("turn_detection").isNull()).isTrue();
+    }
+
+    /**
      * A refusal becomes STT_BROKER_ERROR, and the provider's body is NOT echoed: an upstream error
      * body copied wholesale into our error message is how a credential ends up in a support ticket.
      */

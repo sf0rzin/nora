@@ -148,7 +148,22 @@ def build_json_schema_for_analysis() -> dict[str, Any]:
                     "properties": {
                         "title": {"type": "string"},
                         "assignee": {"type": ["string", "null"]},
-                        "dueDate": {"type": ["string", "null"]},
+                        # The canonical schema (docs/api/llm-schemas/meeting-analysis-v1)
+                        # constrains this with `"format": "date"`; this hand-maintained copy
+                        # had dropped it, so nothing ever told the model what shape to use
+                        # and it answered with the words from the transcript, in Portuguese.
+                        # `format` is not in the strict structured-output subset, so the
+                        # constraint is carried as a description, which strict mode does honour.
+                        "dueDate": {
+                            "type": ["string", "null"],
+                            "description": (
+                                "Calendar date in ISO 8601, exactly YYYY-MM-DD. Use null when "
+                                "the transcript only gives a relative expression (tomorrow, "
+                                "next Friday, next week, or the same in the transcript's own "
+                                "language) and no absolute date can be derived from it. NEVER "
+                                "write the phrase itself."
+                            ),
+                        },
                         "priority": {
                             "type": "string",
                             "enum": ["LOW", "MEDIUM", "HIGH"],

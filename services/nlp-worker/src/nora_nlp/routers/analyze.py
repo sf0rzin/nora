@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import ValidationError
 
 from ..models import (
     AnalyzeRequest,
@@ -70,6 +71,19 @@ def analyze(req: AnalyzeRequest, settings: Settings = Depends(get_settings)) -> 
             safe_req, settings, pii_redactions_applied=len(redaction.redactions)
         )
         return response.model_copy(update={"baseline_terms": baseline_terms})
+    except ValidationError as exc:
+        # MUST come before ValueError: pydantic's ValidationError IS a ValueError, so without
+        # this branch a model that answers off-contract was reported as "Invalid LLM
+        # configuration" — sending whoever read the log to inspect an env file that was fine.
+        # It is a provider-response fault, and the message says so.
+        logger.error("LLM response failed schema validation: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "code": "LLM_RESPONSE_INVALID",
+                "message": "The model returned a response outside the analysis schema.",
+            },
+        ) from exc
     except ValueError as exc:
         logger.error("Invalid LLM configuration: %s", exc)
         raise HTTPException(
@@ -108,6 +122,15 @@ def split(req: SplitRequest, settings: Settings = Depends(get_settings)) -> Spli
         return split_analyzer.analyze(
             req, redacted_lines, settings, pii_redactions_applied=redactions
         )
+    except ValidationError as exc:
+        logger.error("LLM split response failed schema validation: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "code": "LLM_RESPONSE_INVALID",
+                "message": "The model returned a response outside the split schema.",
+            },
+        ) from exc
     except ValueError as exc:
         logger.error("Invalid LLM configuration: %s", exc)
         raise HTTPException(
@@ -153,6 +176,15 @@ def analyze_live(
         return live_analyzer.analyze(
             safe_req, settings, pii_redactions_applied=len(redaction.redactions)
         )
+    except ValidationError as exc:
+        logger.error("LLM live response failed schema validation: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "code": "LLM_RESPONSE_INVALID",
+                "message": "The model returned a response outside the live-highlights schema.",
+            },
+        ) from exc
     except ValueError as exc:
         logger.error("Invalid LLM configuration: %s", exc)
         raise HTTPException(
