@@ -146,6 +146,26 @@ class McpServerIntegrationTest {
         assertThat(first).isEqualTo(second);
     }
 
+    /**
+     * A tool call that actually runs. Every other test here stops at the transport, and {@code
+     * tools/call} is the only method that reads the principal back out of the SecurityContext —
+     * which is exactly where a filter downstream of the MCP chain once cleared it, letting a
+     * request that had already passed {@code anyRequest().authenticated()} reach the handler
+     * unauthenticated. The workspace is empty on purpose: the assertion is that the call is
+     * authorized and answers, not what it finds.
+     */
+    @Test
+    void toolsCall_runsAsTheUserThatMintedTheToken() throws Exception {
+        String mcp = mintToken(signupAndLogin("mcp-call@nora.dev", "Call"), "desktop");
+
+        Map<String, Object> params = Map.of("name", "list_meetings", "arguments", Map.of());
+        JsonNode result = rpcResult(mcp, "tools/call", params);
+
+        assertThat(result.get("isError").asBoolean()).as("%s", result).isFalse();
+        assertThat(result.get("structuredContent").get("meetings")).isEmpty();
+        assertThat(result.get("content").get(0).get("type").asText()).isEqualTo("text");
+    }
+
     @Test
     void unknownMethod_isAJsonRpcErrorRatherThanASilentEmptyResult() throws Exception {
         String mcp = mintToken(signupAndLogin("mcp-unknown@nora.dev", "Unknown"), "desktop");

@@ -296,7 +296,7 @@ number of stories.
 | **Should Have (S)** | 40 | **34** | **2** (US13, US42) | **4** (US33, US34, US41, US80) | 0 |
 | **Could Have (C)** | 12 | **10** | 0 | **2** (US44, US75) | 0 |
 | **Won't Have v1 (W)** | 6 | **1** (US09) | 0 | **1** (US08) | **4** (US05, US47, US50, US51) |
-| **Total** | **86** | **72** | **2** | **8** | **4** |
+| **Total** | **86** | **73** | **2** | **7** | **4** |
 
 > **The numerals in this table are recomputed by script**, not by hand, after the parallel branches
 > of the 2026-08 wave merge. Each branch sees only its own delivery, so a branch that recounted the
