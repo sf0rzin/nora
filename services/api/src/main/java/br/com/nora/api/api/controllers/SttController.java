@@ -20,8 +20,8 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>ADR 0039 §Decision 4 named this endpoint {@code POST /stt/realtime-session} as a working name
  * and left the real path open. It is {@code POST /stt/sessions}: the qualifier "realtime" carries
  * no information — realtime streaming is the only kind of session this API mints, and file/batch
- * transcription is explicitly out of scope there — and every other collection in this API is
- * plural with the create verb on the collection.
+ * transcription is explicitly out of scope there — and every other collection in this API is plural
+ * with the create verb on the collection.
  *
  * <p>Gated by IAM the same way the deleted {@code SpeechController} was, and for the same reason
  * its Javadoc gave: the credential this mints reaches a paid external provider billed to the

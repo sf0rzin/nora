@@ -165,8 +165,8 @@ class SttSessionServiceTest {
     }
 
     /**
-     * The whole attribution story of ADR 0039, asserted: the row carries the caller's tenant, it
-     * is filed under the external service {@code stt}, and it claims NO token counts and NO cost —
+     * The whole attribution story of ADR 0039, asserted: the row carries the caller's tenant, it is
+     * filed under the external service {@code stt}, and it claims NO token counts and NO cost —
      * because the audio never crossed this infrastructure and a number invented from a
      * client-reported duration is exactly what the ADR forbids.
      */

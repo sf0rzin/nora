@@ -140,8 +140,7 @@ class OpenAiRealtimeSessionBrokerTest {
 
     /**
      * A refusal becomes STT_BROKER_ERROR, and the provider's body is NOT echoed: an upstream error
-     * body copied wholesale into our error message is how a credential ends up in a support
-     * ticket.
+     * body copied wholesale into our error message is how a credential ends up in a support ticket.
      */
     @Test
     void aProviderRefusalDoesNotEchoTheProviderBody(WireMockRuntimeInfo wm) {

@@ -1,8 +1,8 @@
 package br.com.nora.api.application.stt;
 
 /**
- * Failures of the realtime STT session path. {@code code} is the contract the desktop switches on
- * — see {@code packages/shared-contracts/error-codes.md}.
+ * Failures of the realtime STT session path. {@code code} is the contract the desktop switches on —
+ * see {@code packages/shared-contracts/error-codes.md}.
  *
  * <p>None of these messages may ever carry the provider key or the minted client secret: they are
  * serialized into the HTTP error body.
