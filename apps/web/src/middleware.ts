@@ -1,12 +1,22 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const PROTECTED_PREFIXES = [
+/**
+ * Every route group under `src/app/(app)` must appear here AND in `config.matcher` below.
+ *
+ * `/usage` was missing from both. The page shipped with US33 and the two lists were never
+ * updated, so a signed-out visitor got a 200 on `/usage` while every sibling route redirected
+ * to the login page. `middleware-covers-app-routes.test.ts` now derives the expected set from
+ * the filesystem, because a hand-maintained copy of a directory listing is exactly what failed
+ * here — including in the e2e spec that was written to catch this kind of drift.
+ */
+export const PROTECTED_PREFIXES = [
   '/dashboard',
   '/meetings',
   '/settings',
   '/tasks',
   '/trends',
+  '/usage',
   '/chat',
   '/projects',
   '/integrations',
@@ -68,6 +78,7 @@ export const config = {
     '/settings/:path*',
     '/tasks/:path*',
     '/trends/:path*',
+    '/usage/:path*',
     '/chat/:path*',
     '/projects/:path*',
     '/integrations/:path*',

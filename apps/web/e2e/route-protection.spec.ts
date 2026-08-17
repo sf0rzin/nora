@@ -20,12 +20,21 @@ import { test, expect } from "./fixtures";
  * So the authenticated case now asserts a 200 as well. "The page did not redirect" and "the
  * page exists" are different claims and only one of them was being made.
  */
+/**
+ * This table mirrors the middleware's own list, which is why it could not catch `/usage`: that
+ * page was in neither, so a test built from one of them never looked at it. A signed-out visitor
+ * got a 200 on it in production for as long as it existed. The invariant "every page under
+ * `app/(app)` is registered in the middleware" is now derived from the filesystem in
+ * `src/middleware-covers-app-routes.test.ts`; this table stays for the behavioural half —
+ * that the redirect and the `next` parameter actually work in a browser.
+ */
 const PROTECTED: ReadonlyArray<{ prefix: string; page: string }> = [
   { prefix: "/dashboard", page: "/dashboard" },
   { prefix: "/meetings", page: "/meetings/upload" },
   { prefix: "/settings", page: "/settings/context" },
   { prefix: "/tasks", page: "/tasks" },
   { prefix: "/trends", page: "/trends" },
+  { prefix: "/usage", page: "/usage" },
   { prefix: "/chat", page: "/chat" },
   { prefix: "/projects", page: "/projects" },
   { prefix: "/integrations", page: "/integrations" },
