@@ -91,3 +91,4 @@ Partially superseded decisions: a successor ADR may mark `Partially supersedes X
 | 0044 | The RAG index gets a backfill path, triggered by an operator | accepted (extends 0024; relates to 0012 and 0028) |
 | 0045 | The realtime STT session contract: one endpoint, one credential, no renewal loop | accepted (implements 0039; supersedes nothing) |
 | 0046 | Finish the declared scope, and empty the limbo ADR 0038 left | accepted (extends 0038 §5; supersedes nothing) |
+| 0047 | Scheduled Flows: a restricted vocabulary, a claimed run, and a window that outlives a crash | accepted (successor record to 0030 §5; supersedes nothing) |

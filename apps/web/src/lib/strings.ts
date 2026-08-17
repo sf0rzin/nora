@@ -69,6 +69,31 @@ export const strings = {
       LOW: "Baixa",
     } as Record<string, string>,
 
+    /** `schedule.cron` frequency, keyed by the wire value the backend vocabulary accepts. */
+    frequency: {
+      hourly: "Toda hora",
+      daily: "Todo dia",
+      weekly: "Toda semana",
+    } as Record<string, string>,
+
+    /** `schedule.cron` weekday, keyed by the wire value (MON..SUN). */
+    weekday: {
+      MON: "Segunda",
+      TUE: "Terça",
+      WED: "Quarta",
+      THU: "Quinta",
+      FRI: "Sexta",
+      SAT: "Sábado",
+      SUN: "Domingo",
+    } as Record<string, string>,
+
+    /**
+     * Zone every schedule is evaluated in — fixed, not per tenant (ADR 0047). It is shown next to
+     * the fields rather than left implicit: a schedule whose zone the user has to guess fires at a
+     * time nobody predicted.
+     */
+    scheduleTimezone: "Horário de São Paulo",
+
     /** Block catalog copy, keyed by the engine `type` (the wire contract). */
     blocks: {
       "meeting.analysis_completed": {
@@ -85,6 +110,13 @@ export const strings = {
       "meeting.risk_detected": {
         name: "Risco de severidade alta",
         description: "Dispara quando a análise aponta um risco de severidade alta",
+      },
+      // Fires on a timer, then once PER meeting analysed since the previous run — the same
+      // fan-out `action_item.created` has. It is not a digest, and the description must not
+      // suggest a summary the blocks cannot produce.
+      "schedule.cron": {
+        name: "Em um horário",
+        description: "Dispara no horário marcado, para cada reunião analisada no período",
       },
       productivity_score_below: {
         name: "Productivity Score abaixo de…",
@@ -169,6 +201,11 @@ export const strings = {
       setTag: "defina a tag",
       priority: (label: string) => `prioridade: ${label}`,
       setPriority: "defina a prioridade",
+      /** schedule.cron — e.g. "toda hora :30", "todo dia 09:00", "Segunda 17:00". */
+      scheduleHourly: (minute: string) => `toda hora :${minute}`,
+      scheduleDaily: (time: string) => `todo dia ${time}`,
+      scheduleWeekly: (day: string, time: string) => `${day} ${time}`,
+      setSchedule: "defina o horário",
       recipient: (value: string) => `para: ${value}`,
       setRecipient: "defina o destinatário",
       setUrl: "defina a URL",

@@ -141,7 +141,7 @@ services/api/src/main/java/br/com/nora/api/
 │   │   └── productivity/  # MeetingGoal, ProductivityAssessment (ADR 0005)
 │   ├── platform/          # control-plane model (ADR 0022-0024)
 │   ├── tenant/            # Tenant
-│   └── workflow/          # Flows definition model (ADR 0030)
+│   └── workflow/          # Flows definition model (ADR 0030) + schedule state (ADR 0047)
 ├── application/           # use cases, services, ports
 │   ├── analysis/          # AnalysisService
 │   ├── chat/ customer/ embedding/ integration/ platform/ privacy/ task/ tenant/ workflow/
@@ -238,7 +238,7 @@ updated_at timestamptz not null default now()
 - Naming: `V001__create_tenants.sql`, `V002__create_users_and_roles.sql`, etc.
 - **A migration is never edited after being applied** — always create a new version (forward-only).
   - **One migration has broken this rule, on purpose, and it is documented in its own header.** `V027__composite_fk_iam_user_attachments.sql` was edited after being applied, because the failure it fixes happens *while V027 runs*, so a follow-up migration would never get the chance to execute. The price is a Flyway checksum mismatch: any database that ran the earlier body needs one `flyway repair` (or a rebuild) before the API will boot. Cite this as the exception it is — not as permission.
-- See `docs/engineering/data-model.md` for the full migration map (**V001–V029**; highlights since V017: V017 Customer Confidence, V018 invitation token hash, V019/V020 full RLS + auth-aware scope, V021 `meeting_embeddings`, V022 chat sessions, V023 Flows, V024–V026 OAuth integration connections and the provider CHECK growing to nine, V027 the composite IAM FK, V028 the company-context history, V029 the inbound MCP credential). Single source of truth for the schema. The control plane has its own separate line under `services/api/src/main/resources/db/platform/` (ADR 0022).
+- See `docs/engineering/data-model.md` for the full migration map (**V001–V032**; highlights since V017: V017 Customer Confidence, V018 invitation token hash, V019/V020 full RLS + auth-aware scope, V021 `meeting_embeddings`, V022 chat sessions, V023 Flows, V024–V026 OAuth integration connections and the provider CHECK growing to nine, V027 the composite IAM FK, V028 the company-context history, V029 the inbound MCP credential, V030 the trends panel's completion timestamp, V032 the run state of the scheduled Flows trigger). Single source of truth for the schema. The control plane has its own separate line under `services/api/src/main/resources/db/platform/` (ADR 0022).
 
 ## 7. NLP Worker — Python/FastAPI
 

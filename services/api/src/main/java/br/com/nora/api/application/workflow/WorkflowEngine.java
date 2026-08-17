@@ -30,9 +30,10 @@ import org.springframework.stereotype.Service;
  * NORA Flows engine: matches domain events with the tenant's ACTIVE workflows, walks the graph
  * (trigger → conditions → actions) and records each step in {@code workflow_executions.log_json}.
  *
- * <p>Runs outside a request (async post-commit listener) — the caller is responsible for setting
- * the tenant in the {@code TenantRlsContext} (same as the analysis pipeline). Each execution is
- * isolated: a failure in one workflow does not stop the others from the same event.
+ * <p>Runs outside a request (async post-commit listener, or the scheduler tick of {@code
+ * ScheduledFlowRunner}) — the caller is responsible for setting the tenant in the {@code
+ * TenantRlsContext} (same as the analysis pipeline). Each execution is isolated: a failure in one
+ * workflow does not stop the others from the same event.
  */
 @Service
 public class WorkflowEngine {
@@ -92,6 +93,53 @@ public class WorkflowEngine {
                 event.meetingId(),
                 TriggerType.MEETING_RISK_DETECTED,
                 event.occurredAt());
+    }
+
+    /**
+     * Entry point of the {@code schedule.cron} trigger (US75, ADR 0047). Unlike the three above it
+     * carries no event: {@code ScheduledFlowRunner} has already claimed the occurrence and resolved
+     * which meetings were analysed in the window, and this executes the flow once per meeting.
+     *
+     * <p>The fan-out is what lets every condition and all fourteen actions work unchanged — each of
+     * them reads a {@link WorkflowEventContext} built from ONE meeting. It is the same shape {@code
+     * action_item.created} already has, and the canvas copy says so in the same words.
+     *
+     * @return how many executions actually ran (a meeting whose context cannot be built is skipped)
+     */
+    public int runScheduled(Workflow workflow, List<UUID> meetingIds, OffsetDateTime firedAt) {
+        int executed = 0;
+        for (UUID meetingId : meetingIds) {
+            WorkflowEventContext ctx;
+            try {
+                ctx =
+                        contextFactory.forMeeting(
+                                workflow.tenantId(),
+                                meetingId,
+                                TriggerType.SCHEDULE_CRON.wire(),
+                                firedAt);
+            } catch (RuntimeException ex) {
+                // The analysis can be purged by retention between the window query and here.
+                LOG.warn(
+                        "Flows: scheduled context unavailable meetingId={} tenantId={} cause={}",
+                        meetingId,
+                        workflow.tenantId(),
+                        ex.getMessage());
+                continue;
+            }
+            try {
+                execute(workflow, ctx);
+                executed++;
+            } catch (RuntimeException ex) {
+                // execute() already records the failure on the execution; this covers an error
+                // before the INSERT. One meeting failing must not stop the rest of the window.
+                LOG.error(
+                        "Flows: scheduled workflow {} failed for meetingId={} cause={}",
+                        workflow.id(),
+                        meetingId,
+                        ex.getMessage());
+            }
+        }
+        return executed;
     }
 
     /**

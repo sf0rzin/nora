@@ -5,17 +5,21 @@ package br.com.nora.api.domain.workflow;
  * what goes in the {@code workflows.trigger_type} column, in the definition_json trigger node and
  * in the API.
  *
- * <p>{@link #SCHEDULE_CRON} is declared but has NO dispatcher: nothing in the backend schedules a
- * workflow, so a flow saved with it would sit ACTIVE and never run. It stays in the enum because
- * rows already persisted with that value have to keep reading ({@link #fromWire} would throw on
- * them otherwise); {@link #hasDispatcher()} is what keeps it out of new definitions, and {@code
- * WorkflowDefinitionParser} refuses it on save.
+ * <p>All four are dispatched. The first three are domain events {@code AnalysisService} publishes,
+ * each with a handler in {@code WorkflowEngine}; {@link #SCHEDULE_CRON} is fired by {@code
+ * ScheduledFlowRunner}, the {@code @Scheduled} tick US75 added (ADR 0047).
+ *
+ * <p>Until then it was declared with NO dispatcher and {@code WorkflowDefinitionParser} refused it
+ * on save — the enum value survived only so rows persisted before that rule kept deserialising.
+ * {@link #hasDispatcher()} outlives the fix on purpose: it is the invariant that a declared trigger
+ * must be a trigger something actually fires, and the next value added is either dispatched or
+ * refused rather than accepted and silently never run.
  */
 public enum TriggerType {
     MEETING_ANALYSIS_COMPLETED("meeting.analysis_completed", true),
     ACTION_ITEM_CREATED("action_item.created", true),
     MEETING_RISK_DETECTED("meeting.risk_detected", true),
-    SCHEDULE_CRON("schedule.cron", false);
+    SCHEDULE_CRON("schedule.cron", true);
 
     private final String wire;
     private final boolean dispatched;
@@ -30,9 +34,11 @@ public enum TriggerType {
     }
 
     /**
-     * True when something in the backend actually fires this trigger — today the three events
-     * {@code AnalysisService} publishes, each with a handler in {@code WorkflowEngine}. False means
-     * the value exists for backwards compatibility only and must be refused on save.
+     * True when something in the backend actually fires this trigger — the three events {@code
+     * AnalysisService} publishes plus the scheduler tick. False means the value exists for
+     * backwards compatibility only and must be refused on save. Every value returns true today; the
+     * check stays because the alternative is a catalogue entry that advertises a trigger no code
+     * fires, which is the defect US75 closed.
      */
     public boolean hasDispatcher() {
         return dispatched;

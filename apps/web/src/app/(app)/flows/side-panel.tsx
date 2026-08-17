@@ -15,6 +15,7 @@ import type {
   WorkflowExecutionResponse,
   WorkflowExecutionStatus,
 } from "@/lib/api/types";
+import { strings } from "@/lib/strings";
 
 import {
   isGitHubRepo,
@@ -23,6 +24,8 @@ import {
   KIND_META,
   blockMeta,
   EMAIL_PLACEHOLDERS,
+  SCHEDULE_FREQUENCIES,
+  SCHEDULE_WEEKDAYS,
 } from "./catalog";
 import type { RFNode } from "./block-node";
 import { logTime, relativeTime } from "./relative-time";
@@ -284,6 +287,134 @@ function FormEvento({
           onChange={aoMudarNumero("durationMinutes")}
         />
         <span className="field-help">Vazio usa 30 minutos.</span>
+      </div>
+    </>
+  );
+}
+
+/**
+ * schedule.cron form: frequency + when, with no cron syntax anywhere. The backend accepts a closed
+ * vocabulary rather than an expression (ADR 0047), so the three selects below ARE the vocabulary —
+ * there is nothing expressible here that the scheduler cannot honour.
+ */
+function FormAgenda({
+  no,
+  mostrarErros,
+  onChange,
+}: {
+  no: RFNode;
+  mostrarErros: boolean;
+  onChange: (chave: string, valor: unknown) => void;
+}) {
+  const frequencia = valorTexto(no.data.params, "frequency") || "daily";
+  const semanal = frequencia === "weekly";
+  const porHora = frequencia === "hourly";
+
+  function numero(chave: string): number | "" {
+    const v = no.data.params[chave];
+    return typeof v === "number" && Number.isFinite(v) ? v : "";
+  }
+  function aoMudarNumero(chave: string) {
+    return (e: ChangeEvent<HTMLInputElement>) => {
+      const n = e.target.value === "" ? undefined : Number(e.target.value);
+      onChange(chave, typeof n === "number" && Number.isFinite(n) ? n : undefined);
+    };
+  }
+
+  const minutoInvalido = mostrarErros && numero("minute") === "";
+  const horaInvalida = mostrarErros && !porHora && numero("hour") === "";
+
+  return (
+    <>
+      <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0, lineHeight: 1.6 }}>
+        Este gatilho dispara no horário marcado e executa o fluxo{" "}
+        <strong>uma vez para cada reunião analisada</strong> desde a execução anterior. Se nenhuma
+        reunião foi analisada no período, o fluxo não executa e nada aparece no histórico.
+      </p>
+
+      <div className="field">
+        <label className="field-label" htmlFor="flows-agenda-frequencia">
+          Com que frequência <span className="req">*</span>
+        </label>
+        <select
+          id="flows-agenda-frequencia"
+          className="select"
+          value={frequencia}
+          onChange={(e) => onChange("frequency", e.target.value)}
+        >
+          {SCHEDULE_FREQUENCIES.map((f) => (
+            <option key={f} value={f}>
+              {strings.flows.frequency[f]}
+            </option>
+          ))}
+        </select>
+        <span className="field-help">
+          O intervalo mais curto é de uma hora — não há agendamento por minuto.
+        </span>
+      </div>
+
+      {semanal && (
+        <div className="field">
+          <label className="field-label" htmlFor="flows-agenda-dia">
+            Dia da semana <span className="req">*</span>
+          </label>
+          <select
+            id="flows-agenda-dia"
+            className="select"
+            value={valorTexto(no.data.params, "weekday") || "MON"}
+            onChange={(e) => onChange("weekday", e.target.value)}
+          >
+            {SCHEDULE_WEEKDAYS.map((d) => (
+              <option key={d} value={d}>
+                {strings.flows.weekday[d]}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {!porHora && (
+        <div className="field">
+          <label className="field-label" htmlFor="flows-agenda-hora">
+            Hora (0–23) <span className="req">*</span>
+          </label>
+          <input
+            id="flows-agenda-hora"
+            className="input"
+            type="number"
+            min={0}
+            max={23}
+            step={1}
+            placeholder="9"
+            value={numero("hour")}
+            onChange={aoMudarNumero("hour")}
+            aria-invalid={horaInvalida || undefined}
+          />
+          <span className="field-help">{strings.flows.scheduleTimezone}.</span>
+        </div>
+      )}
+
+      <div className="field">
+        <label className="field-label" htmlFor="flows-agenda-minuto">
+          Minuto (0–59) <span className="req">*</span>
+        </label>
+        <input
+          id="flows-agenda-minuto"
+          className="input"
+          type="number"
+          min={0}
+          max={59}
+          step={1}
+          placeholder="0"
+          value={numero("minute")}
+          onChange={aoMudarNumero("minute")}
+          aria-invalid={minutoInvalido || undefined}
+        />
+        <span className="field-help">
+          {porHora
+            ? `Minuto de cada hora em que o fluxo roda. ${strings.flows.scheduleTimezone}.`
+            : `Minuto do horário escolhido. ${strings.flows.scheduleTimezone}.`}
+        </span>
       </div>
     </>
   );
@@ -637,6 +768,10 @@ function FormParams({
         parâmetros.
       </p>
     );
+  }
+
+  if (t === "schedule.cron") {
+    return <FormAgenda no={no} mostrarErros={mostrarErros} onChange={onChange} />;
   }
 
   if (t === "productivity_score_below" || t === "customer_confidence_below") {

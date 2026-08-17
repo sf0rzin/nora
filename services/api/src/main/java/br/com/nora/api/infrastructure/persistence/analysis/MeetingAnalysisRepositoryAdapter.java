@@ -18,6 +18,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -72,6 +73,19 @@ public class MeetingAnalysisRepositoryAdapter implements MeetingAnalysisReposito
                                         ((Number) r[2]).intValue(),
                                         ((Number) r[3]).intValue()))
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UUID> meetingIdsAnalysedBetween(
+            UUID tenantId, OffsetDateTime from, OffsetDateTime toExclusive, int limit) {
+        // A window that is empty or inverted is not an error worth an exception: the scheduler can
+        // reach it with a clock that moved, and the honest answer is "no meetings in that period".
+        if (limit <= 0 || from == null || toExclusive == null || !from.isBefore(toExclusive)) {
+            return List.of();
+        }
+        return jpa.findMeetingIdsAnalysedBetween(
+                tenantId, from, toExclusive, PageRequest.of(0, limit));
     }
 
     private MeetingAnalysisJpaEntity toEntity(MeetingAnalysis a) {

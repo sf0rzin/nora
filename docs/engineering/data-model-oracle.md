@@ -3,9 +3,9 @@
 > A mirror of the Postgres schema in **Oracle 19c+ (PL/SQL DDL)** syntax.
 > NORA runs **on Postgres in production** (see `data-model.md`). This document is an academic deliverable for FIAP's Database Design course, which requires Oracle modeling.
 > Each table corresponds 1:1 to the schema documented in `data-model.md`, with the type and syntax adaptations described in §20.
-> It covers migrations **V001–V030** — the whole canonical schema, including soft-delete (V013), refresh token rotation (V014), the three composite FKs (V015, V027, V029), the hashed invitation token (V018), Customer Confidence (V017), semantic search (V021), chat sessions (V022), NORA Flows (V023), the OAuth integration connections (V024–V026), the company-context history (V028), the inbound MCP credential (V029), the trends panel's completion timestamp (V030) and Row-Level Security (V016/V017/V019/V020/V021–V024/V028 — Oracle equivalent via VPD/DBMS_RLS in §23). Full inventory in §22.
+> It covers migrations **V001–V032** — the whole canonical schema, including soft-delete (V013), refresh token rotation (V014), the three composite FKs (V015, V027, V029), the hashed invitation token (V018), Customer Confidence (V017), semantic search (V021), chat sessions (V022), NORA Flows (V023) and the run state of its scheduled trigger (V032), the OAuth integration connections (V024–V026), the company-context history (V028), the inbound MCP credential (V029), the trends panel's completion timestamp (V030) and Row-Level Security (V016/V017/V019/V020/V021–V024/V028/V032 — Oracle equivalent via VPD/DBMS_RLS in §23). Full inventory in §22.
 
-> **Note (scope of this doc), checked 2026-08-17:** the mirror is **complete up to V030**. Every table documented in `data-model.md` §2 has Oracle DDL here, and every migration V001–V030 has a row in §22. Two things are deliberately **not** mirrored, and both are Postgres-side operational objects rather than schema: the role provisioning in `services/api/src/main/resources/db/operational/R001__provision_app_roles.sql` (the Oracle counterpart is a privilege grant, not a script — see §23.4) and the **separate control-plane database** of ADR 0022 (`services/api/src/main/resources/db/platform/`), which `data-model.md` does not cover either. This file carries **43 tables** (`grep -c '^CREATE TABLE '`) against the **41** `### 2.x` sections of `data-model.md`: the two counts differ by design, because §2.3 (`roles` + `user_roles`) and §2.23 (`iam_user_invitations` + `iam_invitation_groups`) each document two tables. A looser `grep -c 'CREATE TABLE'` returns 46, matching three prose mentions as well.
+> **Note (scope of this doc), checked 2026-08-17:** the mirror is **complete up to V032**. Every table documented in `data-model.md` §2 has Oracle DDL here, and every migration V001–V032 has a row in §22. Two things are deliberately **not** mirrored, and both are Postgres-side operational objects rather than schema: the role provisioning in `services/api/src/main/resources/db/operational/R001__provision_app_roles.sql` (the Oracle counterpart is a privilege grant, not a script — see §23.4) and the **separate control-plane database** of ADR 0022 (`services/api/src/main/resources/db/platform/`), which `data-model.md` does not cover either. This file carries **44 tables** (`grep -c '^CREATE TABLE '`) against the **42** `### 2.x` sections of `data-model.md`: the two counts differ by design, because §2.3 (`roles` + `user_roles`) and §2.23 (`iam_user_invitations` + `iam_invitation_groups`) each document two tables. A looser `grep -c 'CREATE TABLE'` returns 47, matching three prose mentions as well.
 
 ## 1. `TENANTS`
 
@@ -1085,16 +1085,18 @@ CREATE INDEX idx_chat_message_tenant         ON chat_message (tenant_id);
 CREATE INDEX idx_chat_message_session_created ON chat_message (session_id, created_at);
 ```
 
-## 18. `WORKFLOWS` and `WORKFLOW_EXECUTIONS` (V023) — NORA Flows
+## 18. `WORKFLOWS`, `WORKFLOW_EXECUTIONS` (V023) and `WORKFLOW_SCHEDULES` (V032) — NORA Flows
 
-Postgres source: `data-model.md` §2.37–§2.38. ADR 0030 (engine), ADR 0032 (canvas).
+Postgres source: `data-model.md` §2.37–§2.38 and §2.42. ADR 0030 (engine), ADR 0032 (canvas),
+ADR 0047 (the scheduled trigger).
 
 - **`trigger_type` has no CHECK, and the mirror does not add one.** It is plain `TEXT` in Postgres.
-  The valid set lives in the Java `TriggerType` enum and in `WorkflowDefinitionParser`, which
-  refuses `schedule.cron` on save because nothing in the backend schedules a workflow. Writing an
-  Oracle `CHECK` here would document a constraint the production database does not have; the
-  honest mirror leaves the column open and says why. `workflow_executions.status`, by contrast,
-  **is** constrained in the database, so it is constrained here.
+  The valid set lives in the Java `TriggerType` enum and in `WorkflowDefinitionParser`. All four
+  wire values are dispatched since V032; before it, `schedule.cron` was refused on save because
+  nothing in the backend scheduled a workflow. Writing an Oracle `CHECK` here would document a
+  constraint the production database does not have; the honest mirror leaves the column open and
+  says why. `workflow_executions.status`, by contrast, **is** constrained in the database, so it is
+  constrained here.
 - **The partial index becomes a function-based index.** Postgres has
   `CREATE INDEX … (tenant_id, trigger_type) WHERE active`; Oracle before 23ai has no partial index,
   so the same trick this document already uses for `is_root` (§2) and the soft-delete uniques
@@ -1155,6 +1157,53 @@ CREATE TABLE workflow_executions (
 
 CREATE INDEX idx_workflow_executions_tenant ON workflow_executions (tenant_id);
 CREATE INDEX idx_workflow_executions_wf     ON workflow_executions (workflow_id, created_at DESC);
+```
+
+### 18.1 `WORKFLOW_SCHEDULES` (V032) — the run state of a scheduled flow
+
+Postgres source: `data-model.md` §2.42. ADR 0047.
+
+- **`cron` has no CHECK either, for the same reason as `trigger_type`.** The column holds the
+  canonical six-field expression that `ScheduleSpec`'s closed vocabulary compiles to, and the
+  vocabulary is enforced in Java at save. A regular-expression `CHECK` here would re-state a shape
+  Java already produced, and would drift from it the first time the vocabulary widens.
+- **The PK is the FK.** `workflow_id` is both, exactly as in Postgres — one schedule per workflow,
+  and the row dies with the workflow through the cascade. No surrogate key is added, because the
+  mirror is a translation, not a redesign.
+- **Nothing here is Oracle-specific.** There is no partial index and no boolean, so the DDL below
+  differs from Postgres only in the type spellings this document uses everywhere: `VARCHAR2(36)`
+  for a UUID and `TIMESTAMP WITH TIME ZONE` for `TIMESTAMPTZ`.
+
+```sql
+CREATE TABLE workflow_schedules (
+    -- One row per scheduled flow: the PK is also the FK to workflows.
+    workflow_id   VARCHAR2(36) PRIMARY KEY,
+    -- Own tenant_id so the table can carry its own policy.
+    tenant_id     VARCHAR2(36) NOT NULL,
+    -- Canonical six-field expression the schedule vocabulary compiles to.
+    -- NO CHECK, matching Postgres: the vocabulary is enforced in the application.
+    cron          VARCHAR2(120) NOT NULL,
+    -- IANA zone the occurrences were computed in. Stored per row, not assumed.
+    timezone      VARCHAR2(60) NOT NULL,
+    -- Advanced AT CLAIM, so missed occurrences collapse into one run on recovery.
+    next_fire_at  TIMESTAMP WITH TIME ZONE NOT NULL,
+    -- Advanced AT RELEASE, so a run that dies mid-flight does not drop its meetings.
+    window_from   TIMESTAMP WITH TIME ZONE NOT NULL,
+    -- Diagnostic: instant of the most recent claim. NULL = never ran.
+    last_fire_at  TIMESTAMP WITH TIME ZONE,
+    -- Set while a run is in flight; the overlap guard. NULL = idle.
+    claimed_at    TIMESTAMP WITH TIME ZONE,
+    -- Id of the process holding the claim, minted per boot. Diagnostic.
+    claim_owner   VARCHAR2(64),
+    created_at    TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    updated_at    TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+
+    CONSTRAINT wfs_workflow_fk FOREIGN KEY (workflow_id) REFERENCES workflows(id) ON DELETE CASCADE,
+    CONSTRAINT wfs_tenant_fk   FOREIGN KEY (tenant_id)   REFERENCES tenants(id)   ON DELETE CASCADE
+);
+
+-- The scheduler tick's only query: the tenant's due schedules, oldest overdue first.
+CREATE INDEX idx_workflow_schedules_due ON workflow_schedules (tenant_id, next_fire_at);
 ```
 
 ## 19. `INTEGRATION_CONNECTIONS` (V024, CHECK expanded in V025 and V026)
@@ -1283,8 +1332,12 @@ END;
 
 ## 22. Oracle ≡ Postgres inventory
 
-Every migration V001–V030 appears in exactly one row below, so the two schemas can be checked
-against each other line by line.
+Every migration V001–V032 appears in exactly one row below, so the two schemas can be checked
+against each other line by line — with one hole that is deliberate: **there is no V031.** US41
+reserved the number and then shipped policy templates as a code catalogue with no table, so nothing
+was ever written under it. The gap is left as it is rather than closed by renumbering, because a
+skipped version costs Flyway nothing and moving V032 down would change the checksum of a migration
+that may already have run.
 
 | # | Table | Postgres (migration) | Oracle (§ in this doc) |
 |---|---|---|---|
@@ -1315,7 +1368,8 @@ against each other line by line.
 | 25 | tenant_context_versions + `tenant_contexts.current_version` (company-context history, US31) | V028 | §10 |
 | 26 | mcp_tokens (inbound MCP credential, US27) | V029 | §13.1 |
 | 27 | `meeting_action_items.completed_at` + its two aggregation indexes (trends panel, US21) | V030 | §11 |
-| 28 | Row-Level Security (RLS → VPD/DBMS_RLS), all waves | V016, V017, V019, V020, V021, V022, V023, V024, V028 | §23 |
+| 28 | workflow_schedules (run state of a scheduled flow, US75) | V032 | §18.1 |
+| 29 | Row-Level Security (RLS → VPD/DBMS_RLS), all waves | V016, V017, V019, V020, V021, V022, V023, V024, V028, V032 | §23 |
 
 > **V027 carries a checksum warning on the Postgres side that has no Oracle counterpart.** The
 > migration was edited after it had already been applied, so a database that ran the earlier
@@ -1324,11 +1378,11 @@ against each other line by line.
 > records the detail, including that V027 **deletes** the pre-existing cross-tenant rows the new
 > constraint cannot accept, reporting the counts via `RAISE NOTICE`.
 
-## 23. Row-Level Security (V016 → V028) — Oracle equivalent: VPD / DBMS_RLS
+## 23. Row-Level Security (V016 → V032) — Oracle equivalent: VPD / DBMS_RLS
 
 In Postgres, migration V016 enables **Row-Level Security (RLS)**: each tenant-owned table gains `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + a `tenant_isolation` policy whose predicate is `tenant_id = nora.current_tenant_id()`. The function reads a **session GUC** (`nora.current_tenant_id`) set by the Spring **`TenantRlsAspect`** via `SET LOCAL` at the start of each `@Transactional`. Enforcement is **opt-in in prod**: it only becomes real when the API connects with a dedicated role **without `BYPASSRLS`** (`nora_app NOBYPASSRLS`) and `nora.security.rls.enforce=true`; the owner/admin (used in dev/Testcontainers) bypasses by default, leaving the RLS schema inert without breaking tests.
 
-V016 was the first of eight waves, not the whole story — **§23.4 has the full coverage**, including
+V016 was the first of nine waves, not the whole story — **§23.4 has the full coverage**, including
 the 13 tables V020 later took back out of enforcement.
 
 The native equivalent in Oracle is **VPD (Virtual Private Database)**, also called *Fine-Grained Access Control (FGAC)*, configured via **`DBMS_RLS.ADD_POLICY`** + a **policy function** that returns a dynamic predicate (`WHERE` clause). The session context (Postgres's GUC) becomes an Oracle **application context** (`CREATE CONTEXT … USING …`), read with `SYS_CONTEXT`.
@@ -1414,11 +1468,11 @@ END;
 
 The remaining tenant-owned tables covered by V016 follow **exactly the same pattern** (`DBMS_RLS.ADD_POLICY` with `NORA_TENANT_PREDICATE`): `tenant_contexts`, `refresh_tokens`, `iam_groups`, `iam_policies`, `iam_user_invitations`, `meeting_analyses` and `meeting_participants`. The `tenants` table is the only special case (it filters by `id`, not `tenant_id`) — and the same is true of every table added in the later waves listed in §23.4, none of which needs a different predicate.
 
-### 23.4 Full coverage: eight waves, and the 13 tables V020 took back out
+### 23.4 Full coverage: nine waves, and the 13 tables V020 took back out
 
-**35 tables carry a `tenant_isolation` policy**, added over eight migrations. Those 35, plus the
+**36 tables carry a `tenant_isolation` policy**, added over nine migrations. Those 36, plus the
 5 cascade-boundary children that deliberately get none, the 2 legacy tables outside the model and
-`mcp_tokens` (V029, below), account for all 43 tables in this document.
+`mcp_tokens` (V029, below), account for all 44 tables in this document.
 
 | Wave | Count | Tables |
 |---|---|---|
@@ -1430,6 +1484,7 @@ The remaining tenant-owned tables covered by V016 follow **exactly the same patt
 | **V023** | 2 | `workflows`, `workflow_executions` |
 | **V024** | 1 | `integration_connections` |
 | **V028** | 1 | `tenant_context_versions` |
+| **V032** | 1 | `workflow_schedules` |
 
 **No policy, by design (5):** `iam_invitation_groups`, `meeting_goal_expected_outcomes`,
 `meeting_outcome_coverage`, `customer_buying_signals`, `customer_objections` — children with no
@@ -1447,7 +1502,7 @@ request under enforcement — in Oracle exactly as in Postgres, since `SYS_CONTE
 as the GUC. Isolation for that table is the application's `tenant_id` predicate plus the composite
 FK to `users(tenant_id, id)`.
 
-#### V020 disables 13 of the 35 — and it is a scope decision, not a retreat
+#### V020 disables 13 of the 36 — and it is a scope decision, not a retreat
 
 ADR 0028 narrowed enforcement to **business data + PII**, the tables touched only by authenticated
 requests or by the analysis pipeline, both of which set the tenant context. V020 turns RLS **off**
@@ -1458,7 +1513,7 @@ invitation acceptance, lookup by token hash, and the onboarding writes to author
 - **(B) IAM authorization, 7:** `iam_groups`, `iam_policies`, `iam_user_groups`, `iam_group_policies`, `iam_user_policies`, `iam_policy_versions`, `iam_audit_events`.
 
 The policies stay **defined but inert**, so re-enabling is one statement rather than a recreation.
-Isolation on those 13 continues through the application's `tenant_id` filter. **22 tables** are left
+Isolation on those 13 continues through the application's `tenant_id` filter. **23 tables** are left
 under enforcement.
 
 Note what that means for §23.3: `USERS` is one of the 13. It is kept in the example above because it

@@ -179,6 +179,24 @@ nora:
       # Per user, per minute. Two tracks open two sessions at once, and each reconnection costs one
       # more — see SttProperties.RateLimit for why this is 12 and not the Azure broker's 6.
       sessions-per-minute: ${NORA_STT_SESSIONS_PER_MINUTE:12}
+  flows:
+    # NORA Flows, `schedule.cron` trigger (US75, ADR 0047). The tick asks each active tenant for
+    # its due schedules and CLAIMS each run in `workflow_schedules` before executing it.
+    schedule:
+      # One minute is the finest resolution the schedule vocabulary can express (hourly / daily /
+      # weekly), so a faster tick finds nothing and a slower one makes every schedule late.
+      tick-cron: ${NORA_FLOWS_SCHEDULE_TICK_CRON:0 * * * * *}
+      # How long a claim is believed before the run holding it is presumed abandoned. It is a
+      # SAFETY PROPERTY, not a tuning knob: it is an assumption about how long a run takes (a flow
+      # can wire up to 14 HTTP actions), and a value below the real duration starts a second copy
+      # of a run that is merely slow. ScheduledFlowRunner refuses anything under 5 minutes, WARNs
+      # and uses the floor. Raising it delays recovery from a JVM that died mid-run; nothing else.
+      claim-lease-minutes: ${NORA_FLOWS_SCHEDULE_CLAIM_LEASE_MINUTES:30}
+      # Upper bound on the meetings ONE fire runs over. The trigger executes the flow once per
+      # meeting analysed since the previous run's window opened, and after a long outage that
+      # window can be days wide — this is what keeps it from becoming unbounded work. When it
+      # truncates, the most recent N run and a WARN says so.
+      max-meetings-per-run: ${NORA_FLOWS_SCHEDULE_MAX_MEETINGS_PER_RUN:50}
   frontend:
     base-url: ${NORA_FRONTEND_BASE_URL:http://localhost:3000}
   email:

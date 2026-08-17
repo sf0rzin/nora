@@ -74,6 +74,10 @@ const SPLIT_CONFIDENCE_WARN = 0.7;
  * (`AnalysisService` publishes the three events), so a flow on any of them will fire from this
  * upload. Checking only the anchor trigger told users with a risk or action-item flow that they
  * had none.
+ *
+ * `schedule.cron` is the fourth trigger and is deliberately NOT here. It does react to this
+ * meeting, but at its own next occurrence — the note below says the flows run "quando a análise
+ * terminar", and for a scheduled flow that would be wrong about the timing.
  */
 const ANALYSIS_TRIGGERS: string[] = [
   "meeting.analysis_completed",

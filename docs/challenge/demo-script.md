@@ -269,12 +269,23 @@ One screen, back on the dashboard. Three sentences:
 
 Open `/flows` in the Enterprise workspace. The seed leaves one flow there —
 `meeting.risk_detected` wired to an e-mail — so the canvas is not empty. Open it and show the
-trigger catalogue: three triggers, all three dispatched by the same analysis round —
-`meeting.analysis_completed`, `action_item.created`, `meeting.risk_detected`.
+trigger catalogue: four triggers. Three are dispatched by the same analysis round —
+`meeting.analysis_completed`, `action_item.created`, `meeting.risk_detected` — and the fourth,
+`schedule.cron`, is fired by a timer instead (US75, ADR 0047). It is the one whose canvas label is
+not a restatement of its wire name, so point at it rather than reading the list.
 
-Say the honest part: `schedule.cron` appears nowhere, because nothing dispatches it, and the API
-refuses to save a flow that uses it in an `ACTIVE` state. A flow that could never run should not be
-storable as if it could.
+Say the honest part, which is now about the schedule rather than about its absence: it takes a
+**closed vocabulary** — hourly, daily or weekly, in `America/Sao_Paulo` — and not a cron expression,
+because a real expression can ask for every second and one host cannot honour that. And it is **not
+a digest**: it runs the flow once per meeting analysed since the previous run, so a period with no
+meetings produces no run at all. If someone asks why not a weekly summary, the answer is that every
+condition and action reads one meeting, and half a digest would be copy that promises more than the
+blocks can say.
+
+Until this release the honest part was the opposite: the trigger appeared nowhere, because nothing
+dispatched it, and the API refused to save a flow that used it in an `ACTIVE` state. A flow that
+could never run should not be storable as if it could — which is still the rule, now satisfied by
+having a dispatcher rather than by refusing the value.
 
 Use the flow's **test run** rather than a real trigger: a real trigger means uploading a meeting
 and waiting for a whole analysis to complete on stage. Know what the button does before you press
