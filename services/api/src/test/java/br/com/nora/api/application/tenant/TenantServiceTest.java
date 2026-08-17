@@ -10,6 +10,7 @@ import br.com.nora.api.domain.iam.AttachedPolicy;
 import br.com.nora.api.domain.iam.IamAuditEvent;
 import br.com.nora.api.domain.iam.IamGroup;
 import br.com.nora.api.domain.iam.IamPolicy;
+import br.com.nora.api.domain.iam.PermissionBoundary;
 import br.com.nora.api.domain.iam.PolicyStatement;
 import br.com.nora.api.domain.tenant.Tenant;
 import java.time.Instant;
@@ -334,6 +335,21 @@ class TenantServiceTest {
 
         @Override
         public List<AttachedPolicy> collectAttachedPoliciesForUser(UUID userId, UUID tenantId) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Optional<PermissionBoundary> findBoundaryForUser(UUID userId, UUID tenantId) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void setBoundaryForUser(UUID userId, UUID policyId, UUID tenantId, UUID by) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void removeBoundaryForUser(UUID userId, UUID tenantId) {
             throw new UnsupportedOperationException();
         }
 

@@ -4,8 +4,10 @@ import br.com.nora.api.api.dto.iam.AuditEventDto;
 import br.com.nora.api.api.dto.iam.CreateGroupRequest;
 import br.com.nora.api.api.dto.iam.CreatePolicyRequest;
 import br.com.nora.api.api.dto.iam.GroupDto;
+import br.com.nora.api.api.dto.iam.PermissionBoundaryDto;
 import br.com.nora.api.api.dto.iam.PolicyDto;
 import br.com.nora.api.api.dto.iam.PolicyTemplateDto;
+import br.com.nora.api.api.dto.iam.SetPermissionBoundaryRequest;
 import br.com.nora.api.api.dto.iam.SimulatePolicyRequest;
 import br.com.nora.api.api.dto.iam.SimulatePolicyResponse;
 import br.com.nora.api.api.dto.iam.UpdatePolicyRequest;
@@ -19,6 +21,7 @@ import br.com.nora.api.domain.iam.Effect;
 import br.com.nora.api.domain.iam.IamAuditEvent;
 import br.com.nora.api.domain.iam.IamGroup;
 import br.com.nora.api.domain.iam.IamPolicy;
+import br.com.nora.api.domain.iam.PermissionBoundary;
 import br.com.nora.api.domain.iam.PolicyDecision;
 import br.com.nora.api.domain.iam.PolicyDocument;
 import br.com.nora.api.domain.iam.PolicyStatement;
@@ -237,6 +240,61 @@ public class IamController {
         iam.detachPolicyFromUser(p.tenantId(), p.userId(), policyId, userId);
     }
 
+    // ---------- permission boundary (US44) ----------
+
+    /**
+     * US44 — the policy capping this user, or an explicitly empty answer when there is none.
+     *
+     * <p>Gated by its own {@code iam:boundary:read} rather than by {@code iam:policy:read}, on the
+     * same argument that gave {@code iam:policy:simulate} an action of its own: which policy caps
+     * which user is part of the attachment graph, and no other endpoint exposes it. Folding it into
+     * the policy-read grant would silently widen what its holders can learn, while the {@code
+     * iam:*} shape admin policies use picks the new action up on its own.
+     */
+    @GetMapping("/users/{userId}/boundary")
+    @RequiresPermission(action = "iam:boundary:read", resource = ResourceType.IAM)
+    public PermissionBoundaryDto getBoundary(@PathVariable("userId") UUID userId) {
+        AuthenticatedPrincipal p = CurrentUser.require();
+        return iam.getBoundary(p.tenantId(), userId)
+                .map(IamController::toBoundaryDto)
+                .orElseGet(() -> PermissionBoundaryDto.none(userId));
+    }
+
+    /**
+     * US44 — sets or replaces the cap on a user. {@code PUT} because there is at most one boundary
+     * per user and setting it twice has to land on the same place.
+     *
+     * <p>Refused for the caller itself and for the tenant Root; see {@link IamService#setBoundary}.
+     * Neither refusal is expressible as a permission, which is why they are in the service and not
+     * in this annotation.
+     */
+    @PutMapping("/users/{userId}/boundary")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequiresPermission(action = "iam:boundary:set", resource = ResourceType.IAM)
+    public void setBoundary(
+            @PathVariable("userId") UUID userId, @RequestBody SetPermissionBoundaryRequest body) {
+        if (body == null || body.policyId() == null) {
+            throw new IllegalArgumentException("policyId is required");
+        }
+        AuthenticatedPrincipal p = CurrentUser.require();
+        iam.setBoundary(p.tenantId(), p.userId(), userId, body.policyId());
+    }
+
+    /**
+     * US44 — removes the cap, returning the user to whatever its own policies say.
+     *
+     * <p>A separate action from {@code iam:boundary:set} on purpose: a delegated admin can be given
+     * the right to bound their team without the right to unbound anyone, and the two being one
+     * action would make that impossible to express.
+     */
+    @DeleteMapping("/users/{userId}/boundary")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @RequiresPermission(action = "iam:boundary:delete", resource = ResourceType.IAM)
+    public void removeBoundary(@PathVariable("userId") UUID userId) {
+        AuthenticatedPrincipal p = CurrentUser.require();
+        iam.removeBoundary(p.tenantId(), p.userId(), userId);
+    }
+
     // ---------- audit ----------
 
     @GetMapping("/audit")
@@ -301,7 +359,14 @@ public class IamController {
                 explained.policyName(),
                 explained.statementIndex(),
                 toStatementDto(decision.statement()),
-                explained.statementsEvaluated());
+                explained.statementsEvaluated(),
+                explained.boundaryPolicyId(),
+                explained.boundaryPolicyName());
+    }
+
+    private static PermissionBoundaryDto toBoundaryDto(PermissionBoundary b) {
+        return new PermissionBoundaryDto(
+                b.userId(), b.policyId(), b.policyName(), b.attachedBy(), b.attachedAt());
     }
 
     private static SimulatePolicyResponse.Statement toStatementDto(PolicyStatement s) {

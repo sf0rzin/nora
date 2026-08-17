@@ -24,9 +24,33 @@ spring:
     # (breaking dev/test, which use dynamic DATASOURCE_*). By default, spring.flyway inherits
     # spring.datasource. At cutover, Bicep injects SPRING_FLYWAY_URL/USER/PASSWORD (= admin) via
     # env (relaxed binding) -> then Flyway uses the admin while the datasource points at nora_app.
+    #
+    # !! THE THREE KEYS BELOW ARE INERT, AND HAVE BEEN SINCE THEY WERE WRITTEN !!
+    # They are indented under `spring.jpa`, not under `spring.flyway`, so Spring binds them into
+    # JpaProperties, which ignores unknown fields, and Flyway has always run on its own defaults:
+    # `enabled=true` and `locations=classpath:db/migration` happen to match the intent, and
+    # `baseline-on-migrate` does NOT — its real value is `false`. They are left exactly where they
+    # are on purpose: moving `baseline-on-migrate` would be the first time it ever took effect,
+    # against databases nobody has re-tested, which is a change that needs its own decision rather
+    # than a silent reindent inside an unrelated story (US44, ADR 0049).
     enabled: true
     baseline-on-migrate: true
     locations: classpath:db/migration
+  flyway:
+    # V031 was reserved by US41, released when policy templates shipped as a code catalogue, and
+    # V032 took the next number while it sat empty. US44 then FILLED V031 rather than renumbering,
+    # because renumbering an unreleased file is free and renumbering V032 is not -- it may already
+    # have run somewhere, and moving it would change its checksum.
+    #
+    # With the default `false`, a database that already applied V032 fails `validate` on boot with
+    # "Detected resolved migration not applied to database: 031" and the API does not start. This
+    # flag makes Flyway apply the lower version it finds pending instead of refusing it. Nothing
+    # already applied is re-run and no checksum moves; the cost is that a genuinely accidental
+    # out-of-order file would also be accepted silently, which is why the number gaps are recorded
+    # in `docs/engineering/data-model.md` §5 rather than left to be noticed here.
+    #
+    # This is the ONLY key under a real `spring.flyway` block -- see the note above it.
+    out-of-order: true
   # Without this, requests to nonexistent routes fall into the static resources
   # DefaultServlet (Whitelabel 404) instead of reaching the `NoHandlerFoundException`
   # of `GlobalExceptionHandler`. Combined with `add-mappings: false` to

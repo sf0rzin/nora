@@ -130,7 +130,8 @@ Tenant
 ├── Policies            — JSON documents: Effect / Action / Resource [/ Condition]
 ├── Users ⇄ Groups       (N:N, `iam_user_groups`)
 ├── Groups ⇄ Policies    (N:N, `iam_group_policies`)
-└── Users ⇄ Policies     (N:N, optional direct attachment, `iam_user_policies`)
+├── Users ⇄ Policies     (N:N, optional direct attachment, `iam_user_policies`)
+└── User → Boundary      (0..1, a policy that CAPS the user, `iam_permission_boundaries`, US44)
 ```
 
 Root uniqueness guarantee: partial index `UNIQUE (tenant_id) WHERE is_root = TRUE` (V006:26-27).
@@ -142,6 +143,7 @@ Root uniqueness guarantee: partial index `UNIQUE (tenant_id) WHERE is_root = TRU
 3. **Deny-first** (`PolicyEvaluator.java:91-93`): any `Deny` matching Action+Resource+Condition wins.
 4. **At least one `Allow` matching** Action+Resource+Condition → returns `ALLOW`.
 5. **Default deny** (line 96): if no `Allow` matched, returns `false`.
+6. **Permission boundary** (US44, ADR 0049): if the answer so far is ALLOW *and* the user carries a boundary, rules 2-5 run a second time over the boundary document, and the result is the intersection. A boundary never grants — it is consulted only after an allow, so it can only turn one into a deny. A user with no boundary is unaffected, and that is every user until one is attached. See §25.
 
 ### Wildcards
 
@@ -171,7 +173,7 @@ Two things the endpoint does not delegate to `AuthorizationService.isAllowed`:
 - **The Root bypass is reported, not applied.** `isAllowed` answers `true` on its first line for a Root, which is correct and useless as an explanation, because no statement was consulted. The simulation answers `reason = ROOT_BYPASS` instead.
 - **The subject is resolved inside the caller's tenant.** The `userId` arrives in the request body, so a user of another tenant answers `404 IAM_USER_NOT_FOUND`. Answering "deny, no statements" would be true and would still confirm the id exists.
 
-The reasons are exhaustive: `ROOT_BYPASS`, `ALLOW`, `EXPLICIT_DENY`, `NO_MATCHING_STATEMENT` (statements were evaluated, none matched) and `NO_STATEMENTS` (nothing is attached to the user). The last two are the distinction a bare `false` cannot make — one sends you to the attachments, the other to the policy text.
+The reasons are exhaustive: `ROOT_BYPASS`, `ALLOW`, `EXPLICIT_DENY`, `NO_MATCHING_STATEMENT` (statements were evaluated, none matched), `NO_STATEMENTS` (nothing is attached to the user) and, since US44, `BOUNDARY_NOT_PERMITTED` and `BOUNDARY_EXPLICIT_DENY` (§25). The last two of the original five are the distinction a bare `false` cannot make — one sends you to the attachments, the other to the policy text — and the two boundary reasons exist for the same reason at one remove: they send you to a third document, which is the one place `NO_MATCHING_STATEMENT` would never have suggested looking.
 
 ### Deny-by-default for authorization (#51)
 
@@ -190,7 +192,7 @@ Exhaustive map extracted from the controllers (Grep in `services/api/src/main/ja
 | Resource | Actions |
 |---|---|
 | **meeting** | `meeting:upload`, `meeting:read`, `meeting:update`, `meeting:reprocess`, `meeting:analyze:live` |
-| **iam (groups/policies/audit)** | `iam:group:read`, `iam:group:create`, `iam:group:delete`, `iam:group:add-member`, `iam:group:remove-member`, `iam:policy:read`, `iam:policy:create`, `iam:policy:update`, `iam:policy:delete`, `iam:policy:simulate`, `iam:attachment:create`, `iam:attachment:delete`, `iam:audit:read` |
+| **iam (groups/policies/audit)** | `iam:group:read`, `iam:group:create`, `iam:group:delete`, `iam:group:add-member`, `iam:group:remove-member`, `iam:policy:read`, `iam:policy:create`, `iam:policy:update`, `iam:policy:delete`, `iam:policy:simulate`, `iam:attachment:create`, `iam:attachment:delete`, `iam:audit:read`, `iam:boundary:read`, `iam:boundary:set`, `iam:boundary:delete` |
 | **iam (invitations)** | `iam:user:invite`, `iam:invite:read`, `iam:invite:revoke` |
 | **tenant** | `tenant:read`, `tenant:name:write`, `tenant:domain:read`, `tenant:domain:write`, `tenant:context:read`, `tenant:context:write` |
 | **task** | `task:read`, `task:write` |
@@ -200,6 +202,8 @@ Exhaustive map extracted from the controllers (Grep in `services/api/src/main/ja
 `workflow:test` is deliberately separate from read and write: it executes the wired actions for real (e-mail, Slack, issue creation) against the tenant's integrations.
 
 `iam:policy:simulate` (US43, `POST /iam/simulate`) is separate from `iam:policy:read` for the mirror-image reason: it reveals more, not less. The simulator answers from which policies are **attached** to which user, and no endpoint of this API exposes that graph, so folding it into the policy-read grant would silently widen what its holders can learn. Being its own action it is deny-by-default — an existing grant of `iam:policy:read` does not acquire it, while the `iam:*` shape admin policies use picks it up on its own.
+
+The three `iam:boundary:*` actions (US44, ADR 0049) run the same argument as `iam:policy:simulate` and land in the same place: which policy caps which user is part of the attachment graph, and no other endpoint exposes it, so folding the read into `iam:policy:read` would widen what its holders can learn. `set` and `delete` are separate from each other so a delegated admin can be given the power to bound their team without the power to unbound anyone. See §25.
 
 `GET /iam/policy-templates` (US41) runs the same argument the other way and lands on the opposite answer, which is why **the table above does not grow a row for it**. The catalogue is a constant of the build: identical for every caller of every tenant apart from the tenant id substituted into the ARNs, which the caller's own token already carries. A new action would gate no knowledge the holder of `iam:policy:read` does not already have, and would make every existing admin policy stop working the day it shipped. See §22.
 
@@ -1472,6 +1476,94 @@ The visible consequence is deliberate: two users of one tenant can legitimately 
 people, different counts and different date ranges. The identity `id` is the same for both, because
 it is derived from the person — `sha256` of the e-mail, or of the normalised first/last pair, cut to
 16 hex characters, the same idiom `pii_shield._hash` uses — and not from the visible set.
+
+## §25. Permission boundaries — the one IAM concept that only takes away (US44, ADR 0049)
+
+§4 is the IAM that only ever adds: every statement applicable to a user could grant, and the union
+of them was the answer. A **permission boundary** is a policy attached to a user that **caps** it.
+An action passes only if the user's own policies allow it **and** the boundary allows it.
+
+The code is `domain/iam/PermissionBoundary`, the five-argument overloads of
+`PolicyEvaluator.explain` / `isAllowed` / `hasAnyAllow` / `uniformDecision`, the boundary resolution
+in `AuthorizationService`, and migration **V031** (`iam_permission_boundaries`).
+
+### A boundary never grants, and that is a test rather than an intention
+
+Two tests carry the feature, and only having both proves it is an intersection instead of a second
+grant path:
+
+- an action the user's policies allow and the boundary does not is **denied**;
+- an action the boundary allows and the user's policies do not is **denied too** — the widest
+  boundary in the tenant on a user with nothing attached still allows nothing.
+
+The ordering in the code is what makes the second one structural. The boundary is consulted **only
+after** the user's own statements answered ALLOW; a deny stands on its own and keeps its own reason.
+There is no arrangement of that method in which a boundary adds a permission.
+
+### It is one traversal, so the simulator cannot describe a different decision
+
+US43 collapsed decision and explanation into a single pass (`isAllowed` is `explain(...).allowed()`).
+The cap is applied **inside that pass**, in a five-argument overload; the four-argument form
+delegates to it with a null boundary. Applying it anywhere else would have produced the specific
+failure the simulator exists to prevent: a 403 from the gate and `NO_MATCHING_STATEMENT` from
+`POST /iam/simulate`, sending whoever is debugging into the attached policies — the one document
+where the answer is not.
+
+So the boundary has reasons of its own. `BOUNDARY_NOT_PERMITTED` when the cap simply does not cover
+the action (no deciding statement: a cap denies by *not permitting*), `BOUNDARY_EXPLICIT_DENY` when
+a Deny inside the boundary matched, with that statement reported. `PolicyDecision.fromBoundary()`
+tells a caller which list `statementIndex` refers to, because a boundary index resolved against the
+attached policies would name whichever policy happened to sit at that offset. The simulation also
+returns `boundaryPolicyName` **whenever the user has one**, decided by it or not.
+
+Three sibling entry points had to follow, each for its own reason. `filterAllowed` passes the cap
+through per row. `hasAnyAllow` (the list pre-gate) asks the boundary the same weak question, which
+cannot be stricter than the per-row check and buys a clean 403 instead of an empty page.
+`uniformDecision` is the one that would have been a hole: a present-and-true answer tells the caller
+to **skip** per-item filtering and paginate in SQL, so a cap applied only inside that filter would be
+skipped with it. It now intersects both uniform answers and returns `empty` on any doubt, which
+falls back to item-by-item evaluation — where the cap runs.
+
+### Root is not capped, and it is refused rather than ignored
+
+`AuthorizationService` returns `true` on its first line for the tenant Root, before any statement is
+read, and the boundary does not change that ordering. A cap that could silence Root would be a lock
+whose only key is inside it: there is no support desk, and the control plane (ADR 0022) is telemetry
+and model catalogue with no path into a tenant's authorization config. `PUT` therefore answers
+**409 `IAM_BOUNDARY_ON_ROOT`** instead of storing a row the evaluator would never read — a stored row
+would render in the IAM screen as a control that controls nothing.
+
+The consequence is stated rather than softened: **a compromised Root is unbounded.** What boundaries
+reduce is the blast radius of everyone else.
+
+### Who may set one
+
+`iam:boundary:read`, `iam:boundary:set` and `iam:boundary:delete`, all three deny-by-default and all
+three picked up by the `iam:*` shape admin policies already use. Setting or removing **your own**
+boundary answers **409 `IAM_BOUNDARY_SELF`** — a principal that can widen its own cap has none.
+
+That refusal is the second line. The first is that **a boundary applies to every action, including
+`iam:boundary:*`**: a cap that does not grant them stops its holder from touching anybody's
+boundary, which closes the two-bounded-admins case a self-rule alone would leave open. The
+self-refusal covers the remaining one — a delegated admin legitimately holding `iam:boundary:set` so
+they can bound their own team.
+
+**What is not built, and the cost:** AWS's `iam:PermissionsBoundary` condition key, which is what
+forces a delegated admin to bound the identities they create. It is a different mechanism, not a
+sixth condition operator, and ADR 0049 §7 rejects inventing it here. So an admin with
+`iam:attachment:create` can still create an **unbounded** user; what a boundary guarantees is that
+the admin cannot escalate *themselves*.
+
+### Absence is unrestricted
+
+No row means no cap. That is the state of every user of every tenant the day V031 ships, which is
+why the migration backfills nothing. An **empty** statement list is a different thing and denies —
+unreachable through the API, and defined that way because between two unreachable readings the one
+that costs access is the safe one. Both are unit-tested rather than left to control flow.
+
+Deleting the policy behind a cap is refused (**409 `IAM_POLICY_IN_USE_AS_BOUNDARY`**, enforced by
+V031's `ON DELETE NO ACTION`): under a cascade, the ordinary policy-delete endpoint would remove a
+cap while the audit trail recorded only "policy deleted".
 
 ## Next architectural refactors
 

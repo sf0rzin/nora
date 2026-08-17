@@ -2,7 +2,7 @@
 
 > Actual state of the schema, aligned with **migrations V001–V032** in `services/api/src/main/resources/db/migration/` (full inventory in §5).
 > Each table is mapped to its originating migration. Where there is **drift** between what was documented and what is in the database, it is marked explicitly.
-> Multi-tenancy: `tenant_id` column on every tenant-bound table (ADR 0002). **RLS enabled in the schema (V016, completed in V019; auth-aware scope in V020; extended to every table added since, V021–V024, V028)** — enforcement is opt-in via the `nora_app` role + the `nora.security.rls.enforce` flag; see §RLS.
+> Multi-tenancy: `tenant_id` column on every tenant-bound table (ADR 0002). **RLS enabled in the schema (V016, completed in V019; auth-aware scope in V020; extended to every table added since, V021–V024, V028, V031, V032)** — enforcement is opt-in via the `nora_app` role + the `nora.security.rls.enforce` flag; see §RLS.
 > **Soft-delete** (V013): the `tenants`, `users`, `tenant_contexts`, `meetings` tables have `deleted_at`; Spring Data queries filter `deleted_at IS NULL` via `@SQLRestriction`; full UNIQUEs became partial ones (see §4).
 
 ## 1. Overview (ER)
@@ -24,6 +24,8 @@ erDiagram
   USERS ||--o{ IAM_USER_POLICIES : attached
   IAM_POLICIES ||--o{ IAM_USER_POLICIES : grants
   IAM_POLICIES ||--o{ IAM_POLICY_VERSIONS : history
+  USERS ||--o| IAM_PERMISSION_BOUNDARIES : "capped by (0..1)"
+  IAM_POLICIES ||--o{ IAM_PERMISSION_BOUNDARIES : caps
 
   USERS ||--o{ MEETINGS : owns
   USERS ||--o{ REFRESH_TOKENS : has
@@ -870,6 +872,31 @@ The nine values match the `IntegrationProvider` enum. Neither V025 nor V026 chan
 
 > Tenant-owned: RLS `tenant_isolation` enabled in V032 (business table, enforced under V020). The scheduler thread carries no JWT, so `ScheduledFlowRunner` propagates the tenant through `TenantRlsContext` per tenant — the pattern `RetentionSweeper` established.
 
+### 2.43 `iam_permission_boundaries` — V031
+
+| Column | Type | Notes |
+|---|---|---|
+| `user_id` | `UUID PRIMARY KEY` | the user this caps. `users.id` is globally unique, so the PK **is** the "at most one boundary per user" rule |
+| `tenant_id` | `UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` | own `tenant_id`, and half of both composite FKs below |
+| `policy_id` | `UUID NOT NULL` | the policy acting as the cap. Constrained only through the composite FK, so it can never point at another tenant's policy |
+| `attached_by` | `UUID REFERENCES users(id) ON DELETE SET NULL` | who set it; simple FK, for the reason V027 gives about `ON DELETE SET NULL` and composite keys |
+| `attached_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
+| `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | moved by the upsert when a boundary is replaced |
+
+**FKs**: `iam_permission_boundaries_user_fk (tenant_id, user_id) → users (tenant_id, id) ON DELETE CASCADE` and `iam_permission_boundaries_policy_fk (tenant_id, policy_id) → iam_policies (tenant_id, id) ON DELETE NO ACTION`. The second needed a target, so V031 also adds `iam_policies_tenant_id_id_uk UNIQUE (tenant_id, id)` — no new uniqueness (`id` is already the PK), the same two-step shape V015 and V028 used.
+
+**Indexes**: `idx_iam_permission_boundaries_tenant(tenant_id)`, `idx_iam_permission_boundaries_policy(policy_id)`.
+
+**Purpose**: the permission boundary of one user (US44, ADR 0049) — a policy that **caps** what that user can do. An action passes only if the user's own policies allow it **and** this document allows it. Read on every authorization decision by `AuthorizationService`; written by `PUT`/`DELETE /iam/users/{userId}/boundary`.
+
+> **A missing row means UNRESTRICTED, never deny-all.** That is the state of every user of every tenant the day V031 ships, which is why the migration backfills nothing — the opposite reading would have made deploying it a tenant-wide outage. The application expresses it as an `Optional` that is empty exactly when no row exists, so no caller has to decide what absence means.
+
+> **It is a separate table rather than an `is_boundary` flag on `iam_user_policies`, and the reason is structural.** `collectAttachedPoliciesForUser` reads that table, unions the group attachments and hands the result to the evaluator **as grants**. With a flag, the boundary document would sit inside that query's range and one forgotten `AND NOT is_boundary` would turn a cap into a grant of everything it was written to forbid. A separate table means the grant query cannot see it at all.
+
+> **`ON DELETE NO ACTION` on the policy FK is a security decision.** Under `CASCADE`, `DELETE /iam/policies/{id}` would silently remove somebody's cap — a privilege escalation reached through an endpoint whose audit entry reads only "policy deleted". The delete is refused instead (`409 IAM_POLICY_IN_USE_AS_BOUNDARY`). `NO ACTION` rather than `RESTRICT` because it is deferred to the end of the statement: deleting a tenant cascades into both tables, and only the deferred check is guaranteed to see the boundary row already gone.
+
+> RLS: this is an **IAM authorization** table, so it follows family (B) of V020 (ADR 0028) — the `tenant_isolation` policy is created and RLS is **not** enabled, exactly the end state `iam_user_policies` and the rest are in. Isolation comes from the `tenant_id` predicate in every query plus the two composite FKs.
+
 ## 3. Tables planned but **not migrated**
 
 Listed in ADR 0006 and/or the old `data-model.md`, but **with no corresponding migration** (V001–V032 do not cover them; inventory in §5).
@@ -907,7 +934,7 @@ The LLM block for Customer Confidence exists in the schema (`meeting-analysis-v1
 - Affected UNIQUEs (`tenants.slug`, `users(tenant_id,email)`, `tenant_contexts.tenant_id`) became **partial indexes `WHERE deleted_at IS NULL`** — this allows reusing a slug/email after a soft-delete (otherwise a deleted user would block a new signup with the same email forever).
 - **Hard-delete** remains possible via a native query and underpins the **delivered** operational LGPD support (ADR 0029): `DELETE /privacy/meetings/{id}` (right to be forgotten) + the scheduled `RetentionSweeper` (retention), covered by `PrivacyFlowIntegrationTest`.
 
-### RLS — Row-Level Security (V016 → V017 → V019 → V020 → V021 → V022 → V023 → V024 → V028 → V032; V029 exempt)
+### RLS — Row-Level Security (V016 → V017 → V019 → V020 → V021 → V022 → V023 → V024 → V028 → V031 → V032; V029 exempt)
 
 ADR 0002 promised RLS in production; **V016 delivered it in the schema**, **V019 completed the coverage** (ADR 0026) and **V020 adjusted the enforce scope to be auth-aware** (ADR 0028). What remains is the operational cutover/enforcement in production (runbook in ADR 0026/0028), not the schema:
 
@@ -920,9 +947,10 @@ ADR 0002 promised RLS in production; **V016 delivered it in the schema**, **V019
   - **V023 (2):** `workflows`, `workflow_executions` (NORA Flows).
   - **V024 (1):** `integration_connections` (OAuth tokens at rest).
   - **V028 (1):** `tenant_context_versions` (company-context history, US31) — its parent `tenant_contexts` is enforced, so the history is too.
+  - **V031 (1, policy defined and inert):** `iam_permission_boundaries` (permission boundaries, US44) — an **IAM authorization** table, so it is created the way V020 left its family: policy defined, RLS **not** enabled. Counted here because the policy exists; it is not counted as an enforced table.
   - **V032 (1):** `workflow_schedules` (scheduled-flow run state, US75) — its parent `workflows` is enforced, so the timer state is too. The scheduler thread has no JWT and sets the GUC explicitly, the same way the two existing sweepers do.
   - **V029 (0):** `mcp_tokens` is deliberately **not** given a policy. It joins the Identity family of (A) below: the token lookup is what tells a request which tenant it belongs to, so the GUC is unset when it runs, and a policy there would fail-close every MCP request in production while passing in a repository where RLS is off by default.
-- **Auth-aware enforce scope (V020, ADR 0028):** the enforce of the `nora_app` role (NOBYPASSRLS) applies to the **business data + PII** tables (touched only by authenticated requests or by the analysis pipeline, which set the GUC). V020 **disables RLS** on two families that cannot be enforced without breaking flows that have no JWT, keeping isolation through the application's `tenant_id` filter: **(A) Identity** (`users`, `tenants`, `email_verification_tokens`, `password_reset_tokens`, `refresh_tokens`, `iam_user_invitations` — login/signup/acceptance are cross-tenant or tenant-less); **(B) IAM Authorization** (`iam_groups`, `iam_policies`, `iam_user_groups`, `iam_group_policies`, `iam_user_policies`, `iam_policy_versions`, `iam_audit_events` — authorization config written during onboarding without a JWT). The `tenant_isolation` policies remain **defined** (inert with RLS off), reversible without recreating them.
+- **Auth-aware enforce scope (V020, ADR 0028):** the enforce of the `nora_app` role (NOBYPASSRLS) applies to the **business data + PII** tables (touched only by authenticated requests or by the analysis pipeline, which set the GUC). V020 **disables RLS** on two families that cannot be enforced without breaking flows that have no JWT, keeping isolation through the application's `tenant_id` filter: **(A) Identity** (`users`, `tenants`, `email_verification_tokens`, `password_reset_tokens`, `refresh_tokens`, `iam_user_invitations` — login/signup/acceptance are cross-tenant or tenant-less); **(B) IAM Authorization** (`iam_groups`, `iam_policies`, `iam_user_groups`, `iam_group_policies`, `iam_user_policies`, `iam_policy_versions`, `iam_audit_events`, and `iam_permission_boundaries` since V031 — authorization config written during onboarding without a JWT). The `tenant_isolation` policies remain **defined** (inert with RLS off), reversible without recreating them.
 - **Cascade boundaries (no policy, by design):** `iam_invitation_groups`, `meeting_goal_expected_outcomes`, `meeting_outcome_coverage`, `customer_buying_signals`, `customer_objections` — children without their own `tenant_id`, isolated via the FK cascade to the parent. Documented in the V019 header.
 - **Legacy outside RLS:** `roles` (global rows with `tenant_id NULL`) and `user_roles` (deprecated) — to be removed in a future cleanup.
 - Predicate: `tenant_id = nora.current_tenant_id()` (on `tenants`, `id = ...`). The function reads the session GUC `nora.current_tenant_id` (NULL ⇒ fail-closed: 0 rows for a role without BYPASSRLS).
@@ -951,7 +979,7 @@ ADR 0002 promised RLS in production; **V016 delivered it in the schema**, **V019
 | **V016** | Row-Level Security: `nora` schema + `nora.current_tenant_id()` + `tenant_isolation` policies + `ENABLE RLS` on 10 tenant-owned tables (opt-in enforce) |
 | **V017** | Customer Confidence (foundation, ADR 0015): `customer_accounts` (UNIQUE `(tenant_id, LOWER(name))`), `meeting_account_links`, `customer_confidence_assessments` (UNIQUE `(meeting_id, customer_account_id)`), `customer_buying_signals`, `customer_objections`; RLS `tenant_isolation` on the 3 tenant-owned tables |
 | **V018** | invitation token hash: `iam_user_invitations.token` → `token_hash` (SHA-256, aligned with the other one-time tokens); invalidates legacy PENDING invitations; renames the index (US06, ADR 0011) |
-| **V019** | full RLS (ADR 0026): `ENABLE RLS` + `tenant_isolation` policy on the remaining 15 tenant-owned tables (priority `transcripts` = PII), closing the coverage started in V016/V017 (28 tables with a direct policy through V019; +1 in V021, +5 in V022–V024, +1 in V028, +1 in V032 → **36**). Cascade boundaries documented (no policy). Role provisioning versioned in `db/operational/R001` (admin) |
+| **V019** | full RLS (ADR 0026): `ENABLE RLS` + `tenant_isolation` policy on the remaining 15 tenant-owned tables (priority `transcripts` = PII), closing the coverage started in V016/V017 (28 tables with a direct policy through V019; +1 in V021, +5 in V022–V024, +1 in V028, +1 in V031, +1 in V032 → **37**). Cascade boundaries documented (no policy). Role provisioning versioned in `db/operational/R001` (admin) |
 | **V020** | auth-aware RLS scope (ADR 0028, corrects the enforce from ADR 0026): `DISABLE RLS` on the Identity (6) and IAM Authorization (7) families — not enforceable without breaking flows without a JWT; policies remain defined (inert). Enforce is restricted to business data + PII |
 | **V021** | RAG / semantic search (US15, PR #206): `meeting_embeddings` (PK `meeting_id`, provider-agnostic embeddings in JSON/TEXT, cosine similarity in Java); RLS `tenant_isolation` enforced (ADR 0004/0028) |
 | **V022** | persistent chat sessions: `chat_session` (tenant + owner user, title derived from the 1st message) and `chat_message` (`role` CHECK `user`/`assistant`); 3 indexes on the session (incl. `(user_id, updated_at DESC)` for the sidebar) + 2 on the message; RLS `tenant_isolation` on both. Per-user scoping is an application filter, not a policy |
@@ -963,7 +991,7 @@ ADR 0002 promised RLS in production; **V016 delivered it in the schema**, **V019
 | **V028** | company-context history (US31): `tenant_context_versions` (PK `(context_id, version)`, immutable, shape of `iam_policy_versions` plus the composite FK of V015/V027), `tenant_contexts.current_version` + its `UNIQUE (tenant_id, id)`, backfill of version 1 for every context that already existed (approximate `created_at`, derived from `updated_at`), and RLS `tenant_isolation`. Ships with the two read endpoints, unlike `iam_policy_versions` |
 | **V029** | MCP credentials (US27, ADR 0041 §3): `mcp_tokens` with the composite FK of V015/V027 to `users(tenant_id, id)`, `token_hash TEXT UNIQUE` holding only the SHA-256 of the presented string (same rule as V011/V018), optional `expires_at`, `revoked_at` and `last_used_at`, plus a partial index on the owner. **No RLS policy, on purpose** — Identity family per V020, because the lookup precedes knowing the tenant |
 | **V030** | trends panel (US21): `meeting_action_items.completed_at` — the completion axis the panel counts on, because `updated_at` also moves on a title or due-date edit — plus `idx_meeting_action_items_tenant_created(tenant_id, created_at)` and the partial `idx_meeting_action_items_tenant_completed(tenant_id, completed_at) WHERE completed_at IS NOT NULL`. Rows already `DONE` are seeded from their `updated_at`, an upper bound rather than a measurement; no `CHECK` pairs `status` with `completed_at`, because those seeded rows are exactly what such a constraint could not be created against. No RLS change: `meeting_action_items` has carried `tenant_isolation` since V019 and a policy applies to the row, not to a column set |
-| **V031** | **Reserved and never taken.** US41 (policy templates) held the number and then shipped as a code catalogue — no `is_template` column, no table, no migration (see its backlog row). The gap is recorded rather than closed by renumbering: a version that was skipped is invisible to Flyway, and moving V032 down would change the checksum of a migration that may already have run |
+| **V031** | permission boundaries (US44, ADR 0049): `iam_permission_boundaries`, one row per capped user (the PK **is** `user_id`), plus `iam_policies_tenant_id_id_uk UNIQUE (tenant_id, id)` as the target of its second composite FK. The policy FK is `ON DELETE NO ACTION`, so deleting a policy that is somebody's cap is refused instead of silently removing the cap. RLS: policy defined, **not** enabled — the V020 end state of the IAM authorization family. No backfill: an absent row means unrestricted. **The number was previously reserved by US41 and released**, which is why V032 shipped before it; US44 filled the gap rather than renumbering, because renumbering V032 would change the checksum of a migration that may already have run. **That makes this file out of order, and it is why `spring.flyway.out-of-order` is now `true`** — without it a database that already applied V032 fails `validate` on boot with "Detected resolved migration not applied to database: 031". Nothing already applied is re-run and no checksum moves; the cost is that a genuinely accidental out-of-order file would also be accepted, which is what this inventory exists to catch instead |
 | **V032** | scheduled Flows (US75, ADR 0047): `workflow_schedules`, one row per `schedule.cron` flow, keyed by `workflow_id` (the PK **is** the FK). Carries the compiled cron expression, the zone it is evaluated in, and the three values a restart has to survive — `next_fire_at` (advanced at CLAIM, so missed occurrences collapse into one), `window_from` (advanced at RELEASE, so a run that dies does not drop its meetings) and `claimed_at`/`claim_owner` (the overlap guard and its holder). `idx_workflow_schedules_due(tenant_id, next_fire_at)` serves the tick's only query; RLS `tenant_isolation` as in V023. No CHECK on `cron`: the vocabulary is enforced by `ScheduleSpec` at save, and a table constraint could only re-state a shape Java already compiled |
 
 ## 6. Academic considerations (Oracle)

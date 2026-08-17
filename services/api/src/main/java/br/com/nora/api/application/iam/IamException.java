@@ -59,4 +59,36 @@ public class IamException extends RuntimeException {
     public static IamException userNotInTenant() {
         return new IamException("IAM_USER_NOT_IN_TENANT", "User does not belong to this tenant.");
     }
+
+    /**
+     * The caller tried to set or remove ITS OWN permission boundary. Refused because a principal
+     * that can edit its own cap does not have one (US44, ADR 0049 §4) — the whole point of a
+     * boundary is that widening it is somebody else's decision.
+     */
+    public static IamException boundarySelfManaged() {
+        return new IamException(
+                "IAM_BOUNDARY_SELF", "A user cannot set or remove its own permission boundary.");
+    }
+
+    /**
+     * A boundary was aimed at the tenant Root. Refused rather than stored, because the Root bypass
+     * is applied before any statement is consulted (ADR 0049 §2): the row would sit in the table
+     * looking like a control and cap nothing.
+     */
+    public static IamException boundaryOnRoot() {
+        return new IamException(
+                "IAM_BOUNDARY_ON_ROOT",
+                "The tenant Root cannot be capped by a permission boundary.");
+    }
+
+    /**
+     * A policy currently acting as somebody's permission boundary cannot be deleted. Deleting it
+     * would remove a cap through an endpoint that says nothing about caps, which is a privilege
+     * escalation with no audit trail naming it as one — detach the boundary first.
+     */
+    public static IamException policyInUseAsBoundary() {
+        return new IamException(
+                "IAM_POLICY_IN_USE_AS_BOUNDARY",
+                "Policy is in use as a permission boundary. Remove the boundary first.");
+    }
 }

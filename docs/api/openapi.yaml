@@ -5,7 +5,8 @@ info:
   description: |
     REST API for the NORA backend (Spring Boot 3 / Java 21). Covers authentication and session
     management with httpOnly cookies, self-service account operations, AWS-style IAM (groups +
-    policies + templates + attachments + audit), email invitations, workspace settings and context,
+    policies + templates + attachments + permission boundaries + audit), email invitations,
+    workspace settings and context,
     meeting upload/listing/detail/semantic search, extracted task management, the trends panel's
     temporal aggregation, the tenant's own usage figures, live analysis, chat sessions, NORA Flows
     (workflow CRUD, manual run and execution history), the OAuth integration hub, the LGPD erasure
@@ -590,13 +591,23 @@ paths:
     delete:
       tags: [IAM]
       summary: Deletes a policy
-      description: 'IAM action: `iam:policy:delete`.'
+      description: |
+        IAM action: `iam:policy:delete`. Attachments to users and groups are removed with it.
+
+        A policy currently acting as somebody's **permission boundary** cannot be deleted (`409
+        IAM_POLICY_IN_USE_AS_BOUNDARY`, US44): cascading it away would remove a cap through an
+        endpoint whose audit entry reads only "policy deleted". Remove the boundary first.
       parameters: [{ $ref: '#/components/parameters/PolicyId' }]
       responses:
         '204': { description: Removed }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`IAM_POLICY_IN_USE_AS_BOUNDARY` — the policy is a user''s permission boundary.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
   /iam/policy-templates:
     get:
@@ -684,6 +695,93 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  # ----------------------------------------------------------------------------
+  # IAM — permission boundaries (US44, ADR 0049)
+  # ----------------------------------------------------------------------------
+  /iam/users/{userId}/boundary:
+    get:
+      tags: [IAM]
+      summary: Reads the permission boundary of a user
+      description: |
+        IAM action: `iam:boundary:read`. Its own action rather than `iam:policy:read`, on the same
+        argument as `iam:policy:simulate`: which policy caps which user is part of the attachment
+        graph, and no other endpoint exposes it.
+
+        A **permission boundary** is a policy that CAPS the user: an action passes only if the
+        user's own policies allow it AND the boundary allows it. It never grants — the widest
+        boundary in the tenant on a user with nothing attached still allows nothing.
+
+        A user with no boundary answers `200` with `policyId: null`, not `404`. Absence of a
+        boundary means UNRESTRICTED and is the normal state; `404` is reserved for "no such user in
+        your tenant", and the two must stay distinguishable.
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+      responses:
+        '200':
+          description: The boundary, or an explicitly empty one
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PermissionBoundary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [IAM]
+      summary: Sets or replaces the permission boundary of a user
+      description: |
+        IAM action: `iam:boundary:set`. Takes an existing policy id, never an inline document: a
+        boundary written inline would be a policy no screen lists, that `iam_policy_versions` does
+        not version and that the simulator could not name.
+
+        Two subjects are refused whatever the caller's policies say, and both are `409`:
+
+        - **the caller itself** (`IAM_BOUNDARY_SELF`) — a principal that can widen its own cap has
+          none;
+        - **the tenant Root** (`IAM_BOUNDARY_ON_ROOT`) — the Root bypass is applied before any
+          statement is read, so the row would cap nothing and would show in the UI as a control
+          that does not control.
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetPermissionBoundaryRequest' }
+      responses:
+        '204': { description: Boundary set }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: >-
+            `IAM_BOUNDARY_SELF` (the caller is the subject) or `IAM_BOUNDARY_ON_ROOT` (the subject
+            is the tenant Root).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [IAM]
+      summary: Removes the permission boundary of a user
+      description: |
+        IAM action: `iam:boundary:delete`. Separate from `iam:boundary:set` so a delegated admin can
+        be given the power to bound their team without the power to unbound anyone.
+
+        Refused for the caller itself (`409 IAM_BOUNDARY_SELF`): removing your own cap is the
+        simplest way of widening it. Removing a boundary that does not exist is a no-op.
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+      responses:
+        '204': { description: Boundary removed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`IAM_BOUNDARY_SELF` — the caller is the subject.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
   # ----------------------------------------------------------------------------
   # IAM — audit
@@ -2926,11 +3024,24 @@ components:
         allowed: { type: boolean }
         reason:
           type: string
-          enum: [NO_STATEMENTS, NO_MATCHING_STATEMENT, EXPLICIT_DENY, ALLOW, ROOT_BYPASS]
+          enum:
+            - NO_STATEMENTS
+            - NO_MATCHING_STATEMENT
+            - EXPLICIT_DENY
+            - ALLOW
+            - ROOT_BYPASS
+            - BOUNDARY_NOT_PERMITTED
+            - BOUNDARY_EXPLICIT_DENY
           description: |
             How the decision was reached. `ROOT_BYPASS` is the tenant Root: allowed before any
             statement is consulted (ADR 0007, rule 1). `NO_STATEMENTS` means no policy is attached
             to the user; `NO_MATCHING_STATEMENT` means statements were evaluated and none matched.
+
+            The two `BOUNDARY_*` reasons are the permission boundary (US44, ADR 0049): the user's
+            own policies allowed the action and the cap did not. `BOUNDARY_NOT_PERMITTED` carries no
+            statement, because a cap denies by NOT permitting; `BOUNDARY_EXPLICIT_DENY` carries the
+            Deny that matched, and it is a statement of the BOUNDARY document — `policyId`,
+            `policyName` and `statementIndex` then describe the boundary policy, not an attached one.
         policyId: { type: [string, 'null'], format: uuid }
         policyName: { type: [string, 'null'] }
         statementIndex:
@@ -2952,7 +3063,46 @@ components:
               additionalProperties: true
         statementsEvaluated:
           type: integer
-          description: How many statements applied to the user. `0` for a Root.
+          description: |
+            How many statements applied to the user. `0` for a Root. Counts the user's own
+            statements, not the boundary's — it answers "how much is attached to this user".
+        boundaryPolicyId:
+          type: [string, 'null']
+          format: uuid
+          description: |
+            The policy capping this user (US44), `null` when the user has no boundary. Reported
+            whether or not the cap is what decided, because "this user is bounded" is part of
+            reading any answer about that user.
+        boundaryPolicyName: { type: [string, 'null'] }
+
+    # ---- permission boundaries (US44) ----
+    PermissionBoundary:
+      type: object
+      required: [userId]
+      description: |
+        The policy that CAPS a user. An action passes only if the user's own policies allow it AND
+        this policy allows it; a boundary never grants. `policyId: null` means the user has NO
+        boundary, which is UNRESTRICTED and is the normal state — never deny-all.
+      properties:
+        userId: { type: string, format: uuid }
+        policyId: { type: [string, 'null'], format: uuid }
+        policyName: { type: [string, 'null'] }
+        attachedBy:
+          type: [string, 'null']
+          format: uuid
+          description: Who set it. `null` when there is no boundary or that user has been removed.
+        attachedAt: { type: [string, 'null'], format: date-time }
+    SetPermissionBoundaryRequest:
+      type: object
+      required: [policyId]
+      properties:
+        policyId:
+          type: string
+          format: uuid
+          description: |
+            An existing policy of the caller's tenant, to be used as the cap. A boundary is not
+            written inline: it has to be a policy the tenant can list, version and simulate like
+            any other.
 
     # ---- invitations ----
     InviteUserRequest:
