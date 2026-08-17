@@ -1,4 +1,4 @@
-# 0042 — ADDRESS becomes a redacted type, and the PII corpus gate becomes a decreasing target
+# 0043 — ADDRESS becomes a redacted type, and the PII corpus gate becomes a decreasing target
 
 - Status: accepted
 - Date: 2026-08-17

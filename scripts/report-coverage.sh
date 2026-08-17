@@ -3,6 +3,7 @@
 #
 #   scripts/report-coverage.sh backend   # reads services/api/target/site/jacoco/jacoco.csv
 #   scripts/report-coverage.sh worker    # reads services/nlp-worker/.coverage
+#   scripts/report-coverage.sh web       # reads apps/web/coverage/coverage-summary.json
 #
 # This script MEASURES NOTHING. It reads the artifact the test run already produced, so the
 # number in a CI log and the number on a workstation come from one implementation — the same
@@ -22,6 +23,8 @@
 #                                   branch >= 0.75), haltOnFailure, bound to `verify`
 #   - `.github/workflows/ci.yml`  — `pytest --cov=nora_nlp.services.pii_shield
 #                                   --cov-fail-under=90` over that one module
+#   - `apps/web/vitest.config.mts` — per-module `coverage.thresholds` over redact.ts,
+#                                   markdown.ts and password-policy.ts (ADR 0042)
 # Turning THIS into a gate would mean picking a global threshold, and ADR 0018 already
 # considered and rejected exactly that (Alternatives Considered, item 1).
 #
@@ -33,9 +36,10 @@ cd "$(git rev-parse --show-toplevel)"
 
 JACOCO_CSV="services/api/target/site/jacoco/jacoco.csv"
 WORKER_DIR="services/nlp-worker"
+WEB_SUMMARY="apps/web/coverage/coverage-summary.json"
 
 usage() {
-  echo "usage: scripts/report-coverage.sh <backend|worker>" >&2
+  echo "usage: scripts/report-coverage.sh <backend|worker|web>" >&2
   exit 2
 }
 
@@ -191,8 +195,88 @@ report_worker() {
   } | summary
 }
 
+# ---------------------------------------------------------------------------
+# Web — Vitest + @vitest/coverage-v8
+#
+# Reads the `coverage/coverage-summary.json` that `npm run test:coverage` left behind. Keys are
+# ABSOLUTE paths plus a `total` entry, so everything below is a lookup, never a re-derivation.
+#
+# Two scopes, printed together for the same reason as the worker's: `apps/web` overall is a low
+# single-digit percentage — the screens have no unit tests — while the modules the gate scopes to
+# are in the nineties. Publishing only the second number would describe an application that does
+# not exist. The whole-app row is the honest denominator; the per-module rows are the gate.
+#
+# `node`, not `jq`: the `web` job already has Node and does not have jq.
+# ---------------------------------------------------------------------------
+report_web() {
+  if [ ! -f "$WEB_SUMMARY" ]; then
+    echo "WEB COVERAGE: no summary at $WEB_SUMMARY"
+    echo "  The test step runs 'npm run test:coverage'; it did not reach the end."
+    return 0
+  fi
+
+  local rows
+  rows=$(
+    node -e '
+      const fs = require("node:fs");
+      const path = require("node:path");
+      const summary = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      // The modules `apps/web/vitest.config.mts` sets a threshold on, in the order that file
+      // declares them. Anything added there should be added here; the row is a report either way.
+      const gated = [
+        "src/lib/pii/redact.ts",
+        "src/lib/report/markdown.ts",
+        "src/lib/password-policy.ts",
+        // Reported, deliberately NOT gated: 66 one-line wrappers make a file-level percentage a
+        // count of wrappers rather than a statement about the shared request() they all call.
+        "src/lib/api/client.ts",
+      ];
+      const pct = (m) => (m ? `${m.pct.toFixed(1)}% (${m.covered}/${m.total})` : "n/a");
+      const row = (label, entry) =>
+        [label, pct(entry?.statements), pct(entry?.branches), pct(entry?.functions), pct(entry?.lines)].join("\t");
+      const byRelative = new Map();
+      for (const [key, entry] of Object.entries(summary)) {
+        if (key === "total") continue;
+        byRelative.set(path.relative(process.argv[2], key).split(path.sep).join("/"), entry);
+      }
+      const out = [row("whole app (every file under src/)", summary.total)];
+      for (const file of gated) out.push(row(file, byRelative.get(file)));
+      process.stdout.write(out.join("\n"));
+    ' "$WEB_SUMMARY" apps/web
+  )
+
+  echo "WEB COVERAGE (Vitest + v8)"
+  echo "source:      $WEB_SUMMARY"
+  echo "produced by: npm run test:coverage   (in apps/web)"
+  echo
+  printf '%-42s %-22s %-22s %-22s %-22s\n' "scope" "statements" "branches" "functions" "lines"
+  echo "$rows" | while IFS=$'\t' read -r label statements branches functions lines; do
+    [ -n "$label" ] || continue
+    printf '%-42s %-22s %-22s %-22s %-22s\n' "$label" "$statements" "$branches" "$functions" "$lines"
+  done
+  echo
+  echo "Thresholds are declared per module in apps/web/vitest.config.mts and enforced by the"
+  echo "test run itself. There is no whole-app threshold; the first row is a report (ADR 0042)."
+
+  {
+    echo "### Web coverage, measured by this run"
+    echo
+    echo "| scope | statements | branches | functions | lines |"
+    echo "|---|---|---|---|---|"
+    echo "$rows" | while IFS=$'\t' read -r label statements branches functions lines; do
+      [ -n "$label" ] || continue
+      echo "| $label | $statements | $branches | $functions | $lines |"
+    done
+    echo
+    echo "The first row is a **report**. The gate is the per-module \`coverage.thresholds\` in"
+    echo "\`apps/web/vitest.config.mts\`, applied by the test run — see ADR 0042."
+    echo
+  } | summary
+}
+
 case "${1:-}" in
   backend) report_backend ;;
+  web) report_web ;;
   worker) report_worker ;;
   *) usage ;;
 esac

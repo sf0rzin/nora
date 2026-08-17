@@ -78,6 +78,12 @@ ALLOWED=(
   "services/api/src/main/java/br/com/nora/api/application/workflow/WorkflowContextFactory.java" # pt-BR sample analysis for the flow "test run"
   "services/api/src/test/"                                                # pt-BR fixture text inside backend tests
   "services/nlp-worker/tests/"                                            # pt-BR sample transcripts and PII fixtures
+  # Web unit tests whose ASSERTIONS are the pt-BR the module under test produces. Listed one by
+  # one rather than as an `apps/web/src/**/*.test.ts` prefix: the three modules whose output is
+  # pt-BR are these three, and a broad prefix would exempt every future web test from the check.
+  "apps/web/src/lib/report/markdown.test.ts"                              # asserts on the pt-BR headings of the exported meeting report
+  "apps/web/src/lib/pii/redact.test.ts"                                   # pt-BR sample sentences carrying the BR PII under test
+  "apps/web/src/lib/api/client.test.ts"                                   # asserts on the pt-BR error copy the client maps API codes to
   "packages/nlp-baseline/tests/"                                          # pt-BR tokenizer/TF-IDF fixtures
   "notebooks/"                                                            # academic EDA notebook, pt-BR narrative (FIAP deliverable)
 

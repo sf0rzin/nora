@@ -13,7 +13,7 @@
  * to over-redact legitimate Title Case terms in the chat (products, projects, etc.).
  *
  * ADDRESS IS NOT MIRRORED HERE EITHER, and the decision is recorded rather than left as an
- * omission (ADR 0042). The worker emits ADDRESS since 2026-08-17, so the enum this file
+ * omission (ADR 0043). The worker emits ADDRESS since 2026-08-17, so the enum this file
  * implements is now a strict subset of the worker's — which is exactly the drift the header
  * above warns about, and it is deliberate this time. The reason is the sentence two paragraphs
  * up: every pattern in this file is validated (check digit, Luhn) or structurally unmistakable,

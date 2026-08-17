@@ -24,7 +24,7 @@ Postgres row-level security **is enforced on the deployed stack** since 2026-08-
 
 It is **off by default in the repository** (`NORA_RLS_ENFORCE` defaults to `false`), so a local `make dev` still connects as the owner and the application-layer filter is the only control there. Identity and IAM tables are exempt by design (ADR 0028): login resolves a user by global e-mail before any tenant exists, and RLS with no tenant context would fail that closed.
 
-One thing to know before reading the code as production-ready: `apps/web` has no unit tests. Its whole automated suite is three Playwright e2e specs (security headers, route protection, CSP violations) and nothing measures its coverage, so the web is the one surface with no coverage figure at all. The backend and worker are measured on every CI run — 77.1-77.3% instruction and 92.4% statement respectively on 2026-08-17 (`scripts/report-coverage.sh`).
+One thing to know before reading the code as production-ready: `apps/web` is tested very unevenly. It has a Vitest unit suite over four `src/lib` modules and three Playwright e2e specs (security headers, route protection, CSP violations), and **no page or component has a unit test at all**, so its whole-app coverage was 5.5% statement on 2026-08-17. All three surfaces are measured on every CI run — backend 77.1-77.3% instruction, worker 92.4% statement, web 5.5% statement with three gated `src/lib` modules in the nineties (`scripts/report-coverage.sh`; ADR 0042 explains what is gated and what is only reported).
 
 ## Architecture
 
@@ -107,7 +107,7 @@ No external credential is needed to bring the stack up. The worker ships with `U
 
 `make admin-dev` starts the operator console; it installs its dependencies first, the same way `make web-dev` does. It serves on port 3002 and its default is the production shape: the real data layer with Cloudflare Access JWT validation on, which on a machine with no `CF_ACCESS_*` set means every page answers 403 naming the two missing variables. Run `NORA_ADMIN_USE_MOCKS=true make admin-dev` for the mock data. The variable used to default the other way, and the point of the change is that forgetting it can no longer serve fabricated data with the identity gate off. It needs no `.env` file, which is why `make env` does not create one for it, and it is deliberately not part of `make dev` — it is a separate concern from the product slice.
 
-For tests, `make api-test` runs the backend suite and `make worker-test` the worker's. `make test` runs both. There is no web test suite.
+For tests, `make api-test` runs the backend suite, `make worker-test` the worker's and `make web-test` the web unit suite with coverage. `make test` runs all three. The Playwright e2e specs are not in it — they need a production build and a browser download, so run them with `npm run test:e2e` inside `apps/web`.
 
 ## Documentation
 

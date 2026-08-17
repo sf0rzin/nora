@@ -58,10 +58,30 @@ jobs:
               - 'data/synthetic/**'
               - 'scripts/report-coverage.sh'
               - '.github/workflows/ci.yml'
+            # Fifth time, same hole as the four notes around this block: `.github/workflows/ci.yml`
+            # was NOT in this filter, so a pull request that changed only the `web` job below
+            # matched no filter that runs it, and ci-gate went green having verified nothing about
+            # the change it contained. Found while adding the Vitest steps — they would have
+            # shipped unexecuted.
+            #
+            # The three source files after `docs/api/**` are not decoration either. `apps/web`'s
+            # unit suite contains two MIRROR tests that read the other half of the mirror straight
+            # off disk: `src/lib/pii/redact.test.ts` compares its patterns with the worker's PII
+            # Shield, and `src/lib/password-policy.test.ts` compares its two constants with the
+            # backend's PasswordPolicy and the three DTOs that carry the same bounds. Drift has
+            # historically arrived from THOSE files, not from this app, so a filter that only
+            # watches `apps/web/**` would run the mirror on every side but the one that breaks it.
             web:
               - 'apps/web/**'
               - 'packages/**'
               - 'docs/api/**'
+              - 'services/nlp-worker/src/nora_nlp/services/pii_shield.py'
+              - 'services/api/src/main/java/br/com/nora/api/domain/identity/PasswordPolicy.java'
+              - 'services/api/src/main/java/br/com/nora/api/api/dto/auth/SignupRequest.java'
+              - 'services/api/src/main/java/br/com/nora/api/api/dto/auth/ConfirmPasswordResetRequest.java'
+              - 'services/api/src/main/java/br/com/nora/api/api/dto/iam/AcceptInviteRequest.java'
+              - 'scripts/report-coverage.sh'
+              - '.github/workflows/ci.yml'
             # The operator console was invisible to this workflow until 2026-08-16: no filter
             # matched `apps/admin/**`, so a pull request touching only the console matched
             # NOTHING, every job skipped, and ci-gate reported green having verified precisely
@@ -237,6 +257,35 @@ jobs:
       - name: Typecheck
         working-directory: apps/web
         run: npm run typecheck
+
+      # The first unit tests `apps/web` has ever had (ADR 0018 planned them for Sub-phase 1.12;
+      # ADR 0042 records what actually shipped and what it does and does not gate).
+      #
+      # Its own step, before Build and unrelated to the Playwright steps further down: Vitest
+      # needs neither a production build nor a browser, so putting it here fails a broken pure
+      # function in a couple of seconds instead of after `next build` and a chromium download.
+      #
+      # `test:coverage` rather than `test`: the same single run is the gate AND writes the
+      # `coverage/coverage-summary.json` the next step reads. The gate has two parts — every test
+      # must pass, and the per-module `coverage.thresholds` in `apps/web/vitest.config.mts` must
+      # hold. Those thresholds are FLOORS below the measured rate, on three modules; there is no
+      # whole-app threshold, because `apps/web` is around 5% overall and a global number would
+      # either gate nothing or block every UI pull request. ADR 0042 §Decision has the argument.
+      #
+      # No `env:` block. The two `NEXT_PUBLIC_*` values the suite depends on are pinned in
+      # `vitest.config.mts`, where they are read at import time; setting them here would be a
+      # second source of truth for the same two values.
+      - name: Unit tests + coverage
+        working-directory: apps/web
+        run: npm run test:coverage
+
+      # The numbers in the log on every run, whole-app beside the gated modules — the same shape
+      # the `api` and `worker` jobs already use, and the same script. It reads the report the step
+      # above wrote and measures nothing, so a figure quoted from CI and one read on a workstation
+      # come from one implementation. Never a gate: it exits 0 whatever the numbers say.
+      - name: Coverage report (whole app vs. the gated modules)
+        run: bash scripts/report-coverage.sh web
+
       # `NEXT_PUBLIC_API_BASE_URL` is new here and is not cosmetic. Unset, `next.config.mjs`'s
       # `apiOrigin()` returns null and the CSP ships `connect-src 'self'` — while
       # `src/lib/api/client.ts` still falls back to its own hardcoded `http://localhost:8080`.
