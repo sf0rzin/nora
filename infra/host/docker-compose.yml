@@ -44,6 +44,15 @@ networks:
   data:
     driver: bridge
     internal: true
+  # Two members and no more: `socket-proxy` and `alloy`. It exists so that reaching the
+  # filtered Docker API is not something every container on `internal` can do — putting the
+  # proxy on `internal` would have handed a read-only view of the daemon to `web`, `api`,
+  # `caddy` and everything else, which is a smaller hole than the raw socket but still a hole
+  # nobody asked for. `internal: true` for the same reason as the other two: nothing on this
+  # bridge has any business talking to the internet.
+  docker-api:
+    driver: bridge
+    internal: true
 
 # WHICH OF THESE SEVEN IS BACKED UP, AND WHICH IS NOT BY DECISION.
 #
@@ -690,7 +699,121 @@ services:
       retries: 5
       start_period: 30s
 
-  # Alloy reads the Docker socket and sends stdout/stderr of ALL containers to Loki.
+  # ==========================================================================
+  # THE ONLY CONTAINER THAT TOUCHES THE DOCKER SOCKET
+  # ==========================================================================
+  # Alloy used to mount /var/run/docker.sock directly, and the comment on that mount was
+  # honest about what it meant: the Docker API is HTTP served over that socket, `:ro` blocks
+  # writes to the FILE and nothing about the API, and the API can create a container with the
+  # host root filesystem bind-mounted into it. Access to that socket is root on the host, full
+  # stop. It was mounted into the one container in this stack that parses attacker-influenced
+  # input for a living (`stage.multiline` in observability/config.alloy joins log lines
+  # produced by users, with a regex).
+  #
+  # This is the fix that comment said was needed. haproxy in front of the socket, with an
+  # allow-list of API paths and every method except GET refused outright; Alloy now speaks
+  # TCP to this service and has no socket of its own.
+  #
+  # WHAT ALLOY ACTUALLY NEEDS, which is the whole allow-list:
+  #   CONTAINERS=1  GET /containers/json          — discovery.docker enumerating targets
+  #                 GET /containers/{id}/json     — the inspect behind the target labels
+  #                 GET /containers/{id}/logs     — loki.source.docker, the log stream itself
+  #   VERSION=1 and PING=1 are the image's defaults and are what the Docker client library
+  #                 uses to negotiate an API version on connect. Removing them breaks the
+  #                 client before it issues a single useful request.
+  #   EVENTS=1      is also a default, and Alloy does NOT need it — `discovery.docker` polls on
+  #                 `refresh_interval` rather than subscribing to the event stream. Left at the
+  #                 default because /events is read-only and turning it off would be a
+  #                 deviation from upstream to buy nothing. Turn it off if that ever stops
+  #                 being true.
+  # EVERYTHING ELSE IS OFF BY THE IMAGE'S OWN DEFAULTS — /exec (the direct route to
+  # command execution in any container), /images, /volumes, /networks, /info, /secrets,
+  # /swarm, and the start/stop/restart family. They are restated below rather than left
+  # implicit, because "the default is safe" is a claim about a version, and this file pins a
+  # digest precisely so that claims about a version stay true.
+  #
+  # POST=0 is the load-bearing one. The proxy's frontend opens with
+  # `http-request deny unless METH_GET || { env(POST) -m bool }`, so with POST off the
+  # entire API is read-only regardless of which path flags are set — a future flag turned on
+  # by mistake still cannot create, delete or modify anything. It also means HEAD is refused,
+  # which is why the deploy probe for this service in scripts/deploy.sh issues a GET.
+  #
+  # PINNED BY DIGEST, not by tag, and this is the one service in the file where that is not
+  # merely tidy: this container holds the socket the whole change exists to contain. A tag is
+  # a pointer the upstream owner can move; the digest is the image. The trailing comment is
+  # the human-readable version, same convention as scripts/check-action-pins.sh enforces for
+  # Actions.
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459  # v0.5.0
+    container_name: nora-socket-proxy
+    <<: *default-restart
+    logging: *default-logging
+    environment:
+      CONTAINERS: "1"
+      POST: "0"
+      # Restated defaults. See the paragraph above on why they are written out.
+      ALLOW_RESTARTS: "0"
+      ALLOW_START: "0"
+      ALLOW_STOP: "0"
+      AUTH: "0"
+      BUILD: "0"
+      COMMIT: "0"
+      CONFIGS: "0"
+      DISTRIBUTION: "0"
+      EXEC: "0"
+      GRPC: "0"
+      IMAGES: "0"
+      INFO: "0"
+      NETWORKS: "0"
+      NODES: "0"
+      PLUGINS: "0"
+      SECRETS: "0"
+      SERVICES: "0"
+      SESSION: "0"
+      SWARM: "0"
+      SYSTEM: "0"
+      TASKS: "0"
+      VOLUMES: "0"
+      # Without this the image binds `[::]:2375 v4v6`. On a host with IPv6 disabled in the
+      # kernel that bind fails and the container never comes up; the bridge it sits on has no
+      # IPv6 address either way, so there is nothing to lose. It also makes the health probe
+      # deterministic — the same IPv4-vs-IPv6 trap the `admin` service's healthcheck carries a
+      # note about.
+      DISABLE_IPV6: "1"
+    volumes:
+      # `:ro` here is NOT the control — see the paragraph above; it only protects the socket's
+      # inode. The control is the haproxy allow-list this container runs. It is kept because
+      # it costs nothing and this container has no reason to write to the file.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # ONE network, and it is the one nothing else is on. The proxy is deliberately unreachable
+    # from `internal`, `data` and `edge`.
+    networks: [docker-api]
+    # The container holding the socket is the one where a container escape costs the host, so
+    # it gets the same two settings as alloy and for the same reasons. Both are safe HERE
+    # specifically:
+    #   no-new-privileges  — the entrypoint is /bin/sh and the process is haproxy; neither
+    #                        execs a setuid binary.
+    #   cap_drop: ALL      — haproxy runs as root (the image declares `USER root` and the
+    #                        config has no `user`/`group` directive, so it never setuids),
+    #                        binds :2375 (unprivileged, so no CAP_NET_BIND_SERVICE), and reads
+    #                        the socket as its OWNER rather than by overriding permissions, so
+    #                        no CAP_DAC_OVERRIDE either. The one capability-adjacent thing the
+    #                        entrypoint does is raise its file-descriptor limit, and it does
+    #                        that with `ulimit -n 10000 2>/dev/null || true` — it degrades
+    #                        instead of failing.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # NO `healthcheck:` on purpose, and for a different reason than otel-collector's. This
+    # image is alpine-based, so busybox wget is present and a healthcheck WOULD work — but
+    # nothing in this file declares `depends_on: condition: service_healthy` on it, so the
+    # healthcheck would buy nothing at boot while adding a way for the stack to refuse to
+    # start. scripts/deploy.sh probes it directly instead (`probe_cmd`), which is where the
+    # verdict is actually acted on.
+
+  # Alloy sends stdout/stderr of ALL containers to Loki, discovering them through the
+  # socket-proxy above.
   # Chosen over the `loki` log driver: the plugin breaks `docker logs` and, in
   # `mode=non-blocking`, silently drops lines under backpressure. Alloy has a WAL —
   # backpressure becomes delay, not loss.
@@ -706,31 +829,26 @@ services:
       - /etc/alloy/config.alloy
     volumes:
       - ./observability/config.alloy:/etc/alloy/config.alloy:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks: [internal]
-    # THE ONLY CONTAINER HARDENING IN THIS FILE, on the container that most needs it.
-    #
-    # observability/config.alloy already states the exposure in full: `:ro` on a socket blocks
-    # writes to the FILE and nothing about the Docker API served over it, so whoever has this
-    # socket has the host. What it offers as mitigation is network isolation plus a pinned
-    # image, and both are real — but neither touches the vector this service actually presents,
-    # which is that Alloy PARSES untrusted input (see `stage.multiline` in that file: log lines
-    # produced by users, joined by a regex) inside the most privileged container in the stack.
-    # Network isolation does not help when the hostile input arrives from the inside.
+    # `docker-api` is how it reaches the daemon now — through socket-proxy, over TCP, with no
+    # socket of its own. `internal` is how it reaches Loki. It is on no other bridge.
+    networks: [internal, docker-api]
+    # Alloy PARSES untrusted input for a living: `stage.multiline` in observability/config.alloy
+    # joins log lines produced by users, with a regex. That is the vector this service presents,
+    # and it is why the hardening below is here even now that the socket is gone.
     #
     # Two settings, neither of which Alloy needs to do its job:
     #   no-new-privileges  — nothing here execs a setuid binary; this closes the standard
     #                        escalation step after a code-execution bug in a parser.
-    #   cap_drop: ALL      — Alloy runs as root in this image, talks to the socket (permitted
-    #                        by ownership, not by a capability) and binds :12345 (unprivileged
+    #   cap_drop: ALL      — Alloy runs as root in this image and binds :12345 (unprivileged
     #                        port). It holds no capability it uses. If a future version does
     #                        need one, add it back by name with `cap_add` rather than deleting
     #                        this block — the symptom would be a container that fails at boot
     #                        with a permission error, which deploy.sh's health gate catches.
     #
-    # WHAT THIS IS NOT: a fix for the socket mount. The real fix is a read-only Docker socket
-    # proxy in front of it, which is a fifteenth service and a change to the service contract
-    # CI asserts. This is the containment available without that.
+    # WHAT CHANGED: this block used to end by saying it was NOT a fix for the socket mount, and
+    # that the real fix was a socket proxy nobody had built. It is built — see `socket-proxy`
+    # above. What remains here is defence in depth around the parser, not the containment of
+    # the socket.
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -738,6 +856,11 @@ services:
     depends_on:
       loki:
         condition: service_healthy
+      # `service_started` and not `service_healthy`: socket-proxy declares no healthcheck (the
+      # reason is on that service). Alloy retries discovery every `refresh_interval` anyway, so
+      # a proxy that is a second late costs one empty discovery pass, not a failed boot.
+      socket-proxy:
+        condition: service_started
 
   grafana:
     image: grafana/grafana:11.5.1

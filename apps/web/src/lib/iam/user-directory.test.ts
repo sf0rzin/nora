@@ -130,12 +130,12 @@ describe('buildUserDirectory with the tenant directory', () => {
   it('falls back to whatever the row does carry, and to the id when it carries neither', () => {
     const directory = buildUserDirectory({
       users: [
-        { id: 'u-1', displayName: null, email: 'só-email@example.com' },
+        { id: 'u-1', displayName: null, email: 'only-email@example.com' },
         { id: 'u-2', displayName: '  ', email: '  ' },
       ],
     });
 
-    expect(directory.find((u) => u.userId === 'u-1')?.label).toBe('só-email@example.com');
+    expect(directory.find((u) => u.userId === 'u-1')?.label).toBe('only-email@example.com');
     expect(directory.find((u) => u.userId === 'u-2')?.label).toBe('u-2');
   });
 

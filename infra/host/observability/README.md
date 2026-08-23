@@ -22,8 +22,17 @@ truth about ports, networks and images.
                                      ├──> otel-collector ──remote-write──> prometheus ──┐
                                      │         └── traces ──> discarded (no Tempo) │
                                      │                                                   ├──> grafana
-  TODO container ──stdout──> docker.sock ──> alloy ──push──> loki ────────────────────────┘
+  every container ──stdout──> docker.sock ──> socket-proxy ──> alloy ──push──> loki ──────┘
 ```
+
+`socket-proxy` is the only container in the stack holding `/var/run/docker.sock`. It is an
+haproxy with an allow-list: `GET /containers/json`, `GET /containers/{id}/json`,
+`GET /containers/{id}/logs`, plus `/_ping` and `/version` for the client's API negotiation, and
+every other path and every non-GET method refused. Alloy reaches it over TCP on `docker-api`,
+an internal bridge whose only two members are those two containers. The reason is that the Docker API can create a
+container with the host root filesystem mounted into it, so the socket is root on the host,
+and Alloy — which joins user-produced log lines with a regex — is the container in this stack
+most exposed to hostile input. See the service in `../docker-compose.yml`.
 
 The Collector is **write-only and does not tail stdout**. Without Alloy, three of the four apps
 would have no signal at all. That is why there are two services, not one.

@@ -20,6 +20,10 @@ name: build-images
 # Published images:
 #   - ghcr.io/sf0rzin/nora-{api,worker,web,admin}:{latest, sha-XXXXXXX}
 #
+# Each pushed manifest is SIGNED (keyless cosign, Sigstore OIDC) and carries SLSA provenance
+# plus an SBOM. Nothing verifies the signature yet — the host pulls by digest and trusts
+# GHCR — and the `api` job's signing step says exactly what closing that would take.
+#
 # ROLLOUT (release-pointer job): replaced the old `deploy-apps`, which did
 # `azure/login` + `az containerapp update` via OIDC. The model is now PULL: this job only
 # ANNOUNCES which IMMUTABLE `sha-<short>` tags were built. Applying them is the pull agent's
@@ -67,9 +71,16 @@ on:
       - 'apps/*/Dockerfile'
   workflow_dispatch:
 
-# `id-token: write` REMOVED along with the deploy-apps job: it existed exclusively for the
-# federated `azure/login` (OIDC). With no Azure in the path, no job here needs an OIDC
-# token — keeping the permission would only widen the surface of a public-repo workflow.
+# `id-token: write` is NOT here, and its absence is the point. It used to be granted at this
+# level for the federated `azure/login` (OIDC); when Azure left the path, it left with it,
+# because a token every job in a public-repo workflow can mint is a wider surface than any of
+# them needs.
+#
+# Keyless cosign brought the need for an OIDC token back — but only for the four build jobs,
+# and only to prove to Sigstore which workflow is signing. So each of those jobs declares its
+# own `permissions:` block containing it, and `changes`, `release-pointer` and `summary` still
+# cannot mint one. A job-level block REPLACES this one rather than adding to it, which is why
+# those four restate `contents` and `packages`.
 permissions:
   contents: read
   packages: write
@@ -107,6 +118,15 @@ jobs:
     needs: changes
     if: needs.changes.outputs.api == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    # `id-token: write` is what keyless cosign needs: it lets the job mint a short-lived OIDC
+    # token describing THIS workflow, at THIS ref, in THIS repository, which Sigstore's Fulcio
+    # exchanges for a certificate valid for ten minutes. See the signing step below for why
+    # that is preferable to holding a signing key. `contents` and `packages` are restated
+    # because a job-level block replaces the workflow-level one outright.
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v6
 
@@ -128,6 +148,7 @@ jobs:
             type=ref,event=branch
 
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        id: build
         with:
           context: services/api
           file: services/api/Dockerfile
@@ -152,17 +173,73 @@ jobs:
           # attestations, and buildx fails the step outright. A PR build validates the
           # Dockerfile; only a pushed image needs to be attestable.
           #
-          # WHAT THIS STILL DOES NOT DO: sign anything. There is no cosign here and the host
-          # verifies no signature — deploy.sh trusts the digest it finds in GHCR. An attestation
-          # proves provenance to whoever reads the registry; it does not stop a compromised
-          # publishing account from pushing an image the host will pull.
+          # An attestation says what produced the image and what is inside it. It does NOT say
+          # that this repository is what published it — that is the signature's job, and it is
+          # the two steps below.
           provenance: ${{ github.event_name != 'pull_request' && 'mode=max' || 'false' }}
           sbom: ${{ github.event_name != 'pull_request' }}
+
+      # ----------------------------------------------------------------------
+      # SIGNATURE — keyless cosign, over OIDC
+      # ----------------------------------------------------------------------
+      # The gap the provenance note above used to end on: nothing said that the image in GHCR
+      # was published by THIS workflow. Provenance is a claim carried alongside the image;
+      # whoever can push the image can push the claim. A signature is the part that cannot be
+      # forged without the identity.
+      #
+      # KEYLESS, and that word is doing real work. The alternative is a cosign key pair whose
+      # private half lives in a repository secret — which means a signing key that never
+      # expires, sitting next to the credential that publishes the images, so an actor who
+      # takes one takes both and can sign whatever they push. Keyless has no key: the job
+      # mints a ten-minute OIDC token, Fulcio issues a certificate BINDING THE SIGNATURE TO
+      # THIS WORKFLOW FILE AT THIS REF, and the certificate is thrown away. There is nothing
+      # to leak, nothing to rotate, and nothing to pay for — Fulcio and Rekor are public
+      # infrastructure with no account attached.
+      #
+      # It signs BY DIGEST, never by tag. `sha-<short>` and `latest` are pointers; signing a
+      # pointer signs whatever it resolves to at that instant, which is exactly the thing an
+      # attacker moves. `${{ steps.build.outputs.digest }}` is the manifest buildx just
+      # pushed, so the signature covers that manifest and every tag that resolves to it.
+      #
+      # ONLY WHEN THE IMAGE WAS ACTUALLY PUSHED. On a pull request `push:` is false, there is
+      # no manifest in the registry to sign, and `digest` is empty — signing would fail on a
+      # build that is doing its job. On a fork's pull request GitHub does not grant
+      # `id-token: write` at all, so the guard is also what keeps that case from failing on a
+      # permission error rather than on the code.
+      #
+      # WHAT IS STILL MISSING, so this is not mistaken for end-to-end: the host does not
+      # VERIFY. `deploy.sh` runs `docker compose pull` on the `sha-<short>` tag and trusts
+      # whatever GHCR returns for it. Verification would be a `cosign verify
+      # --certificate-identity-regexp ... --certificate-oidc-issuer
+      # https://token.actions.githubusercontent.com` in front of that pull, and it needs cosign
+      # installed on the host and an outbound path to Rekor — a host change, not a CI one.
+      # Signing first is still the right order: a signature nobody checks yet can be checked
+      # later, while an unsigned image can never be verified retroactively.
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign the image (keyless)
+        if: github.event_name != 'pull_request'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-api
+        run: |
+          set -euo pipefail
+          # An empty digest means the build did not push. Fail loudly: silently skipping would
+          # leave an unsigned image in the registry and a green check next to it.
+          [ -n "$DIGEST" ] || { echo "::error::build produced no digest — nothing to sign"; exit 1; }
+          cosign sign --yes "${IMAGE}@${DIGEST}"
 
   worker:
     needs: changes
     if: needs.changes.outputs.worker == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    # Keyless cosign — see the `api` job for why `id-token: write` is here and job-level.
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v6
 
@@ -184,6 +261,7 @@ jobs:
             type=ref,event=branch
 
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        id: build
         with:
           context: .  # repo root — the worker Dockerfile needs packages/nlp-baseline
           file: services/nlp-worker/Dockerfile
@@ -196,10 +274,30 @@ jobs:
           provenance: ${{ github.event_name != 'pull_request' && 'mode=max' || 'false' }}
           sbom: ${{ github.event_name != 'pull_request' }}
 
+      # Keyless signature over the pushed manifest — see the `api` job for the full reasoning.
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign the image (keyless)
+        if: github.event_name != 'pull_request'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-worker
+        run: |
+          set -euo pipefail
+          [ -n "$DIGEST" ] || { echo "::error::build produced no digest — nothing to sign"; exit 1; }
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+
   web:
     needs: changes
     if: needs.changes.outputs.web == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    # Keyless cosign — see the `api` job for why `id-token: write` is here and job-level.
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v6
 
@@ -221,6 +319,7 @@ jobs:
             type=ref,event=branch
 
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        id: build
         with:
           context: apps/web
           file: apps/web/Dockerfile
@@ -243,10 +342,30 @@ jobs:
             NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL || 'https://api.nora.systems' }}
             NEXT_PUBLIC_USE_MOCKS=false
 
+      # Keyless signature over the pushed manifest — see the `api` job for the full reasoning.
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign the image (keyless)
+        if: github.event_name != 'pull_request'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-web
+        run: |
+          set -euo pipefail
+          [ -n "$DIGEST" ] || { echo "::error::build produced no digest — nothing to sign"; exit 1; }
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+
   admin:
     needs: changes
     if: needs.changes.outputs.admin == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    # Keyless cosign — see the `api` job for why `id-token: write` is here and job-level.
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v6
 
@@ -268,6 +387,7 @@ jobs:
             type=ref,event=branch
 
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        id: build
         with:
           context: apps/admin
           file: apps/admin/Dockerfile
@@ -279,6 +399,21 @@ jobs:
           # Provenance + SBOM, off on pull requests — see the note in the `api` job above.
           provenance: ${{ github.event_name != 'pull_request' && 'mode=max' || 'false' }}
           sbom: ${{ github.event_name != 'pull_request' }}
+
+      # Keyless signature over the pushed manifest — see the `api` job for the full reasoning.
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign the image (keyless)
+        if: github.event_name != 'pull_request'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-admin
+        run: |
+          set -euo pipefail
+          [ -n "$DIGEST" ] || { echo "::error::build produced no digest — nothing to sign"; exit 1; }
+          cosign sign --yes "${IMAGE}@${DIGEST}"
 
   # ANNOUNCES the rollout — does not execute it. Replaced the old `deploy-apps` (azure/login
   # + `az containerapp update`). There is no host credential, SSH, self-hosted runner nor

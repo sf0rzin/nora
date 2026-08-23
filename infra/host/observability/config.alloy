@@ -6,7 +6,7 @@
 //
 // This is NOT redundant with the otel-collector. They are two distinct legs:
 //   - otel-collector : traces + metrics, PUSH from the SDK inside the process (only the API has it)
-//   - alloy (here)   : logs, READ FROM OUTSIDE via the Docker socket (covers EVERY container)
+//   - alloy (here)   : logs, READ FROM OUTSIDE via the Docker API (covers EVERY container)
 // A Collector does not tail a container's stdout. Without Alloy, three of the four apps
 // would have no signal at all.
 //
@@ -49,7 +49,35 @@
 //     volumes:
 //       - alloy_data:/var/lib/alloy/data
 //       - ./observability/config.alloy:/etc/alloy/config.alloy:ro
-//       - /var/run/docker.sock:/var/run/docker.sock:ro
+// ============================================================================
+
+// ============================================================================
+// HOW THIS CONTAINER REACHES THE DAEMON — read this before changing `host =`
+// ============================================================================
+// It does NOT have the Docker socket. It talks to `socket-proxy`, an haproxy that holds the
+// socket and forwards a fixed allow-list of API paths, refusing every method except GET.
+//
+// Why that exists: the Docker API is HTTP served over /var/run/docker.sock, and it can create
+// a container with the host root filesystem bind-mounted into it. The compose used to mount
+// that socket into this container — `:ro` and all, `:ro` protecting only the inode and nothing
+// about the API — which meant a code-execution bug in the log parser below was a
+// code-execution bug as root on the host. `stage.multiline` joins log lines PRODUCED BY USERS
+// with a regex; this is the container in the stack most exposed to hostile input, and it was
+// also the most privileged one.
+//
+// The three constants below must all name the proxy, and `nora-socket-proxy` must be the only
+// thing on the `docker-api` bridge with a socket. Changing any of them back to a `unix://`
+// path silently restores the original exposure — the config keeps working, which is exactly
+// what makes it worth a warning here.
+//
+// What the proxy permits, and therefore the ceiling on what this file can ask for:
+//   GET /containers/json          discovery.docker
+//   GET /containers/{id}/json     the inspect behind the target labels
+//   GET /containers/{id}/logs     loki.source.docker
+//   GET /_ping, GET /version      the client's API-version negotiation
+// Anything else — /exec above all — returns 403 from haproxy and never reaches the daemon.
+// The full allow-list, with the reasoning per flag, is on the `socket-proxy` service in
+// docker-compose.yml.
 // ============================================================================
 
 logging {
@@ -58,15 +86,12 @@ logging {
 }
 
 // ----------------------------------------------------------------------------
-// DISCOVERY — every container in the daemon, via socket
+// DISCOVERY — every container in the daemon, through the filtering proxy
 // ----------------------------------------------------------------------------
-// Mounted read-only in docker-compose.yml:520. Read-only on the socket is NOT a sandbox:
-// the Docker API is entirely HTTP over the socket, and :ro only blocks writes to the file,
-// not API calls. Whoever has the socket has the host. This is acceptable here because Alloy
-// is on the `internal` bridge (internal: true, no route to the internet) and the image is
-// pinned. Do not replicate this mount for a container that talks to the internet.
+// `tcp://socket-proxy:2375`, resolved on the `docker-api` bridge. See the block at the top of
+// this file for why this is not a unix socket and what breaks if it becomes one again.
 discovery.docker "daemon" {
-  host             = "unix:///var/run/docker.sock"
+  host             = "tcp://socket-proxy:2375"
   refresh_interval = "10s"
 }
 
@@ -74,7 +99,8 @@ discovery.docker "daemon" {
 // FILTER — only containers from the `nora` compose project
 // ----------------------------------------------------------------------------
 // Picks up the four apps (api, worker, web, admin) plus infra: cloudflared, caddy,
-// postgres, postgres-platform, otel-collector, prometheus, loki, grafana, backup.
+// postgres, postgres-platform, otel-collector, prometheus, loki, grafana, backup,
+// socket-proxy.
 // No fixed name list: a new service in the compose joins on its own within ~10s.
 discovery.relabel "nora" {
   targets = discovery.docker.daemon.targets
@@ -165,7 +191,8 @@ discovery.relabel "line_oriented" {
 // COLLECTION A — api + worker (with stack-trace joining)
 // ----------------------------------------------------------------------------
 loki.source.docker "stacktrace_apps" {
-  host             = "unix:///var/run/docker.sock"
+  // Same proxy as discovery.docker above; the log stream is GET /containers/{id}/logs.
+  host             = "tcp://socket-proxy:2375"
   targets          = discovery.relabel.stacktrace_apps.output
   relabel_rules    = discovery.relabel.labels.rules
   refresh_interval = "10s"
@@ -195,7 +222,8 @@ loki.process "stacktrace" {
 // COLLECTION B — web, admin, and all the infra (one line, one entry)
 // ----------------------------------------------------------------------------
 loki.source.docker "line_oriented" {
-  host             = "unix:///var/run/docker.sock"
+  // Same proxy as discovery.docker above; the log stream is GET /containers/{id}/logs.
+  host             = "tcp://socket-proxy:2375"
   targets          = discovery.relabel.line_oriented.output
   relabel_rules    = discovery.relabel.labels.rules
   refresh_interval = "10s"
@@ -217,6 +245,30 @@ loki.process "line_oriented" {
     stage.drop {
       expression          = ".*(connection received:|disconnection: session time:|connection authorized:).*"
       drop_counter_reason = "pg_healthcheck_noise"
+    }
+  }
+
+  // Same shape of problem, introduced by the socket-proxy: haproxy writes one access line per
+  // request, and `discovery.docker` above polls `/containers/json` every 10s — roughly 9
+  // thousand lines a day of this container reporting that Alloy asked it what containers
+  // exist. Alloy then ships that line, which is the amplification the `alloy` drop rule in
+  // discovery.relabel "nora" exists to prevent, one hop removed.
+  //
+  // WHAT THIS DELIBERATELY DOES NOT DROP: anything that is not a 200 on one of the three
+  // polled paths. A `403` — haproxy refusing a path outside the allow-list, i.e. something in
+  // this stack trying to reach the Docker API for a purpose nobody declared — is the single
+  // most interesting line this container can produce, and the ` 200 ` in the expression is
+  // what guarantees it survives. If the regex ever stops matching (an haproxy log-format
+  // change upstream), the failure is noise coming back, never an audit line going missing.
+  stage.match {
+    selector = "{compose_service=\"socket-proxy\"}"
+
+    stage.drop {
+      // Wrapped in `.*` on both ends for the same reason the Postgres expression above is:
+      // it makes the rule behave identically whether the stage matches the whole line or a
+      // substring, so it does not quietly stop working on an Alloy upgrade.
+      expression          = ".* 200 [0-9]+ .*\"GET (/v[0-9.]+)?/(containers/json|_ping|version).*"
+      drop_counter_reason = "socket_proxy_poll_noise"
     }
   }
 

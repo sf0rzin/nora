@@ -1160,11 +1160,17 @@ jobs:
       # syntax, not intent: a service renamed by mistake (e.g. `otel` instead of
       # `otel-collector`) is perfectly valid YAML, but breaks the OTEL_EXPORTER_OTLP_ENDPOINT
       # of the 4 apps — which resolve the collector by internal hostname.
+      #
+      # `socket-proxy` is in this list for a sharper version of the same reason: three `host =`
+      # constants in infra/host/observability/config.alloy read `tcp://socket-proxy:2375`, and
+      # a rename would not break the stack loudly — Alloy would simply discover no containers
+      # and Loki would go quiet, which is the failure nobody notices until an incident needs
+      # the logs. Renaming it means renaming it in that file too.
       - name: Service contract (names = internal hostnames)
         working-directory: infra/host
         run: |
           set -euo pipefail
-          expected="admin alloy api backup caddy cloudflared grafana loki otel-collector postgres postgres-platform prometheus web worker"
+          expected="admin alloy api backup caddy cloudflared grafana loki otel-collector postgres postgres-platform prometheus socket-proxy web worker"
           actual=$(docker compose --env-file .env.ci -f docker-compose.yml --profile platform config --services | sort | tr '\n' ' ')
           actual=$(echo "$actual" | xargs)
           if [ "$actual" != "$expected" ]; then
@@ -1174,7 +1180,7 @@ jobs:
             echo "If the change is intentional, update this list AND ADR 0034."
             exit 1
           fi
-          echo "14 services match the contract."
+          echo "15 services match the contract."
 
       # shellcheck ships preinstalled in the ubuntu-latest image — no third-party action.
       # `-x` follows the `source` between scripts.

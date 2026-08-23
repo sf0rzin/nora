@@ -53,7 +53,13 @@ PROBE_INTERVAL="${DEPLOY_PROBE_INTERVAL:-5}"
 # Dependency order (from the compose): data -> observability -> worker -> api -> front -> edge.
 # The edge comes last on purpose: Caddy is the retry buffer of the rolling update and
 # cloudflared depends on it; recreating them earlier would drop traffic during the Spring boot.
-ALL_SERVICES=(postgres postgres-platform otel-collector prometheus loki alloy grafana
+#
+# socket-proxy sits immediately before alloy because alloy reaches the Docker API THROUGH it
+# (see the service in the compose and the `host =` constants in observability/config.alloy).
+# Rolling alloy first would leave it discovering nothing until the next refresh interval —
+# recoverable, but it would also make this script's health gate judge alloy while its only
+# dependency is being recreated. Order is cheaper than the retry.
+ALL_SERVICES=(postgres postgres-platform otel-collector prometheus loki socket-proxy alloy grafana
               worker api web admin caddy cloudflared backup)
 
 # Services whose image is versioned by tag (the only ones with rollback by tag).
@@ -429,6 +435,16 @@ probe_cmd() {
     loki)              printf 'wget\t-q\t--spider\thttp://localhost:3100/ready' ;;
     grafana)           printf 'wget\t-q\t--spider\thttp://localhost:3000/api/health' ;;
     cloudflared)       printf 'cloudflared\t--version' ;;
+    # socket-proxy: haproxy on alpine, so busybox wget is present. Two details that are not
+    # interchangeable with the other probes here:
+    #   - GET, not `--spider`. busybox's --spider issues HEAD, and the proxy runs with POST=0,
+    #     whose haproxy rule is `deny unless METH_GET` — it refuses HEAD with a 403 and the
+    #     probe would fail against a perfectly healthy proxy.
+    #   - 127.0.0.1, not `localhost`. The service sets DISABLE_IPV6=1 so haproxy binds IPv4
+    #     only, and busybox resolves `localhost` to ::1 first. Same trap as `admin` above.
+    # /_ping is inside the allow-list (PING=1) and is the daemon's own liveness endpoint, so a
+    # 200 here proves the whole path: haproxy up, socket readable, daemon answering.
+    socket-proxy)      printf 'wget\t-q\t-O\t-\thttp://127.0.0.1:2375/_ping' ;;
     # alloy: the image is Ubuntu-based and ships no wget or curl, so there is nothing to run
     # INSIDE it. backup serves no port at all. Both are covered by fallback_probe below —
     # "validates by container state" was the whole defect, not the design.
@@ -483,7 +499,7 @@ probe_once() {
 # FALLBACK PROBES — for the three services that have neither an in-image probe nor a
 # declared healthcheck, and were therefore passing the rollout's health gate on `running`.
 #
-# Three of the fourteen services fell into that hole: otel-collector (every metric the four
+# Three of the fifteen services fell into that hole: otel-collector (every metric the four
 # applications produce goes through it), alloy (every log line does) and backup (the only
 # thing standing between a bad day and a lost database). A collector that comes up and
 # immediately fails to export was indistinguishable here from a healthy one, and no rollback

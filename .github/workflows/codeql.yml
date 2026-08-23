@@ -1,0 +1,166 @@
+name: codeql
+
+# Static analysis, uploaded to the repository's Code scanning tab. Four analyses: the three
+# languages that make up the deployed stack (Java for `services/api`, TypeScript for
+# `apps/web`, `apps/admin` and `packages/**`, Python for `services/nlp-worker`) plus the
+# workflow files in this directory, which are code that runs with credentials.
+#
+# WHAT IS NOT COVERED, said out loud rather than left as an omission: `apps/desktop/src-tauri`
+# is Rust, and CodeQL's Rust support is a public preview whose query pack is thin. The Rust
+# tree's coverage today is `cargo-deny` — the `supply-chain` job in ci.yml and the weekly
+# supply-chain-drift.yml — which is dependency advisories, not static analysis of our own
+# code. Adding `rust` here is a one-line matrix entry whenever that preview is worth trusting.
+#
+# WHY THIS IS FREE HERE, since "we cannot afford a scanner" was the standing reason there was
+# none: `sf0rzin/nora` is a PUBLIC repository, and on a public repository code scanning via
+# Actions costs nothing beyond the Actions minutes, which are themselves free for public
+# repositories. The only thing that has to be granted is `security-events: write`, declared on
+# the job below — there is no product to enable, no seat to buy, and nothing here talks to a
+# paid API. If this repository ever goes private, THIS WORKFLOW STARTS FAILING at the upload
+# step rather than silently costing money, which is the failure mode we want.
+#
+# ----------------------------------------------------------------------------
+# WHY IT IS NOT IN `ci-gate`
+# ----------------------------------------------------------------------------
+# Deliberate, and the most important decision in this file. `ci-gate` is the single required
+# check on `main` (ADR 0027). Wiring a taint-tracking scanner into it means a `note`-severity
+# finding in generated code — or a new query shipped by an upstream bundle upgrade nobody
+# asked for — can block an unrelated merge at 6pm on a Friday. What happens next is not "the
+# finding gets fixed": what happens is that somebody adds the query to a suppression list, or
+# deletes the workflow, and then the repository has no scanner at all.
+#
+# So this workflow reports and does not gate. Its results land in the Security tab, in the PR's
+# conversation as annotations, and in the weekly run's status. Acting on a finding stays a
+# human decision. If a specific query later earns the right to block a merge, the way to do
+# that is a branch-protection rule naming `Code scanning results`, not a `needs:` edge here.
+#
+# ----------------------------------------------------------------------------
+# WHY A CRON AS WELL AS PULL REQUESTS
+# ----------------------------------------------------------------------------
+# Same reason supply-chain-drift.yml exists. A PR-triggered scan can only ever find what THIS
+# change introduced; the CodeQL query packs are updated continuously upstream, so a file
+# nobody has touched in six months can become a finding without any commit happening. Without
+# the schedule, that finding waits for whoever next edits the file and then reds their check.
+#
+# The same caveat as supply-chain-drift.yml applies and is worth repeating rather than
+# cross-referencing: GitHub DISABLES scheduled workflows after 60 days without repository
+# activity, and re-enabling them is a manual click nobody gets a notification about.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Mondays 41 minutes past 04:00 UTC. Off the hour for the reason spelled out in
+    # supply-chain-drift.yml (GitHub queues scheduled runs; the top of the hour is contended),
+    # and on a different hour from that workflow so the two do not compete for the same slot.
+    - cron: '41 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Per ref, cancelling in progress: a push that supersedes another push should not leave two
+# full analyses running. `cancel-in-progress` is safe here precisely BECAUSE this is not a
+# gate — a cancelled run blocks nothing.
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    # Java is the slow one: it compiles the Spring application before extraction. The others
+    # finish in single-digit minutes. One number for the matrix, sized for the worst case.
+    timeout-minutes: 30
+
+    # Job-level, not workflow-level. `security-events: write` is what lets the analyze step
+    # upload a SARIF file to the Code scanning API, and it is the reason this workflow works
+    # without any paid product — but it is also a write scope, so it is granted to the one job
+    # that needs it instead of to the file.
+    #   contents: read        — checkout.
+    #   security-events: write— the SARIF upload. Without it the analysis runs and is thrown away.
+    #   actions: read         — the CodeQL action reads the workflow run's own metadata to
+    #                           attribute results to the right ref. Read-only.
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    strategy:
+      # One language failing must not cancel the analysis of the other three — a Maven
+      # hiccup in the Java leg should not also throw away the Python and TypeScript results.
+      fail-fast: false
+      matrix:
+        include:
+          # `build-mode` is the axis that matters. `none` means CodeQL extracts straight from
+          # source with no build; `manual` means the extractor traces a real compiler
+          # invocation and only sees what that compiler compiled.
+          - language: java-kotlin
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+          - language: python
+            build-mode: none
+          # `actions` analyses the workflow files in this very directory — the injection class
+          # that turns a `${{ github.event.* }}` interpolation inside a `run:` block into
+          # arbitrary code execution on the runner. This repository has workflows that decrypt
+          # the Desktop updater signing key and workflows that hold `packages: write`, so the
+          # blast radius of that class here is not theoretical.
+          - language: actions
+            build-mode: none
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # Java only. The extractor observes a compilation; without a JDK there is nothing to
+      # observe, and the runner's default JDK is not necessarily the one this project targets
+      # (pom.xml pins `maven.compiler.release` to 21). A mismatch here does not fail loudly —
+      # it produces a database built from a different language level than the one that ships.
+      - name: Set up JDK 21
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          # `security-extended` over the default `security` pack: the default suite is tuned
+          # for a low false-positive rate on a gating scanner, and this one does not gate (see
+          # the header). Since a finding here costs a look rather than a blocked merge, the
+          # wider suite is the right trade. `security-and-quality` is NOT used — its
+          # maintainability queries would bury the security findings in style noise.
+          queries: security-extended
+
+      # `build-mode: manual` means CodeQL is watching, and whatever the compiler touches
+      # between init and analyze is what ends up in the database. Nothing else does.
+      #
+      # WHY MANUAL AND NOT `autobuild`: this is a monorepo with more than one build file in
+      # it, and autobuild picks a build by walking the tree and guessing. A guess that lands
+      # on the wrong directory does not fail — it produces a database containing a fraction of
+      # the code, uploads it, and the Security tab goes green because nothing was analysed.
+      # An explicit `-f services/api/pom.xml` cannot silently analyse the wrong thing.
+      #
+      # `compile` and not `verify`: the extractor needs javac to run over every source file,
+      # which `compile` does. `verify` would additionally run surefire, spotless, checkstyle
+      # and the JaCoCo rule — every quality plugin in that pom binds to `verify` — buying
+      # nothing for extraction and turning a scanner run red on a formatting complaint. Tests
+      # and style are ci.yml's `api` job; this job builds a database.
+      #
+      # A consequence worth naming: `src/test` is therefore NOT analysed. That is the right
+      # trade for a security scanner — a taint path that only exists in a test fixture is not
+      # a finding — but it does mean this workflow says nothing about test code.
+      - name: Build (java-kotlin)
+        if: matrix.language == 'java-kotlin'
+        run: mvn -B -ntp -f services/api/pom.xml compile
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}

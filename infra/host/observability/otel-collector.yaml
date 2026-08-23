@@ -121,17 +121,24 @@ receivers:
   # OPTIONAL (off) — per-container metrics via docker_stats
   # ---------------------------------------------------------------------------
   # This is what gives CPU/memory/restarts per container, the closest thing there is to
-  # Azure's "Container Apps -> Metrics". It is NOT on because docker-compose.yml
-  # does not mount the socket into otel-collector. To enable, add to the service:
+  # Azure's "Container Apps -> Metrics". It is NOT on because this collector has no route to
+  # the Docker API.
   #
-  #     volumes:
-  #       - /var/run/docker.sock:/var/run/docker.sock:ro
-  #       - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+  # DO NOT ENABLE IT BY MOUNTING THE SOCKET, which is what this note used to suggest. That
+  # mount is root on the host — the Docker API can create a container with `/` bind-mounted
+  # into it — and the whole point of the `socket-proxy` service in docker-compose.yml is that
+  # exactly one container in this stack holds it. Adding a second one gives back everything
+  # that change bought.
   #
-  # and include `docker_stats` in the metrics pipeline below.
+  # The supported route is the proxy. To enable: put this service on the `docker-api` network
+  # as well, allow the stats path on the proxy (`/containers/{id}/stats` is already covered by
+  # its `CONTAINERS=1`), point the receiver at `http://socket-proxy:2375`, and include
+  # `docker_stats` in the metrics pipeline below. Note that the collector would then be a
+  # second consumer of a proxy sized for one — check its haproxy `maxconn` before assuming it
+  # is free.
   #
   # docker_stats:
-  #   endpoint: unix:///var/run/docker.sock
+  #   endpoint: http://socket-proxy:2375
   #   collection_interval: 30s
   #   container_labels_to_metric_labels:
   #     com.docker.compose.service: compose_service
