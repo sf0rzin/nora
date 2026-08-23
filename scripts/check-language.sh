@@ -99,6 +99,13 @@ ALLOWED=(
   "services/nlp-worker/src/nora_nlp/services/live_analyzer.py"      # pt-BR prompt fragment concatenated into the prompt at runtime
   "services/nlp-worker/src/nora_nlp/services/baseline.py"           # cites a pt-BR term as a worked example
   "services/nlp-worker/src/nora_nlp/services/pii_shield.py"         # BR name/honorific lists + pt-BR regex fragments (ADR 0012)
+  # Same reason as pii_shield.py beside it, one layer up: the pt-BR here is the DATA the layer
+  # decides about, not prose describing it. The strings that earn the exemption are the sentences
+  # the model gets right and wrong — `PRAZO FINAL mudou para sexta` is why all-caps is ceded, and
+  # `Sao Paulo`/`Belo Horizonte` are why LOC vetoes an overlapping PER. Translating them would
+  # leave a comment that no longer demonstrates anything, which is the outcome this guard's own
+  # message warns about when it offers the allowlist as the alternative to translating.
+  "services/nlp-worker/src/nora_nlp/services/pii_ner.py"            # pt-BR examples of what the NER layer must and must not claim
   "services/nlp-worker/src/nora_nlp/services/stub_analyzer.py"      # pt-BR stub analysis output (offline mode)
   "services/nlp-worker/src/nora_nlp/services/stub_live_analyzer.py" # pt-BR stub live highlights (offline mode)
   "services/nlp-worker/src/nora_nlp/services/stub_split_analyzer.py" # pt-BR stub split output (offline mode)
