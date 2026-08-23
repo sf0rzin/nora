@@ -1,15 +1,60 @@
-import { requireAccess } from "@/lib/access";
+import { AccessDenied } from "@/components/access-denied";
+import { guardPage } from "@/lib/access";
 import { getBusiness, getCost, getHealth } from "@/lib/data";
-import type { ServiceHealth } from "@/lib/contracts";
+import { COST_GROUP_BY, COST_GROUP_BY_LABEL } from "@/lib/contracts";
+import type { CostGroupBy, ServiceHealth } from "@/lib/contracts";
 
 export const dynamic = "force-dynamic";
 
-export default async function TelemetriaPage() {
+/** Window and aggregation dimension, as the operator typed them into the URL. */
+interface TelemetrySearch {
+  from?: string;
+  to?: string;
+  groupBy?: string;
+}
+
+/**
+ * Only what `<input type="date">` emits gets through. The backend answers 400 for an unparseable
+ * date, and a query string is operator-editable: a typo would replace the page with an error screen
+ * instead of falling back to the default window.
+ */
+function isoDate(value: string | undefined): string | undefined {
+  return value != null && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : undefined;
+}
+
+function costGroupBy(value: string | undefined): CostGroupBy {
+  return COST_GROUP_BY.find((g) => g === value) ?? "service";
+}
+
+/**
+ * The window and the aggregation dimension live in the URL, and the controls are a plain GET form.
+ *
+ * Both were unreachable from the console until 2026-08-23: `getCost`/`getBusiness` already took
+ * `from`/`to` and nobody passed them, and the query string hardcoded `groupBy=service` — so the
+ * "per tenant" in US83's own title was only reachable by curl. A GET form keeps this a server
+ * component (no client bundle, no state) and makes a filtered view a shareable link, which for an
+ * operator pasting evidence into an incident thread is the difference that matters.
+ */
+export default async function TelemetriaPage({
+  searchParams,
+}: {
+  searchParams: Promise<TelemetrySearch>;
+}) {
   // See the note in app/page.tsx: the layout does not re-run on RSC navigation, so each read
   // gates itself.
-  await requireAccess();
+  const gate = await guardPage();
+  if (!gate.ok) return <AccessDenied reason={gate.reason} />;
 
-  const [cost, health, business] = await Promise.all([getCost(), getHealth(), getBusiness()]);
+  const params = await searchParams;
+  const from = isoDate(params.from);
+  const to = isoDate(params.to);
+  const groupBy = costGroupBy(params.groupBy);
+
+  const [cost, health, business] = await Promise.all([
+    getCost(from, to, groupBy),
+    getHealth(),
+    getBusiness(from, to),
+  ]);
   const maxCost = Math.max(...cost.rows.map((r) => r.costUsd), 0.0001);
 
   return (
@@ -19,11 +64,44 @@ export default async function TelemetriaPage() {
           Telemetria
         </h1>
         <p style={{ fontSize: 14, color: "var(--muted)", margin: 0, lineHeight: 1.6 }}>
-          Custo de IA por serviço, saúde do sistema (Application Insights) e métricas de negócio do banco primário.
+          {/* "Application Insights" until 2026-08-23 — ADR 0034 replaced it with Prometheus, and the
+              unavailability notice further down this same page already asked for
+              NORA_PLATFORM_HEALTH_PROMETHEUS_URL. */}
+          Custo de IA por serviço, modelo ou tenant, saúde do sistema (Prometheus) e métricas de
+          negócio do banco primário.
         </p>
       </header>
 
-      <h2 style={sectionLabel}>Custo de IA · {cost.from} → {cost.to}</h2>
+      <form method="get" style={filterRow}>
+        <label style={filterField}>
+          <span style={filterLabel}>Agrupar por</span>
+          <select name="groupBy" defaultValue={groupBy} style={control}>
+            {COST_GROUP_BY.map((g) => (
+              <option key={g} value={g}>
+                {COST_GROUP_BY_LABEL[g]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={filterField}>
+          <span style={filterLabel}>De</span>
+          <input type="date" name="from" defaultValue={from ?? ""} style={control} />
+        </label>
+        <label style={filterField}>
+          <span style={filterLabel}>Até</span>
+          <input type="date" name="to" defaultValue={to ?? ""} style={control} />
+        </label>
+        <button type="submit" style={{ ...control, cursor: "pointer" }}>
+          Aplicar
+        </button>
+        <span style={{ fontSize: 11.5, color: "var(--muted)" }}>
+          Sem datas, a janela é as últimas 24h.
+        </span>
+      </form>
+
+      <h2 style={sectionLabel}>
+        Custo de IA por {COST_GROUP_BY_LABEL[groupBy].toLowerCase()} · {cost.from} → {cost.to}
+      </h2>
       <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 20, marginBottom: 32 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 18 }}>
           <span style={{ fontFamily: "var(--display)", fontSize: 34, fontWeight: 600, letterSpacing: "-0.03em" }}>
@@ -173,6 +251,35 @@ const sectionLabel: React.CSSProperties = {
   textTransform: "uppercase",
   color: "var(--muted)",
   margin: "0 0 12px",
+};
+
+const filterRow: React.CSSProperties = {
+  display: "flex",
+  alignItems: "flex-end",
+  flexWrap: "wrap",
+  gap: 10,
+  marginBottom: 20,
+};
+
+const filterField: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 4 };
+
+const filterLabel: React.CSSProperties = {
+  fontSize: 10.5,
+  fontWeight: 500,
+  letterSpacing: "0.07em",
+  textTransform: "uppercase",
+  color: "var(--muted)",
+};
+
+const control: React.CSSProperties = {
+  fontFamily: "var(--sans)",
+  fontSize: 13,
+  color: "var(--ink)",
+  background: "var(--canvas)",
+  border: "1px solid var(--border)",
+  borderRadius: 8,
+  padding: "7px 10px",
+  outline: "none",
 };
 
 const th: React.CSSProperties = {

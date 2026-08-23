@@ -11,6 +11,7 @@
  */
 import type {
   BusinessSnapshot,
+  CostGroupBy,
   CostSummary,
   FeatureFlag,
   HealthSnapshot,
@@ -19,6 +20,7 @@ import type {
   ServiceBinding,
   ServiceKey,
 } from "./contracts";
+import { COST_GROUP_BY } from "./contracts";
 import {
   MOCK_BINDINGS,
   MOCK_BUSINESS,
@@ -34,6 +36,15 @@ import {
 const USE_MOCKS = process.env.NORA_ADMIN_USE_MOCKS === "true";
 const API_BASE_URL = (process.env.PLATFORM_API_BASE_URL ?? "http://localhost:8080").replace(/\/$/, "");
 const INTERNAL_TOKEN = process.env.PLATFORM_INTERNAL_TOKEN ?? "";
+
+/**
+ * Every call to the Spring API is bounded. Without this the console inherits the runtime's default,
+ * which for Node's fetch is "wait as long as the socket stays open": an API that accepts the
+ * connection and never answers (a stuck pool, a half-open tunnel) hangs the render instead of
+ * failing, and a hung render is the one failure mode no error boundary can catch. Overridable
+ * because the acceptable ceiling belongs to the deployment, not to the source.
+ */
+const TIMEOUT_MS = Number(process.env.PLATFORM_API_TIMEOUT_MS ?? "8000") || 8000;
 
 // Raw shape of the backend's ModelResponse (names diverge from the front-end contract).
 interface RawModel {
@@ -88,9 +99,17 @@ export async function getFlags(): Promise<FeatureFlag[]> {
   return (await platformGet<FeatureFlag[] | null>("/admin/platform/flags")) ?? [];
 }
 
-export async function getCost(from?: string, to?: string): Promise<CostSummary> {
+export async function getCost(
+  from?: string,
+  to?: string,
+  groupBy: CostGroupBy = "service",
+): Promise<CostSummary> {
   if (USE_MOCKS) return MOCK_COST;
-  const qs = new URLSearchParams({ groupBy: "service" });
+  // Narrowed here rather than trusted from the caller: the value travels from a query string the
+  // operator can type, and an unknown dimension is a 400 from the backend — a blank screen where a
+  // default would have been the honest answer.
+  const dimension = COST_GROUP_BY.includes(groupBy) ? groupBy : "service";
+  const qs = new URLSearchParams({ groupBy: dimension });
   if (from) qs.set("from", from);
   if (to) qs.set("to", to);
   const raw = await platformGet<Partial<CostSummary> | null>(
@@ -156,17 +175,32 @@ export const ALL_SERVICES: ServiceKey[] = ["chat", "analysis", "multimodal"];
 // Mutations (server-side; require the operator's e-mail for auditing in the backend)
 // --------------------------------------------------------------------------- //
 
+/**
+ * Payload of POST /admin/platform/models. The four required fields are required HERE because they
+ * are `@NotBlank` in the backend's `CreateModelRequest` — `baseUrl` was optional in this type until
+ * 2026-08-23, so the console built a payload the API rejects with 400 and the whole "create" half of
+ * the catalog was unreachable from the UI. Keep this in parity with
+ * `services/api/.../dto/platform/PlatformDtos.java`; `src/lib/data.test.ts` asserts the parity.
+ */
 export interface NewModelInput {
   provider: string;
   model: string;
   displayName: string;
-  baseUrl?: string;
+  baseUrl: string;
   modality: Modality;
   supportsStrictJsonSchema: boolean;
   priceInputPerMTok: number;
   priceOutputPerMTok: number;
   priceCachedInputPerMTok?: number | null;
 }
+
+/** The `@NotBlank` fields of the backend's `CreateModelRequest`, in the order the form shows them. */
+export const REQUIRED_MODEL_FIELDS = [
+  "provider",
+  "model",
+  "displayName",
+  "baseUrl",
+] as const satisfies readonly (keyof NewModelInput)[];
 
 /** Switches a service's model (and enabled) at runtime. PUT /admin/platform/config/{service}. */
 export async function bindService(
@@ -185,19 +219,50 @@ export async function removeModel(id: string, operator: string): Promise<void> {
   await platformSend("DELETE", `/admin/platform/models/${encodeURIComponent(id)}`, operator);
 }
 
-/** Creates a model in the catalog. POST /admin/platform/models. */
+/**
+ * Creates a model in the catalog. POST /admin/platform/models.
+ *
+ * The blank check is the console's, not the API's, on purpose: reaching the backend to be told
+ * "baseUrl must not be blank" costs a round trip and returns a message in English to a pt-BR
+ * console. `USE_MOCKS` returns before the call, so this validation runs in the mock mode too —
+ * which is exactly the mode in which the missing field went unnoticed for a whole story.
+ */
 export async function createModel(input: NewModelInput, operator: string): Promise<void> {
+  const missing = REQUIRED_MODEL_FIELDS.filter((f) => (input[f] ?? "").trim() === "");
+  if (missing.length > 0) {
+    throw new Error(`Campos obrigatórios em branco: ${missing.join(", ")}.`);
+  }
   if (USE_MOCKS) return;
   await platformSend("POST", "/admin/platform/models", operator, { ...input, enabled: true });
 }
 
 // ---- real transport (the default; mocks require NORA_ADMIN_USE_MOCKS=true) ----
 
+/**
+ * Turns the runtime's abort into a sentence an operator can act on. `AbortSignal.timeout` rejects
+ * with a bare `TimeoutError`, which surfaces in the console as "The operation was aborted" — true
+ * and useless. Naming the endpoint and the ceiling is the difference between "the console is
+ * broken" and "the platform API is not answering".
+ */
+function asPlatformFailure(err: unknown, what: string): Error {
+  if (err instanceof DOMException && err.name === "TimeoutError") {
+    return new Error(`Plataforma não respondeu em ${TIMEOUT_MS} ms em ${what}`);
+  }
+  if (err instanceof Error) return new Error(`Falha ao falar com a plataforma em ${what}: ${err.message}`);
+  return new Error(`Falha ao falar com a plataforma em ${what}`);
+}
+
 async function platformGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { Accept: "application/json", "X-Internal-Token": INTERNAL_TOKEN },
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${path}`, {
+      headers: { Accept: "application/json", "X-Internal-Token": INTERNAL_TOKEN },
+      cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch (err) {
+    throw asPlatformFailure(err, path);
+  }
   if (!res.ok) throw new Error(`Plataforma respondeu ${res.status} em ${path}`);
   return (await res.json()) as T;
 }
@@ -208,17 +273,25 @@ async function platformSend<T>(
   operator: string,
   body?: unknown,
 ): Promise<T | null> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    method,
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "X-Internal-Token": INTERNAL_TOKEN,
-      "X-Operator-Email": operator,
-    },
-    body: body == null ? undefined : JSON.stringify(body),
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "X-Internal-Token": INTERNAL_TOKEN,
+        "X-Operator-Email": operator,
+      },
+      body: body == null ? undefined : JSON.stringify(body),
+      cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch (err) {
+    // Naming the method and the path matters more here than on a read: a mutation that times out
+    // may still have been applied on the other side, and the operator needs to know which one.
+    throw asPlatformFailure(err, `${method} ${path}`);
+  }
   if (!res.ok) throw new Error(`Plataforma respondeu ${res.status} em ${method} ${path}`);
   if (res.status === 204) return null;
   return (await res.json()) as T;

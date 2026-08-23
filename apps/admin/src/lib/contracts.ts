@@ -40,6 +40,20 @@ export interface FeatureFlag {
   description: string;
 }
 
+/**
+ * Dimensions the cost endpoint aggregates by. Mirrors `CostTelemetryService.GROUPS` — the backend
+ * answers 400 for anything outside the set, so the console validates against this list before
+ * building the query string instead of letting an operator-supplied value reach the API.
+ */
+export type CostGroupBy = "service" | "model" | "tenant";
+export const COST_GROUP_BY: readonly CostGroupBy[] = ["service", "model", "tenant"];
+
+export const COST_GROUP_BY_LABEL: Record<CostGroupBy, string> = {
+  service: "Serviço",
+  model: "Modelo",
+  tenant: "Tenant",
+};
+
 /** Cost aggregate (groupBy = model | service | tenant). */
 export interface CostRow {
   key: string;

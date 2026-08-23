@@ -6,21 +6,33 @@
 // via PLATFORM_API_BASE_URL — no NEXT_PUBLIC_ prefix, so never exposed to the
 // browser). The browser therefore only connects to its own origin: connect-src 'self'.
 //
-// CSP delivered as **Report-Only** on purpose: the console uses Tailwind + inline
-// styles + Next hydration (which injects inline <style>/<script>), so an
-// enforcing policy has to be observed before it blocks. Report-Only never
-// blocks a request — it only reports violations in the browser console. Harden to
-// `Content-Security-Policy` (enforcing) after validating there are no legitimate
-// violations in production (ideally swapping 'unsafe-inline' for nonce/hash).
+// The CSP is **enforcing**. It was Report-Only until 2026-08-23, waiting on an observation period
+// that never had an owner or an end date, which is how a policy that blocks nothing becomes
+// permanent. Report-Only on the surface that edits the LLM catalog of the whole platform and holds
+// the bridge token server-side had the priority backwards: this app loads no third-party content, so
+// the directives that actually matter here — `default-src 'self'`, `connect-src 'self'`,
+// `object-src 'none'`, `frame-ancestors 'none'` — have nothing legitimate to break.
+//
+// `'unsafe-inline'` stays in script-src and style-src, and the honesty about that matters: Next
+// injects inline bootstrap/hydration scripts and this console styles everything with inline `style`
+// attributes, so removing it needs a nonce pipeline, not a flag flip. What enforcing buys today is
+// origin confinement (no script, connection, frame or object from anywhere else), not inline-script
+// immunity.
+//
+// `'unsafe-eval'` is development-only: the dev server's HMR needs it, a production build does not,
+// and leaving it in the shipped policy would hand an injected string a working evaluator.
+const isDev = process.env.NODE_ENV === "development";
+
 const contentSecurityPolicy = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: blob:",
   "connect-src 'self'",
   "frame-ancestors 'none'",
   "base-uri 'self'",
+  "form-action 'self'",
   "object-src 'none'",
 ].join("; ");
 
@@ -37,7 +49,7 @@ const securityHeaders = [
     value: "camera=(), microphone=(), geolocation=()",
   },
   {
-    key: "Content-Security-Policy-Report-Only",
+    key: "Content-Security-Policy",
     value: contentSecurityPolicy,
   },
 ];

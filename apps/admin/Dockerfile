@@ -1,5 +1,7 @@
 # Build context: apps/admin/
-# Internal operator console (Next standalone). Behind Easy Auth + IP allowlist on ACA.
+# Internal operator console (Next standalone). Behind Cloudflare Tunnel + Cloudflare Access
+# (ADR 0025), with a second JWT check in the app itself (src/lib/access.ts). The "Easy Auth + IP
+# allowlist on ACA" this line used to name is the pre-0025 hosting, gone since the move off Azure.
 
 # --- deps ---
 FROM node:22-alpine AS deps

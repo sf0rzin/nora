@@ -1,4 +1,5 @@
-import { requireAccess } from "@/lib/access";
+import { AccessDenied } from "@/components/access-denied";
+import { guardPage } from "@/lib/access";
 import { getBindings, getCost, getFlags, getModels, modelOf } from "@/lib/data";
 import { SERVICE_LABEL } from "@/lib/contracts";
 
@@ -10,7 +11,8 @@ export default async function OverviewPage() {
   // A request with the router state tree already filled in renders the page and returns the
   // RSC payload without the layout's checkAccess ever running. Same reason the server
   // actions call requireAccess() (see lib/access.ts) — here it applies to the reads.
-  await requireAccess();
+  const gate = await guardPage();
+  if (!gate.ok) return <AccessDenied reason={gate.reason} />;
 
   const [models, bindings, flags, cost] = await Promise.all([
     getModels(),
@@ -64,6 +66,19 @@ export default async function OverviewPage() {
       </div>
 
       <SectionLabel>Serviços (feature flags)</SectionLabel>
+      {/*
+        Read-only, and said out loud. The control plane exposes GET /admin/platform/flags and
+        nothing else — there is no PUT anywhere in the API, which the contract records as a v1
+        choice ("v1 is read-only (no toggle PUT yet)"). Showing the state without saying it cannot
+        be changed here leaves the operator hunting for a toggle that does not exist; the sentence
+        below costs one line and ends the hunt. The per-service switch further up this page is a
+        different thing (llm_config binding), which is exactly why the two get told apart.
+      */}
+      <p style={{ fontSize: 11.5, color: "var(--muted)", margin: "-6px 0 10px", lineHeight: 1.5 }}>
+        Somente leitura nesta versão — ligar ou desligar uma flag ainda é mudança de configuração no
+        banco do plano de controle. O botão Ativo/Desligado da tela de Modelos é outra coisa: ele
+        controla o binding do serviço, não a flag.
+      </p>
       <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
         {flags.map((f, i) => (
           <div

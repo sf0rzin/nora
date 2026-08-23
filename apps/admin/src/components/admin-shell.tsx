@@ -83,7 +83,13 @@ export function AdminShell({ operator, children }: { operator: Operator; childre
                 background: operator.authenticated ? "var(--success)" : "var(--warn)",
               }}
             />
-            {operator.authenticated ? "Entra ID" : "dev (sem Easy Auth)"}
+            {/*
+              "Entra ID" until 2026-08-23, which named the wrong provider: identity has come from
+              Cloudflare Access since ADR 0025, and the Easy Auth branch that would justify the old
+              label is inert (lib/operator.ts). An operator reading the footer mid-incident should
+              see the system that is actually gating the door.
+            */}
+            {operator.authenticated ? "Cloudflare Access" : "dev (sem Cloudflare Access)"}
           </div>
         </div>
       </aside>

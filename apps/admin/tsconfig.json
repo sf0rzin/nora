@@ -30,6 +30,7 @@
   },
   "include": [
     "next-env.d.ts",
+    "vitest.config.mts",
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",

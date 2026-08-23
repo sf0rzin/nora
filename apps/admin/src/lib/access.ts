@@ -127,8 +127,9 @@ export class AccessDeniedError extends Error {
  *   unchanged parent segment on an RSC navigation. A request that already carries the router
  *   state tree renders the page and returns the payload without the layout gate running.
  *
- * Every new page must start with `await requireAccess()`. The layout keeps doing its
- * own check for the initial render and for the 403 screen, but it is the second line, not the only one.
+ * Every new page must start with a gate of its own — `guardPage()` below, which is this same check
+ * with a returned denial instead of a thrown one. The layout keeps doing its own check for the
+ * initial render and for the 403 screen, but it is the second line, not the only one.
  *
  * Returns the e-mail from the verified JWT when enforcing. Outside enforce (mocks only, which is
  * now an explicit `NORA_ADMIN_USE_MOCKS=true`) it returns `undefined` and the caller falls back to
@@ -138,4 +139,32 @@ export async function requireAccess(): Promise<string | undefined> {
   const access = await checkAccess();
   if (access.enforced && !access.ok) throw new AccessDeniedError(access.reason);
   return access.email;
+}
+
+/** What a page learns from the gate: either it may render, or why it may not. */
+export type PageGate =
+  | { ok: true; email?: string }
+  | { ok: false; reason: AccessDenialReason };
+
+/**
+ * Same gate as `requireAccess()`, for **pages**, but it RETURNS the denial instead of throwing.
+ *
+ * Throwing is right for a server action — nothing has been sent to the browser yet and the only
+ * correct outcome is "no side effect". For a page it costs the message. A page that throws lands on
+ * the error boundary, and Next redacts a server-thrown message before it reaches the client in
+ * production, leaving a digest: the two sentences `AccessDeniedError` carries — "this deployment
+ * never got CF_ACCESS_*" versus "this request carries no assertion" — are exactly what redaction
+ * deletes, and telling those two apart is the whole point of the fail-closed screen. Returning the
+ * reason lets the page render the same 403 the layout renders, server-side, with the sentence intact.
+ *
+ * Every new page starts with this; every new server action starts with `requireAccess()`.
+ */
+export async function guardPage(): Promise<PageGate> {
+  const access = await checkAccess();
+  if (access.enforced && !access.ok) {
+    // `checkAccess` always fills `reason` when it denies; the fallback keeps the type honest without
+    // inventing a friendlier default than "we could not authenticate you".
+    return { ok: false, reason: access.reason ?? "no-assertion" };
+  }
+  return { ok: true, email: access.email };
 }

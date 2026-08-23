@@ -191,15 +191,23 @@ function AddModelForm({
   const [provider, setProvider] = useState("");
   const [model, setModel] = useState("");
   const [displayName, setDisplayName] = useState("");
+  // Required by the backend (@NotBlank in CreateModelRequest) and absent from this form until
+  // 2026-08-23, which made every "Salvar modelo" a 400 against a real API — invisible because the
+  // only mode anyone ran the console in returns before the request (NORA_ADMIN_USE_MOCKS=true).
+  const [baseUrl, setBaseUrl] = useState("");
   const [modality, setModality] = useState<Modality>("text");
   const [strict, setStrict] = useState(false);
   const [priceIn, setPriceIn] = useState("0");
   const [priceOut, setPriceOut] = useState("0");
+  // Optional in the contract, and left EMPTY rather than "0": a provider without cached-input
+  // pricing is not a provider that charges zero for it, and the catalog renders the two
+  // differently (the "cache $x" chip only appears when the price exists).
+  const [priceCached, setPriceCached] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function submit() {
-    if (!provider.trim() || !model.trim() || !displayName.trim()) {
-      onError("Preencha provider, model e nome.");
+    if (!provider.trim() || !model.trim() || !displayName.trim() || !baseUrl.trim()) {
+      onError("Preencha provider, model, nome e base URL.");
       return;
     }
     setSaving(true);
@@ -207,10 +215,12 @@ function AddModelForm({
       provider: provider.trim(),
       model: model.trim(),
       displayName: displayName.trim(),
+      baseUrl: baseUrl.trim(),
       modality,
       supportsStrictJsonSchema: strict,
       priceInputPerMTok: Number(priceIn) || 0,
       priceOutputPerMTok: Number(priceOut) || 0,
+      priceCachedInputPerMTok: priceCached.trim() === "" ? null : Number(priceCached) || 0,
     });
     setSaving(false);
     if (res.ok) onAdded(`Modelo "${displayName.trim()}" adicionado ao catálogo.`);
@@ -224,9 +234,11 @@ function AddModelForm({
         <input placeholder="model (ex.: gpt-4o-mini)" value={model} onChange={(e) => setModel(e.target.value)} style={input} />
       </div>
       <input placeholder="nome amigável (ex.: GPT-4o mini)" value={displayName} onChange={(e) => setDisplayName(e.target.value)} style={input} />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <input placeholder="base URL do provider (ex.: https://api.openai.com/v1)" inputMode="url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} style={input} />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
         <input placeholder="custo input / 1M (USD)" inputMode="decimal" value={priceIn} onChange={(e) => setPriceIn(e.target.value)} style={input} />
         <input placeholder="custo output / 1M (USD)" inputMode="decimal" value={priceOut} onChange={(e) => setPriceOut(e.target.value)} style={input} />
+        <input placeholder="custo cache input / 1M (opcional)" inputMode="decimal" value={priceCached} onChange={(e) => setPriceCached(e.target.value)} style={input} />
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 13 }}>
         <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
