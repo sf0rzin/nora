@@ -47,14 +47,24 @@ _UNAUTHENTICATED_WARNING = (
 
 
 def internal_auth_state(settings: Settings) -> str:
-    """``"on"`` when a token is enforced, ``"off"`` when the opt-out is in effect.
+    """The gate's state, in the SAME three values the gate actually has.
 
-    Exposed so ``/readyz`` can report it: the state of an auth gate should be readable
-    without shell access to the container's environment.
+    ``"on"``    a token is configured and enforced.
+    ``"closed"`` no token and no opt-out: the analysis routes answer 503 and the worker serves
+                nobody.
+    ``"open"``  no token and ``NORA_WORKER_ALLOW_UNAUTHENTICATED=true``: the analysis routes
+                accept any caller that can reach the port.
+
+    Exposed so ``/readyz`` can report it: the state of an auth gate should be readable without
+    shell access to the container's environment. That was the stated purpose and the function
+    did not serve it -- it collapsed the last two into ``"off"``, so the one distinction the
+    endpoint existed to make, a worker that serves nobody against a worker that serves everybody,
+    was the distinction it did not report. Everything else about the gate is unchanged: this
+    reads the same two settings ``require_internal_token`` reads, and decides nothing.
     """
     if settings.worker_internal_token:
         return "on"
-    return "off"
+    return "open" if settings.allow_unauthenticated_internal else "closed"
 
 
 def require_internal_token(

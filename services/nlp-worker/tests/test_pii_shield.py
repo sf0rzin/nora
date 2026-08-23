@@ -202,6 +202,38 @@ def test_a_trim_never_splices_a_placeholder_into_a_surname():
 @pytest.mark.parametrize(
     "text, surname",
     [
+        ("Maria Sant'Anna aprovou o escopo.", "Sant'Anna"),
+        ("Maria Sant'Ana aprovou o escopo.", "Sant'Ana"),
+        ("Maria Sant’Anna aprovou o escopo.", "Sant’Anna"),
+        ("Carlos D'Angelo assumiu a conta.", "D'Angelo"),
+        ("Sra. D'Ávila confirmou o prazo.", "D'Ávila"),
+    ],
+)
+def test_a_surname_with_an_apostrophe_is_redacted_whole(text, surname):
+    """Regression: the third separator, after the hyphen and the combining mark.
+
+    `_TITLE_WORD` knew `-` and nothing else, so `Sant'Anna` tokenised as `Sant` plus `Anna`,
+    `_NAME_SEQUENCE_RE` claimed only "Maria Sant", and `_ends_on_a_word_boundary` accepted the
+    cut because `'` is not a letter, not a combining mark and not `-`. The output was
+    "[[PERSON_NAME_1]]'Anna" -- a corrupted token for the model AND the tail of the surname in
+    the clear, which is exactly the pair of harms the hyphen fix was written for.
+
+    The corpus cannot cover this: it is generated from name pools that contain no apostrophe,
+    and adding one would move both published rates for a reason that has nothing to do with
+    them. So the coverage is here, per spelling, including the typographic apostrophe a word
+    processor substitutes and the elided article that has no lowercase letter to open on.
+    """
+    result = pii_shield.redact(text)
+    assert surname not in result.redacted_text, result.redacted_text
+    # The tail on its own, which is what a cut at the apostrophe would leave behind.
+    assert surname.split("'")[-1].split("’")[-1] not in result.redacted_text
+    assert not re.search(r"\]\][\w'’]", result.redacted_text), result.redacted_text
+    assert "[[PERSON_NAME_1]]" in result.redacted_text
+
+
+@pytest.mark.parametrize(
+    "text, surname",
+    [
         ("Eng. Schürmann revisou o escopo.", "Schürmann"),
         ("Dr. Núñez aprovou.", "Núñez"),
         ("A Sra. Müller assinou.", "Müller"),

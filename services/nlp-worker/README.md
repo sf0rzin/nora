@@ -28,7 +28,11 @@ than serving anyone — fail-closed. For local work, either set a token on both 
 
 `/healthz` and `/readyz` stay open: the container healthcheck calls `/healthz` with no header,
 and a gated one would leave the container unhealthy forever. `/readyz` reports
-`"internalAuth": "on" | "off"` so the state of the gate is visible without reading the env.
+`"internalAuth": "on" | "closed" | "open"` so the state of the gate is visible without reading
+the env. Three values and not two, because `off` used to mean two opposite things: a worker that
+refuses every call because no token is configured, and a worker deliberately left open by
+`NORA_WORKER_ALLOW_UNAUTHENTICATED`. `closed` is the first, `open` is the second, and only one of
+them is a reason to page somebody.
 
 ## Execution modes
 

@@ -43,9 +43,10 @@ def readyz(settings: Settings = Depends(get_settings)) -> dict[str, str]:
         "service": "nora-nlp-worker",
         "status": "ready",
         "stubMode": "true" if settings.use_llm_stub else "false",
-        # "off" means the analysis routes are answering 503 (no token configured) or
-        # accepting anyone (the explicit dev opt-out). Reported here so the state of the gate
-        # is observable without reading the container's environment.
+        # "on", "closed" or "open" — see `internal_auth_state`. This used to publish "off" for
+        # both of the last two, which are opposites: a worker answering 503 to everyone and a
+        # worker accepting anyone who can reach the port. Telling those apart is the only thing
+        # a reader needs this field for, and it is the one thing the field did not say.
         "internalAuth": internal_auth_state(settings),
         "timestamp": datetime.now(UTC).isoformat(),
     }

@@ -37,9 +37,17 @@ Complete pipeline:
 
 ### `routers/analyze.py`
 - `USE_LLM_STUB=true` → `stub_analyzer.analyze()`.
-- `USE_LLM_STUB=false` → `llm_analyzer.analyze(req, settings)`.
+- `USE_LLM_STUB=false` → `llm_analyzer.analyze(req, settings, budget=...)`.
+- Every route opens a `TimeBudget` first, before the PII Shield and the baseline — neither is free
+  on a 1MB file, and a budget that started after them would be measuring the wrong thing.
 - Config errors → 503 `LLM_CONFIG_INVALID`.
 - Provider errors → 500 `LLM_PROVIDER_ERROR`.
+- Model answered outside its schema, or with something that is not JSON → 502 `LLM_RESPONSE_INVALID`.
+  It is its own branch because `json.JSONDecodeError` subclasses `ValueError`: without it, a model
+  breaking its contract was reported as `LLM_CONFIG_INVALID` and sent the reader to check
+  credentials that were fine.
+- The wall-clock budget ran out → 504 `LLM_BUDGET_EXCEEDED`. The worker is healthy; the work did
+  not fit. See `time_budget.py`.
 
 ---
 
@@ -144,14 +152,16 @@ services/nlp-worker/src/nora_nlp/
 ├── prompts/
 │   ├── README.md
 │   ├── meeting-analysis-v1.md # Prompt with SYSTEM/USER sections
-│   └── pii-shield-v1.md       # Prompt fallback for complex PII
+│   ├── live-highlights-v1.md  # Prompt for /analyze-live
+│   └── meeting-split-v1.md    # Prompt for /split
 ├── routers/
 │   ├── __init__.py
-│   ├── analyze.py             # POST /analyze (stub or LLM)
-│   └── health.py              # GET /healthz
+│   ├── analyze.py             # POST /analyze, /split, /analyze-live
+│   └── health.py              # GET /healthz, /readyz
 └── services/
     ├── __init__.py
     ├── pii_shield.py          # Regex PII redaction
+    ├── shield_walk.py         # Shared string-leaf walk over a structure
     ├── stub_analyzer.py       # Deterministic heuristic analysis
     └── llm_analyzer.py        # Pipeline LLM (provider agnostic)
 ```
@@ -182,14 +192,44 @@ The stub is the default in CI; no test depends on an external key.
 
 ---
 
-## Next Steps (not implemented on this branch)
+## Next Steps
 
-1. **Embeddings / RAG** (US15) — retrieve relevant context via Azure AI Search.
-2. **PII Shield with LLM** — fallback for complex proper names.
-3. **Retry/backoff** in `LlmClient` for transient failures.
-4. **Streaming** of the response for long meetings.
-5. **Temporal Health Score** — scoring per tenant across multiple meetings.
-6. **Backend integration** — calling the worker from the transcript upload.
+**Four of the six items this list carried were already done, and one of those was closed scope.**
+The list was written when the worker was a branch nobody had merged and was never revisited; it is
+sorted below into what shipped, what is open, and what will not be built. Item 1 was the worst of
+them: it named **Azure AI Search**, a service this project has not used since ADR 0034 shut the
+subscription down.
+
+**Already delivered, and not in this worker:**
+
+- **Embeddings / RAG (US15)** — built, in `services/api`. `EmbeddingService` and
+  `HttpEmbeddingClient` index a meeting's stored summary and score cosine similarity in Java over
+  a JSON vector in a `TEXT` column (migration V021); the extension in `pgvector/pgvector:pg16` is
+  deliberately not created. The worker has no part in it.
+- **Retry/backoff in `LlmClient`** — the OpenAI SDK's own, `max_retries=2`, applied around each
+  call. `tests/test_pii_gate_is_single.py` asserts the property that matters: a retry resends the
+  same already-redacted body, so it cannot leak text the shield removed.
+- **Backend integration** — `AnalysisService` calls the worker on upload; `NlpWorkerProperties`
+  holds the base URL and the deadline, and `StuckAnalysisSweeper` releases an analysis the worker
+  never finished.
+
+**Still open:**
+
+- **A local backstop for off-list proper names** — the shield recognises a name by shape plus two
+  frequency lists, so a name on neither list and in no recognised shape is published. The rate is
+  measured, published and dated in `tests/test_pii_corpus.py`; ADR 0012 defers the fix to NER at
+  internationalisation. It must run **locally**: the `pii-shield-v1.md` prompt that used to sit in
+  `prompts/` proposed asking the provider to do the redaction, which requires sending the provider
+  the raw text and inverts the premise of the gate. That file is deleted.
+- **A wall-clock deadline propagated across the analysers** — the per-call timeout multiplied by
+  the retries exceeds the caller's deadline, and `/split` calls the provider once per window, so no
+  pair of constants fixes it. What is needed is a budget fixed at the start of the request and
+  passed to the three analysis functions.
+- **Streaming** of the response for long meetings. The chat streams, but that is the BFF calling
+  the provider directly, not this worker.
+
+**Will not be built:** a temporal Health Score across meetings per tenant. That is US50/US51,
+**WONT** by ADR 0038 §4 — it aggregates over a history that does not exist.
 
 ---
 

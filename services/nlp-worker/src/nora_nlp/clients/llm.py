@@ -20,6 +20,7 @@ from typing import Any
 from openai import OpenAI
 
 from ..settings import Settings
+from ..time_budget import MIN_ATTEMPT_SECONDS, TimeBudget
 
 logger = logging.getLogger(__name__)
 
@@ -32,20 +33,26 @@ class LlmClient:
     # 60s covers the p99 of gpt-4o-mini with prompts up to ~10K tokens.
     _LLM_TIMEOUT_SECONDS = 60.0
 
-    def __init__(self, settings: Settings) -> None:
+    # Covers transient failures (429/5xx) with the SDK's exponential backoff.
+    # The caller still handles the final exception.
+    _MAX_RETRIES = 2
+
+    def __init__(self, settings: Settings, *, budget: TimeBudget | None = None) -> None:
         if not settings.llm_api_key:
             raise ValueError("LLM_API_KEY is required when USE_LLM_STUB=false.")
         self._client = OpenAI(
             base_url=settings.llm_base_url,
             api_key=settings.llm_api_key,
             timeout=self._LLM_TIMEOUT_SECONDS,
-            # max_retries=2 covers transient failures (429/5xx) with the SDK's
-            # exponential backoff. The caller still handles the final exception.
-            max_retries=2,
+            max_retries=self._MAX_RETRIES,
         )
         self._model = settings.llm_model
         self._provider = settings.llm_provider
         self._default_temperature = settings.llm_temperature
+        # What the request still has to spend, re-read before every call. Optional so a caller
+        # with no deadline of its own (a script, a notebook) keeps the previous behaviour; the
+        # three analyzers always pass one.
+        self._budget = budget
 
     @property
     def model(self) -> str:
@@ -54,6 +61,28 @@ class LlmClient:
     @property
     def provider(self) -> str:
         return self._provider
+
+    def _client_for(self, step: str) -> OpenAI:
+        """The SDK client for ``step``, sized so its own retries fit the request's budget.
+
+        ``max_retries`` is applied by the SDK around EACH call, so one ``chat_structured`` is up
+        to ``_MAX_RETRIES + 1`` attempts of ``timeout`` seconds and the timeout on its own never
+        bounded anything. Here what is left of the budget is divided by the attempts that may
+        still happen; when that slice would fall under ``MIN_ATTEMPT_SECONDS`` the retries are
+        given up one at a time, because a single attempt long enough to finish is worth more
+        than three that are all cut off short.
+
+        Raises ``LlmBudgetExceededError`` (via ``remaining_for``) rather than issuing a call
+        whose answer would arrive after the caller's deadline.
+        """
+        if self._budget is None:
+            return self._client
+        remaining = self._budget.remaining_for(step)
+        retries = self._MAX_RETRIES
+        while retries > 0 and remaining / (retries + 1) < MIN_ATTEMPT_SECONDS:
+            retries -= 1
+        timeout = min(self._LLM_TIMEOUT_SECONDS, remaining / (retries + 1))
+        return self._client.with_options(timeout=timeout, max_retries=retries)
 
     def chat_structured(
         self,
@@ -66,7 +95,7 @@ class LlmClient:
         max_tokens: int = 4096,
     ) -> tuple[str, int, int]:
         """Calls the model with a strict JSON Schema. Returns (json, in, out)."""
-        response = self._client.chat.completions.create(
+        response = self._client_for("the structured call").chat.completions.create(
             model=self._model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -94,7 +123,7 @@ class LlmClient:
         max_tokens: int = 4096,
     ) -> tuple[str, int, int]:
         """Fallback to JSON mode (no strict schema)."""
-        response = self._client.chat.completions.create(
+        response = self._client_for("the JSON-mode call").chat.completions.create(
             model=self._model,
             messages=[
                 {"role": "system", "content": system_prompt},

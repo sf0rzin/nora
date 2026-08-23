@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     llm_model: str = Field(default="gpt-4o-mini", alias="LLM_MODEL")
     llm_temperature: float = Field(default=0.2, alias="LLM_TEMPERATURE")
 
+    # Wall-clock ceiling for ALL the LLM calls of one request (see `time_budget.py`). The caller
+    # is the Spring API, which gives up on the worker after `NlpWorkerProperties.timeoutMillis`
+    # = 120_000 ms; the default leaves that deadline ~30s of headroom for the PII shield, the
+    # TF-IDF baseline and the HTTP round trip, so the worker stops spending tokens BEFORE the
+    # caller stops listening rather than up to four minutes after.
+    llm_request_budget_seconds: float = Field(default=90.0, alias="LLM_REQUEST_BUDGET_SECONDS")
+
     use_llm_stub: bool = Field(default=True, alias="USE_LLM_STUB")
 
     # Service-to-service auth for the analysis routes (ADR 0023 §3-4, same shape as the

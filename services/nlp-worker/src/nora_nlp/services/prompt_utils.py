@@ -19,8 +19,20 @@ _USER_RE = re.compile(r"##\s*USER\s*\n(.*)", re.DOTALL)
 
 
 def load_prompt(version: str) -> tuple[str, str]:
-    """Loads ``prompts/{version}.md`` and returns the (system, user) sections."""
-    path = PROMPTS_DIR / f"{version}.md"
+    """Loads ``prompts/{version}.md`` and returns the (system, user) sections.
+
+    ``version`` reaches here from a request body on the /analyze route, so the join is checked
+    rather than trusted: ``PROMPTS_DIR / "../../../something"`` resolves outside the prompt
+    directory, and whatever it resolved to became the system prompt handed to the provider.
+    ``AnalyzeOptions.prompt_version`` constrains the string as well, and the two are not
+    redundant -- that one keeps the route to its own prompt family, this one keeps ANY caller,
+    including the two analyzers that pass a constant today, inside the directory.
+    """
+    path = (PROMPTS_DIR / f"{version}.md").resolve()
+    # `is_relative_to` compares resolved paths, so a symlink or a `..` segment is already
+    # collapsed by the time it is asked.
+    if not path.is_relative_to(PROMPTS_DIR.resolve()):
+        raise ValueError(f"Prompt version escapes the prompts directory: {version!r}")
     if not path.exists():
         raise FileNotFoundError(f"Prompt not found: {path}")
 

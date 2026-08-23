@@ -371,7 +371,24 @@ class AnalyzeOptions(BaseModel):
     include_risks: bool = Field(default=True, alias="includeRisks")
     include_opportunities: bool = Field(default=True, alias="includeOpportunities")
     max_action_items: int = Field(default=20, ge=1, le=50, alias="maxActionItems")
-    prompt_version: str = Field(default="meeting-analysis-v1", alias="promptVersion")
+    # The ONLY request field that names a file on disk. `llm_analyzer` passes it straight to
+    # `load_prompt`, which builds `prompts/{version}.md` -- so as a free string it selected any
+    # `.md` in the container that happens to carry `## SYSTEM` and `## USER` sections, including
+    # through `../`, and whatever it selected became the system prompt sent to the provider. It
+    # also selected the OTHER analyzers' prompts, whose `## USER` templates have no
+    # `{{transcript}}`, so the analysis would have run over a prompt with no transcript in it
+    # and failed in a way nobody could read.
+    #
+    # The pattern is the whole fix and it is a line: this route analyses meetings, so the only
+    # prompt it may name is a version of the meeting-analysis prompt. `.` and `/` cannot appear,
+    # which ends the traversal, and a v2 needs no change here. `load_prompt` re-checks
+    # containment on its own, because a constraint that lives only in the caller's model is one
+    # refactor away from not existing.
+    prompt_version: str = Field(
+        default="meeting-analysis-v1",
+        alias="promptVersion",
+        pattern=r"^meeting-analysis-v[1-9][0-9]*$",
+    )
 
 
 class MeetingGoal(BaseModel):

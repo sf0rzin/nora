@@ -65,7 +65,36 @@ _LOWER = "a-zß-öø-ÿ"
 # because `-` is not `.isalpha()`, so "Ana Paula Silva-Costa" came out as
 # "[[PERSON_NAME_1]]-Costa": a corrupted token for the model and the second half of the
 # surname in the clear.
-_TITLE_WORD = f"[{_UPPER}][{_LOWER}]+(?:-[{_UPPER}][{_LOWER}]+)*"
+#
+# THE APOSTROPHE IS THE THIRD SEPARATOR OF THAT SAME CLASS, and it was the one left open. It
+# joins in exactly the way the hyphen does: `Sant'Anna` tokenised as `Sant` plus `Anna`,
+# `_NAME_SEQUENCE_RE` claimed only "Maria Sant", and `_ends_on_a_word_boundary` accepted the
+# cut because `'` is not a letter, not a combining mark and not `-` -- so the output was
+# "[[PERSON_NAME_1]]'Anna", the same corrupted token AND the same tail in the clear that the
+# hyphen fix was written for. `Sant'Anna`, `Sant'Ana`, `D'Angelo` and `D'Avila` are current
+# Brazilian surnames.
+#
+# Both apostrophes are joined. ASR exports emit U+0027 and word processors autocorrect to
+# U+2019, so a rule that knows only one of them fails on half of the inputs that reach here
+# and fails invisibly, which is the way this module has been wrong before.
+#
+# The optional `[UPPER]'` head is what carries the elided article: `D'Angelo` has no lowercase
+# letter after its first, so the body of the pattern cannot open on it and the surname would
+# have been found from `Angelo` onwards, one letter short. One capital and an apostrophe is a
+# shape that occurs in pt-BR only in an elision.
+#
+# THE RESIDUE, stated rather than left to be discovered: only an UPPERCASE continuation joins,
+# so the `Sant'ana` spelling still cuts after `Sant` and leaves `ana` in the clear. That is the
+# same trade the hyphen branch makes for `Silva-jr`, and it is deliberate for the same reason --
+# joining a lowercase tail would also swallow the English possessive (`Marina's`) into the
+# placeholder, and refusing the span instead is what published a whole name the last time this
+# guard was widened without measuring. The narrower spelling is the common one; the wider one
+# is a known gap, not an oversight.
+_NAME_SEPARATORS = "-'’"
+_TITLE_WORD = (
+    f"(?:[{_UPPER}]['’])?"
+    f"[{_UPPER}][{_LOWER}]+(?:[{_NAME_SEPARATORS}][{_UPPER}][{_LOWER}]+)*"
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -1428,6 +1457,221 @@ _COMMON_PHRASE_HEADS: frozenset[str] = frozenset(
     )
 )
 
+# --------------------------------------------------------------------------------------------
+# The sentence-opener rule: two sets, one decision, and nothing borrowed
+#
+# `Na Sexta o time fecha o escopo.` was published as `[[PERSON_NAME_1]] o time fecha o escopo.`
+# Two Title Case tokens are the shape `_NAME_SEQUENCE_RE` trusts, and at the start of a sentence
+# the first word is capitalised by orthography rather than by being a proper noun. Swept at 196
+# of 392 opener x noun pairs on the deployed worker; the sweep and its per-preposition table are
+# in `tests/pii_corpus/pools.py`, above `PREPOSITIONS`.
+#
+# TWO EARLIER ATTEMPTS AT THIS WERE REJECTED, AND BOTH FAILURES ARE THE REASON FOR THE SHAPE HERE.
+#
+#   1. Putting the openers on `_COMMON_PHRASE_HEADS`. That set feeds `_name_bearing`,
+#      `_trusted_span`, `_has_a_person_head`, `_qualify_run` and the all-caps path, so 91
+#      function words would have been wired into five unrelated decisions at once. Measured
+#      result: 30 of 30 off-list names behind those words leaked -- `Depois Wanderleia`,
+#      `Inclusive Kranz`.
+#
+#   2. Keying the rule on `_COMMON_PHRASE_HEADS` to mean "ordinary word". It does not mean only
+#      that: `campos` and `dias` are on it AND on `_BR_TOP_SURNAMES`, so `Em Campos assinou a
+#      ata.` and `Depois Dias confirmou o contrato.` were published. That intersection is pinned
+#      by `KNOWN_ORDINARY_NAME_OVERLAPS` in the corpus, which is the test that would have caught
+#      it.
+#
+# So this rule borrows nothing. Both sets are curated here, read by
+# `_is_an_opener_and_an_ordinary_word` and by the two all-caps guards that have to answer the
+# same question, and every entry was checked against `_BR_TOP_NAMES` and `_BR_TOP_SURNAMES` --
+# the corpus asserts that disjointness rather than trusting this comment.
+#
+# `da`, `do`, `de`, `das`, `dos` are absent from the openers: they occur inside real pt-BR names
+# (`Maria da Silva`) and are already on `_NAME_CONNECTIVES`.
+#
+# EVERY ENTRY HERE CAN FIRE, and the list is 91 rather than 130 for that reason.
+#
+# The 39 that were removed -- `com para por sem sob sobre entre ate apos desde contra conforme
+# que mas como quando onde hoje ontem amanha agora ja ainda tambem seu sua nosso nossa toda todo
+# todas todos cada esta este essa esse ficou vamos` -- are also on `_COMMON_PHRASE_HEADS`, and
+# both `_trusted_span` and `_qualify_run` strip a leading phrase head before anything reaches
+# `_is_a_name_on_its_own`. So no value arriving there could begin with one, and those entries
+# were unreachable: `Sobre Sexta o time revisou.` behaves identically with and without them.
+#
+# That is the defect this file rejects in three other places -- an entry that cannot fire is a
+# control that reads as protection and is not. These sets were audited for name collision and
+# not for reachability, which is one of the two questions;
+# `test_every_sentence_opener_can_fire` in the corpus asks the other.
+_SENTENCE_OPENERS: frozenset[str] = frozenset(
+    _fold(w)
+    for w in (
+        # contractions of em / a / por / de with an article or demonstrative
+        "Em",
+        "Na",
+        "No",
+        "Nas",
+        "Nos",
+        "Num",
+        "Numa",
+        "Ao",
+        "Aos",
+        "As",
+        "Os",
+        "Pela",
+        "Pelo",
+        "Pelas",
+        "Pelos",
+        "Pra",
+        "Nele",
+        "Nela",
+        "Neles",
+        "Nelas",
+        "Dele",
+        "Dela",
+        "Deles",
+        "Delas",
+        "Neste",
+        "Nesta",
+        "Nestes",
+        "Nestas",
+        "Nesse",
+        "Nessa",
+        "Nesses",
+        "Nessas",
+        "Naquele",
+        "Naquela",
+        "Naqueles",
+        "Naquelas",
+        "Deste",
+        "Desta",
+        "Destes",
+        "Destas",
+        "Desse",
+        "Dessa",
+        "Desses",
+        "Dessas",
+        "Daquele",
+        "Daquela",
+        "Daqueles",
+        "Daquelas",
+        # simple prepositions and conjunctions
+        "Perante",
+        "Mediante",
+        "Exceto",
+        "Se",
+        "Enquanto",
+        "Porem",
+        "Contudo",
+        "Todavia",
+        "Entretanto",
+        "Portanto",
+        # sentence adverbs
+        "Logo",
+        "Entao",
+        "Assim",
+        "Antes",
+        "Depois",
+        "Durante",
+        "Talvez",
+        "Apenas",
+        "Somente",
+        "Inclusive",
+        "Alem",
+        "Sobretudo",
+        "Especialmente",
+        "Principalmente",
+        "Finalmente",
+        "Inicialmente",
+        "Atualmente",
+        "Recentemente",
+        "Provavelmente",
+        "Certamente",
+        "Realmente",
+        # determiners and possessives
+        "Mesmo",
+        "Mesma",
+        "Meu",
+        "Minha",
+        "Tal",
+        "Quaisquer",
+        # verb forms that open a sentence in minutes
+        "Foi",
+        "Sendo",
+        "Tendo",
+        "Havendo",
+        "Devemos",
+        "Podemos",
+    )
+)
+
+# What may follow an opener and still not be a person. Curated in full rather than reused from
+# `_COMMON_PHRASE_HEADS`, because reusing that set is what leaked `Depois Dias`.
+#
+# `Na Sexta` and `Na Kranz` are lexically identical -- an opener, then one Title Case token on no
+# name list -- so the rule cannot decide from the shape. It decides from THIS list, and an
+# unknown token behind an opener stays a person, which is the direction this module fails in
+# everywhere else.
+#
+# SIX CALENDAR WORDS ARE DELIBERATELY ABSENT, AND THE REASON THE LIST OF SIX GREW IS WORTH
+# READING BEFORE ADDING ONE BACK.
+#
+# `Marco` went first, on the mechanical test: `_fold` strips accents, so the month collapses onto
+# `marco`, which is on `_BR_TOP_NAMES`. It was the only one of 41 candidates that collided with a
+# name list, and the audit stopped there.
+#
+# That audit was not enough, and review found the leak it missed. `Maio`, `Janeiro`, `Abril`,
+# `Agosto` and `Domingo` are attested pt-BR surnames that are simply not in a 102-entry frequency
+# table, and `Depois Maio confirmou o contrato.` was published because of it. The disjointness
+# check that guards these sets is an oracle of 271 given names and 102 surnames; the shapes this
+# set feeds are the ones for names OUTSIDE both, so that check could never have caught it.
+#
+# The cost is real and is accepted in the direction this module always fails: `Em Janeiro` stays
+# redacted, because a month that is also a surname cannot be told from the surname, and losing a
+# date is cheaper than publishing a person. A calendar word belongs here only if it is not a
+# plausible Brazilian surname -- and "not on the shield's list" is not the same question.
+_ORDINARY_AFTER_OPENER: frozenset[str] = frozenset(
+    _fold(w)
+    for w in (
+        # the calendar, which is the commonest thing to find behind an opener in minutes
+        "Segunda",
+        "Terca",
+        "Quarta",
+        "Quinta",
+        "Sexta",
+        "Sabado",
+        "Fevereiro",
+        "Junho",
+        "Julho",
+        "Setembro",
+        "Outubro",
+        "Novembro",
+        "Dezembro",
+        # business areas
+        "Financeiro",
+        "Juridico",
+        "Comercial",
+        "Marketing",
+        "Operacoes",
+        "Compras",
+        "Suprimentos",
+        "Faturamento",
+        "Contabilidade",
+        "Fiscal",
+        "Logistica",
+        "Qualidade",
+        "Producao",
+        "Manutencao",
+        "Almoxarifado",
+        "Expedicao",
+        "Recepcao",
+        "Diretoria",
+        "Presidencia",
+        "Tesouraria",
+        "Auditoria",
+        "Compliance",
+    )
+)
+
+
 # Honorifics and job titles accepted by `_NAME_PREFIX_RE`. Repeated here as a
 # set because, in the trimming path below, the prefix is itself the signal that the
 # remaining stretch is a person ("Dr. Carlos" still holds after removing a product).
@@ -2045,26 +2289,33 @@ def _ends_on_a_word_boundary(end: int, text: str) -> bool:
     cutting at the hyphen emitted "[[PERSON_NAME_1]]-Costa" -- a corrupted token AND the tail
     in the clear.
 
+    An apostrophe followed by a CAPITAL is the same case and was the one this guard did not
+    know: `'` is not a letter, not a combining mark and not `-`, so a cut inside "Sant'Anna"
+    was waved through and published "[[PERSON_NAME_1]]'Anna". It is checked here as well as in
+    `_TITLE_WORD` for the reason the combining-mark paragraph above gives -- a span can reach
+    this guard from a path that never went through the token pattern.
+
     Only a capital. Refusing before any letter turned "Contato Carlos Silva-jr." into a leak of
     the surname: the whole span was rejected, Pattern 3 caught the given name alone, and "Silva"
     went out in the clear where it had been redacted before. A lowercase tail is a suffix or
     the next word, not the other half of a compound surname -- which is exactly what
     `_TITLE_WORD`'s own hyphen branch already says by requiring an uppercase letter after the
-    hyphen.
+    hyphen. The same rule keeps the English possessive out: "Silva's" continues in lower case,
+    so the cut after "Silva" is a real boundary.
     """
     if end >= len(text):
         return True
     nxt = text[end]
     if nxt.isalpha() or unicodedata.combining(nxt):
         return False
-    if nxt != "-":
+    if nxt not in _NAME_SEPARATORS:
         return True
     # Only a Title Case continuation is the other half of a compound surname. An ALL-CAPS tail
     # is a department suffix -- "Carlos Silva-TI", "Ana Souza-RH" is a standard speaker label --
     # and refusing the span there dropped it whole, publishing the surname. A lowercase tail is
-    # a suffix ("Silva-jr") for the same reason. This mirrors `_TITLE_WORD`'s own hyphen branch,
-    # which joins `-[UPPER][lower]+` and nothing else.
-    return not re.match(f"-[{_UPPER}][{_LOWER}]", text[end : end + 3])
+    # a suffix ("Silva-jr") for the same reason. This mirrors `_TITLE_WORD`'s own separator
+    # branch, which joins `[-'’][UPPER][lower]+` and nothing else.
+    return not re.match(f"[{_NAME_SEPARATORS}][{_UPPER}][{_LOWER}]", text[end : end + 3])
 
 
 def _qualify_run(run: list[re.Match[str]], offset: int, text: str) -> tuple[int, int] | None:
@@ -2343,6 +2594,21 @@ def _caps_pair_in_running_prose(
     folded = [_fold(t.group(0)) for t in tokens]
     if any(len(f) < _CAPS_PAIR_MIN_LENGTH for f in folded):
         return None
+    # The opener rule, applied STRUCTURALLY -- the pair as a pair, never the two words as two
+    # blocklist entries. `_ORDINARY_AFTER_OPENER` means "not a person in slot 2, BEHIND AN
+    # OPENER"; folded into the `any(...)` below it would read as "not a person anywhere in this
+    # pair", and `DEPOIS MAIO` is precisely the reading that publishes a surname. This pattern
+    # exists for pairs on NEITHER name list, so the disjointness check that guards these two
+    # sets is structurally unable to protect it.
+    #
+    # It is here as well as in `_is_a_name_on_its_own` because the two paths otherwise disagree
+    # on the same words: `Depois Sexta fechamos o escopo.` is left alone by the opener rule and
+    # `DEPOIS SEXTA fechamos o escopo.` came back `[[PERSON_NAME_1]] fechamos o escopo.` --
+    # upper case changing the answer, which `test_pii_shield.py` pins as a property. Both
+    # tokens here are four letters or more, so the short openers (`NA`, `EM`) never reach this
+    # rule at all and are covered by the speaker-label guard in Pattern 6 instead.
+    if folded[0] in _SENTENCE_OPENERS and folded[1] in _ORDINARY_AFTER_OPENER:
+        return None
     if any(
         f in _COMMON_PHRASE_HEADS
         or f in _NAME_CONNECTIVES
@@ -2377,9 +2643,25 @@ def _is_a_name_on_its_own(value: str) -> bool:
     spans became a PERSON_NAME.
     """
     if _NAME_PREFIX_RE.fullmatch(value) or _NAME_SEQUENCE_RE.fullmatch(value):
-        return True
+        return not _is_an_opener_and_an_ordinary_word(value)
     folded = _fold(value)
     return folded in _BR_TOP_NAMES or folded in _BR_TOP_SURNAMES
+
+
+def _is_an_opener_and_an_ordinary_word(value: str) -> bool:
+    """`Na Sexta` -- a capitalised sentence opener in front of a capitalised ordinary word.
+
+    Reads `_SENTENCE_OPENERS` and `_ORDINARY_AFTER_OPENER` and nothing else; see the comment
+    above those two sets for why nothing here is borrowed from `_COMMON_PHRASE_HEADS`.
+
+    Exactly two tokens on purpose. Three or more is a name with something in front of it --
+    `Na Marina Alves` -- and refusing that would publish the name, which is what the first
+    rejected attempt did.
+    """
+    parts = value.split()
+    if len(parts) != 2:
+        return False
+    return _fold(parts[0]) in _SENTENCE_OPENERS and _fold(parts[1]) in _ORDINARY_AFTER_OPENER
 
 
 def _apply_basic_patterns(
@@ -2607,6 +2889,21 @@ def _redact_person_names(
             or t in _NAME_CONNECTIVES
             or _VERB_TAIL_RE.search(t)
             for t in tokens
+        ):
+            continue
+        # The opener rule again, and structurally again -- for the reason spelled out beside the
+        # same two lines in `_caps_pair_in_running_prose`. Putting `_ORDINARY_AFTER_OPENER` into
+        # the per-token blocklist above would give a label 23 new chances to silence Pattern 6:
+        #
+        #     'WANDERLEIA KRANZ EXPEDICAO: fechamos o escopo.'  would publish both names
+        #     'NIVALDO MAIO: fechamos o escopo.'                would publish both names
+        #
+        # Matching the whole label keeps the opener context that makes the set mean what it
+        # says: `NA SEXTA:` is skipped, `NIVALDO MAIO:` is not.
+        if (
+            len(tokens) == 2
+            and tokens[0] in _SENTENCE_OPENERS
+            and tokens[1] in _ORDINARY_AFTER_OPENER
         ):
             continue
         start, end = m.start(1), m.end(1)

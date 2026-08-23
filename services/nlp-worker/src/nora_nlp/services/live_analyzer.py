@@ -21,18 +21,11 @@ import time
 from ..clients.llm import LlmClient
 from ..models import LiveAnalyzeRequest, LiveAnalyzeResponse, LiveHighlightsV1
 from ..settings import Settings
-from .pii_shield import redact as pii_redact
+from ..time_budget import LlmBudgetExceededError, TimeBudget
 from .prompt_utils import load_prompt, render_template
+from .shield_walk import shield_tree
 
 logger = logging.getLogger(__name__)
-
-
-_TEXT_FIELDS_HIGHLIGHTS = {
-    "decisions": ("text", "sourceQuote"),
-    "nextSteps": ("text", "sourceQuote"),
-    "observations": ("text", "sourceQuote"),
-    "tasks": ("title", "assignee", "sourceQuote"),
-}
 
 
 def _redact_highlights_dict(data: dict) -> tuple[dict, int]:
@@ -43,19 +36,22 @@ def _redact_highlights_dict(data: dict) -> tuple[dict, int]:
     PII that escaped the first shield, especially in fields like `sourceQuote`
     that echo the transcript). Re-applying the shield here avoids amplification
     on each iteration. ADR 0012.
+
+    This used to walk a hand-kept `{collection: (field, ...)}` dictionary, which named every
+    text field of `LiveHighlightsV1` correctly on the day it was written and could not stay
+    correct: a text field added to `LiveHighlightItem` or `LiveTaskItem` afterwards would stop
+    reaching the shield with nothing failing, and `piiRedactionsApplied` would keep reporting a
+    clean audit trail for text nobody inspected. `shield_tree` is the same argument the analysis
+    path already made, applied to the endpoint with the higher amplification -- this structure
+    is re-injected into the prompt on every round.
+
+    Non-string leaves (`confidence`, `priority`) are returned untouched by the walk, so nothing
+    is redacted here that the field list did not already cover.
     """
-    extra_redactions = 0
-    for collection_key, text_fields in _TEXT_FIELDS_HIGHLIGHTS.items():
-        items = data.get(collection_key) or []
-        for item in items:
-            for field in text_fields:
-                value = item.get(field)
-                if isinstance(value, str) and value:
-                    result = pii_redact(value)
-                    if result.redactions:
-                        item[field] = result.redacted_text
-                        extra_redactions += len(result.redactions)
-    return data, extra_redactions
+    counter = [0]
+    # Per top-level value rather than one call on `data`, only so the result is a `dict` by
+    # construction instead of by narrowing an `object` the walk is typed to return.
+    return {key: shield_tree(value, counter) for key, value in data.items()}, counter[0]
 
 
 def _build_previous_highlights_section(
@@ -63,8 +59,7 @@ def _build_previous_highlights_section(
 ) -> tuple[str, int]:
     if previous is None:
         return "", 0
-    data = previous.model_dump(by_alias=True)
-    data, extra = _redact_highlights_dict(data)
+    data, extra = _redact_highlights_dict(previous.model_dump(by_alias=True))
     has_any = any(data.get(k) for k in ("decisions", "nextSteps", "observations", "tasks"))
     if not has_any:
         return "", extra
@@ -148,10 +143,16 @@ def analyze(
     settings: Settings,
     *,
     pii_redactions_applied: int = 0,
+    budget: TimeBudget | None = None,
 ) -> LiveAnalyzeResponse:
     started = time.monotonic()
 
-    client = LlmClient(settings)
+    # Same request budget as the other two analyzers (`time_budget.py`), and the one that most
+    # deserves it: a live chunk is answered while the meeting is still happening, so an answer
+    # that arrives after the caller gave up is worth even less here than on `/analyze`.
+    budget = budget or TimeBudget.from_settings(settings)
+
+    client = LlmClient(settings, budget=budget)
 
     system_prompt, user_template = load_prompt("live-highlights-v1")
 
@@ -176,6 +177,9 @@ def analyze(
             temperature=0.1,
             max_tokens=2048,
         )
+    except LlmBudgetExceededError:
+        # Ahead of the generic branch on purpose: see the same clause in `llm_analyzer.analyze`.
+        raise
     except Exception as exc:
         logger.warning("Structured output failed in live, falling back to JSON mode: %s", exc)
         raw_json, tokens_in, tokens_out = client.chat_json(

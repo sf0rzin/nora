@@ -78,9 +78,14 @@ The NORA backend returns errors in the format:
 - `ANALYSIS_WORKER_UNAVAILABLE` — NLP worker down/timeout
 - `ANALYSIS_INVALID_RESPONSE` — the worker returned invalid JSON
 - `STT_BROKER_ERROR` — the transcription provider refused the session or could not be reached. The provider's own error body is never echoed into `message`
+- `LLM_RESPONSE_INVALID` *(worker)* — the model answered outside its schema, or with something that is not JSON at all. Separate from `LLM_CONFIG_INVALID` because both used to arrive as the same 503: `json.JSONDecodeError` subclasses `ValueError`, so a model breaking its contract was reported as a misconfigured deployment, which sends whoever reads it to check credentials that are fine
 
 ### 503 SERVICE_UNAVAILABLE
 - `STT_NOT_CONFIGURED` — this deployment has no transcription provider credential. A deployment state rather than a bug, and visible rather than silent: without it, a recording would simply never produce text
+- `LLM_CONFIG_INVALID` *(worker)* — no usable provider credential or model for this deployment
+
+### 504 GATEWAY_TIMEOUT
+- `LLM_BUDGET_EXCEEDED` *(worker)* — the worker gave up on its own, inside its wall-clock budget (`LLM_REQUEST_BUDGET_SECONDS`, 90s), rather than letting retries run past the API's `nora.worker.timeout-millis` (120s). Not a 500 and not a 503: the worker is healthy and correctly configured, the work simply did not fit. Retrying a shorter transcript is the action it implies
 
 ## Conventions
 - `code` is UPPER_SNAKE_CASE, maximum 32 chars

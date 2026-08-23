@@ -45,10 +45,29 @@ from typing import Any
 from ..clients.llm import LlmClient
 from ..models import SplitRequest, SplitResponse, SplitSegment
 from ..settings import Settings
+from ..time_budget import LlmBudgetExceededError, TimeBudget
 from .pii_shield import redact as pii_redact
 from .prompt_utils import load_prompt, render_template
 
 logger = logging.getLogger(__name__)
+
+
+class LlmSplitShapeError(ValueError):
+    """The model's response parsed as JSON and is not the shape the split contract describes.
+
+    The other two analyzers get this for free: they hand the parsed body to a pydantic model,
+    so a wrong shape is a `ValidationError` and the router already answers 502
+    `LLM_RESPONSE_INVALID`. This one validates by hand, window by window, and had nothing
+    checking the top level at all.
+
+    A `ValueError` subclass so it reads as what it is, and caught in the router BEFORE the
+    generic `except ValueError` that means "invalid LLM configuration" -- the same ordering
+    trap `ValidationError` and `json.JSONDecodeError` are in, and for the same reason.
+
+    The message is written by this module and never carries the response body: it says the type
+    that arrived, not what was in it. ADR 0012.
+    """
+
 
 PROMPT_VERSION = "meeting-split-v1"
 
@@ -293,11 +312,18 @@ def analyze(
     settings: Settings,
     *,
     pii_redactions_applied: int = 0,
+    budget: TimeBudget | None = None,
 ) -> SplitResponse:
     """Detects meeting boundaries via LLM, in windows if needed."""
     started = time.monotonic()
 
-    client = LlmClient(settings)
+    # ONE budget for the whole call, not one per window (`time_budget.py`). The caller's deadline
+    # covers the endpoint, so window 4 has to answer for what windows 1-3 already spent -- which
+    # is what made this the worst of the three paths: a 1MB file is up to ~5 windows, and every
+    # one of them used to be free to burn the full retry ladder on its own.
+    budget = budget or TimeBudget.from_settings(settings)
+
+    client = LlmClient(settings, budget=budget)
     system_prompt, user_template = load_prompt(PROMPT_VERSION)
     json_schema = _build_json_schema_for_split()
 
@@ -311,6 +337,11 @@ def analyze(
 
     pos = 1
     while pos <= total_lines:
+        # Checked before the window is even built. Raising rather than returning the boundaries
+        # merged so far: a partial segment list is a wrong answer that looks like a right one,
+        # and the client slices a real file on it.
+        budget.remaining_for(f"the window starting at line {pos}")
+
         end = _window_end(numbered, pos, _WINDOW_CHAR_BUDGET)
         window_text = "\n".join(numbered[pos - 1 : end])
         user_prompt = render_template(
@@ -329,6 +360,11 @@ def analyze(
                 schema_name="meeting_split",
                 temperature=0.1,
             )
+        except LlmBudgetExceededError:
+            # Ahead of the generic branch on purpose: see the same clause in
+            # `llm_analyzer.analyze`. Doubly so here, where the prompt re-sent by the fallback
+            # is a whole window of transcript.
+            raise
         except Exception as exc:
             logger.warning("Structured output failed in split, falling back to JSON mode: %s", exc)
             raw_json, tokens_in, tokens_out = client.chat_json(
@@ -343,6 +379,21 @@ def analyze(
         logger.debug("Split LLM raw response: %d chars (window %d-%d)", len(raw_json), pos, end)
 
         parsed = json.loads(raw_json)
+        # The split path validates by hand rather than through a pydantic model, so nothing was
+        # checking that the top level is an object at all. A model that answers with a bare JSON
+        # array -- `[{"startLine": 1, ...}]`, which is what an OpenAI-compatible endpoint
+        # ignoring `response_format` tends to produce -- reached `parsed.get` and raised
+        # `AttributeError`, which the router reports as a generic 500 with no contract code and
+        # a message about "processing the transcript".
+        #
+        # It is the same fault as a schema violation and it is reported as one. Raised rather
+        # than coerced to an empty window: a window silently reported as containing no boundary
+        # is a wrong answer that looks like a right one, and the caller slices a file on it.
+        if not isinstance(parsed, dict):
+            raise LlmSplitShapeError(
+                f"the model returned a JSON {type(parsed).__name__} at the top level, "
+                "and the split schema is an object with a `segments` array"
+            )
         win = _clamp_window_segments(parsed.get("segments") or [], pos, end)
 
         # Merges the pending segment (previous window without an internal

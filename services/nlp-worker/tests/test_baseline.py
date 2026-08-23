@@ -12,6 +12,7 @@ Covers:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import pathlib
 
@@ -194,3 +195,41 @@ def test_analyze_endpoint_does_not_break_existing_contract() -> None:
 
     # New field present
     assert "baselineTerms" in body
+
+
+# ---------- The "Never raises" guarantee, which the router pays for ----------
+
+
+def test_a_library_failure_never_escapes_the_baseline_step(monkeypatch, caplog) -> None:
+    """The docstring's promise, asserted where it matters -- and it is a promise with a price.
+
+    `routers/analyze.py` calls `extract_baseline_terms` OUTSIDE its own try, on the strength of
+    that promise, so an escaping exception becomes a 500 with no code from the error contract on
+    a request whose LLM call had not started yet. The guard used to catch `ValueError` and cover
+    only the fit; `top_terms` and the `BaselineTerm` conversion were outside it, and
+    `nlp_baseline` is scikit-learn underneath, which raises more than `ValueError`.
+
+    `MemoryError` is the case the finding named -- a 1MB transcript with `ngram_range=(1, 2)` --
+    and it stands in here for the whole class. Raised from `top_terms` on purpose: that is the
+    call the old block did not cover.
+    """
+
+    class _Exploding:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def fit(self, _chunks) -> None:
+            return None
+
+        def top_terms(self, top_n: int = 10):
+            raise MemoryError("simulated allocation failure inside the vectorizer")
+
+    monkeypatch.setattr("nora_nlp.services.baseline.TfidfBaseline", _Exploding)
+
+    with caplog.at_level(logging.ERROR, logger="nora_nlp.services.baseline"):
+        result = extract_baseline_terms("Reuniao sobre o escopo do rollout do ERP.", top_n=10)
+
+    assert result == []
+    # Silence would be worse than the exception: an optional step that always fails looks
+    # exactly like a feature nobody uses.
+    assert any("baseline failed" in r.message for r in caplog.records), caplog.text

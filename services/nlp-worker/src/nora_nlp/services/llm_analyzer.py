@@ -21,54 +21,12 @@ import time
 from ..clients.llm import LlmClient, build_json_schema_for_analysis
 from ..models import AnalyzeRequest, AnalyzeResponse, MeetingAnalysisV1
 from ..settings import Settings
+from ..time_budget import LlmBudgetExceededError, TimeBudget
 from .pii_shield import admissible_tenant_terms
-from .pii_shield import redact as pii_redact
 from .prompt_utils import load_prompt, render_template
+from .shield_walk import shield_field, shield_tree
 
 logger = logging.getLogger(__name__)
-
-
-def _shield_field(
-    value: str, counter: list[int], tenant_terms: frozenset[str] = frozenset()
-) -> str:
-    """Applies PII Shield to an individual field, counting redactions.
-
-    `tenant_terms` is this request's admitted trade names, and passing them here is what stops
-    the prompt from contradicting itself. Without it the transcript kept "Kranz Solutions" --
-    that is the whole point of finding 5c -- while this block turned the same string into
-    `[[PERSON_NAME_1]]`, so the model saw one entity written two ways in a single request.
-    Over-redaction, never a leak, but half a feature.
-
-    The shield still decides. These terms are not trusted here any more than anywhere else:
-    `redact` runs its two passes and discards the second if a person was freed.
-    """
-    if not value:
-        return value
-    out = pii_redact(value, tenant_terms)
-    counter[0] += len(out.redactions)
-    return out.redacted_text
-
-
-def _shield_tree(
-    value: object, counter: list[int], tenant_terms: frozenset[str] = frozenset()
-) -> object:
-    """Applies the PII Shield to every string leaf of a nested structure.
-
-    Walks dicts and lists instead of naming the fields to cover. The tenant context is
-    tenant-authored free text from end to end, and a hand-kept list of keys only protects
-    the shape it was written against: a field of a type the list did not expect, or one
-    added to ``TenantContext`` afterwards, stops reaching the shield without anything
-    failing — and the redaction counter then reports a clean audit trail for text that
-    was never inspected. Dict keys are schema names, not tenant input, so they are kept
-    as they are. ADR 0012.
-    """
-    if isinstance(value, str):
-        return _shield_field(value, counter, tenant_terms)
-    if isinstance(value, dict):
-        return {k: _shield_tree(v, counter, tenant_terms) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_shield_tree(item, counter, tenant_terms) for item in value]
-    return value
 
 
 def _build_goal_section(
@@ -86,13 +44,13 @@ def _build_goal_section(
     if req.goal is None:
         return "Nenhum objetivo foi declarado para esta reuniao. DEVE emitir `productivity` = null."
 
-    purpose = _shield_field(req.goal.purpose, redaction_counter, tenant_terms)
+    purpose = shield_field(req.goal.purpose, redaction_counter, tenant_terms)
     outcomes_shielded = [
-        _shield_field(o, redaction_counter, tenant_terms) for o in req.goal.expected_outcomes
+        shield_field(o, redaction_counter, tenant_terms) for o in req.goal.expected_outcomes
     ]
     outcomes_md = "\n".join(f"- {o}" for o in outcomes_shielded)
     if req.goal.project_state_snapshot:
-        snap = _shield_field(req.goal.project_state_snapshot, redaction_counter, tenant_terms)
+        snap = shield_field(req.goal.project_state_snapshot, redaction_counter, tenant_terms)
         state_block = f"\n\nEstado atual do projeto (informado pelo usuario):\n```\n{snap}\n```"
     else:
         state_block = ""
@@ -114,11 +72,17 @@ def analyze(
     settings: Settings,
     *,
     pii_redactions_applied: int = 0,
+    budget: TimeBudget | None = None,
 ) -> AnalyzeResponse:
     """Analyzes the transcript via LLM with structured JSON output."""
     started = time.monotonic()
 
-    client = LlmClient(settings)
+    # One budget for the whole request: the structured call and the JSON-mode retry below draw
+    # on the same seconds, and the router hands one in that started before the PII shield so
+    # that time counts against the caller's deadline too. See `time_budget.py`.
+    budget = budget or TimeBudget.from_settings(settings)
+
+    client = LlmClient(settings, budget=budget)
 
     system_prompt, user_template = load_prompt(req.options.prompt_version)
 
@@ -135,7 +99,7 @@ def analyze(
     tenant_terms = admissible_tenant_terms(
         req.tenant_context.company_name, req.tenant_context.competitors
     )
-    ctx_dict = _shield_tree(
+    ctx_dict = shield_tree(
         req.tenant_context.model_dump(by_alias=True), extra_redactions, tenant_terms
     )
 
@@ -163,6 +127,12 @@ def analyze(
             json_schema=json_schema,
             schema_name="meeting_analysis",
         )
+    except LlmBudgetExceededError:
+        # Explicitly ahead of the generic branch, which would otherwise swallow it: re-sending
+        # the whole prompt in JSON mode is the most expensive thing this function can do, and
+        # the budget having run out is precisely the case where nobody is left to receive the
+        # answer. `chat_json` would refuse anyway; failing here says why.
+        raise
     except Exception as exc:
         logger.warning("Structured output failed, falling back to JSON mode: %s", exc)
         raw_json, tokens_in, tokens_out = client.chat_json(

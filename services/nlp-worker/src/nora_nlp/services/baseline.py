@@ -130,6 +130,23 @@ def extract_baseline_terms(transcript: str, *, top_n: int = 10) -> list[Baseline
     if not chunks:
         return []
 
+    # THE WHOLE STEP, not just the fit, and not just `ValueError`.
+    #
+    # The `Never raises` above is the reason `routers/analyze.py` calls this OUTSIDE its own
+    # try, so anything escaping here is a 500 with no code from the error contract, on a request
+    # whose LLM call had not started. The guarantee has to be worth what the router paid for it.
+    #
+    # Two ways it was not. `top_terms` and the `BaselineTerm` conversion sat outside the block
+    # entirely -- a short surface, but the two lines nearest the boundary. And the block caught
+    # `ValueError` only, while `nlp_baseline` is scikit-learn underneath: a `MemoryError` on a
+    # 1MB transcript with `ngram_range=(1, 2)`, or anything else the library decides to raise,
+    # went straight through a function whose docstring promises it cannot.
+    #
+    # `except Exception` is deliberate and is the narrowest thing that keeps the promise. It is
+    # bounded by returning `[]`: the caller loses the interpretable term list for this request
+    # and the analysis proceeds, which is what "optional step" means. The exception is logged
+    # with `exception()` so a systematic failure is visible rather than silently empty -- an
+    # optional step that is always failing is a defect and must not look like a quiet feature.
     try:
         baseline = TfidfBaseline(
             ngram_range=(1, 2),
@@ -138,19 +155,24 @@ def extract_baseline_terms(transcript: str, *, top_n: int = 10) -> list[Baseline
             max_df=0.95,
         )
         baseline.fit(chunks)
+
+        # Global top (mean of the scores across the chunks). Makes sense here
+        # because each chunk is an independent pseudo-doc.
+        raw_top = baseline.top_terms(top_n=top_n)
+
+        # Defensive conversion: TfidfVectorizer normalizes L2 per document, so
+        # the scores typically land in [0, 1]. We cap to [0, 1] to match
+        # the schema constraint (`ge=0.0, le=1.0`) and avoid a 502 from validation.
+        out: list[BaselineTerm] = []
+        for term, score in raw_top:
+            clipped = max(0.0, min(1.0, float(score)))
+            out.append(BaselineTerm(term=term, score=clipped))
+        return out
     except ValueError as exc:
+        # The expected one: an empty or all-stopword vocabulary. Kept apart from the branch
+        # below so a routine outcome does not print a stack trace every time it happens.
         logger.warning("TF-IDF baseline produced no useful vocabulary: %s", exc)
         return []
-
-    # Global top (mean of the scores across the chunks). Makes sense here
-    # because each chunk is an independent pseudo-doc.
-    raw_top = baseline.top_terms(top_n=top_n)
-
-    # Defensive conversion: TfidfVectorizer normalizes L2 per document, so
-    # the scores typically land in [0, 1]. We cap to [0, 1] to match
-    # the schema constraint (`ge=0.0, le=1.0`) and avoid a 502 from validation.
-    out: list[BaselineTerm] = []
-    for term, score in raw_top:
-        clipped = max(0.0, min(1.0, float(score)))
-        out.append(BaselineTerm(term=term, score=clipped))
-    return out
+    except Exception:
+        logger.exception("TF-IDF baseline failed; continuing without baseline terms")
+        return []

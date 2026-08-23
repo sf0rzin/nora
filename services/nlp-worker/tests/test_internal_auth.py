@@ -98,8 +98,20 @@ def test_readyz_reports_internal_auth_on(_enforce_internal_auth):
     assert resp.json()["internalAuth"] == "on"
 
 
-def test_readyz_reports_internal_auth_off(_enforce_internal_auth):
-    _use_settings(worker_internal_token="", use_llm_stub=True)
+def test_readyz_tells_a_closed_gate_from_an_open_one(_enforce_internal_auth):
+    """The two states that used to share the value "off", and they are opposites.
+
+    No token and no opt-out is a worker answering 503 to everybody. No token WITH the opt-out is
+    a worker accepting anybody who can reach the port. A reader of `/readyz` needs to tell those
+    apart more than they need any other thing this endpoint says, and until this test existed
+    the endpoint reported the same word for both.
+    """
+    _use_settings(worker_internal_token="", use_llm_stub=True, allow_unauthenticated_internal=False)
     resp = client.get("/readyz")
     assert resp.status_code == 200, resp.text
-    assert resp.json()["internalAuth"] == "off"
+    assert resp.json()["internalAuth"] == "closed"
+
+    _use_settings(worker_internal_token="", use_llm_stub=True, allow_unauthenticated_internal=True)
+    resp = client.get("/readyz")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["internalAuth"] == "open"

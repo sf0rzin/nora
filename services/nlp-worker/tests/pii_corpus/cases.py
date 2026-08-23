@@ -418,11 +418,30 @@ _MONTHS_STILL_WRONG: dict[str, str] = {
 # 196 of 392 preposition-noun pairs are wrong, and the seven failing prepositions are exactly the
 # ones on no shield list. The numbers are written here rather than behind a pointer -- the
 # repository is public and an untracked working file is not a citation anyone else can follow.
-_PREPOSITION_GAP = (
-    "a capitalised preposition and a capitalised noun are two `_TITLE_WORD` tokens, which is the "
-    "shape `_NAME_SEQUENCE_RE` trusts -- `na`, `no`, `nas`, `nos`, `pela`, `pelo` and `em` are on "
-    "no list, unlike `da`/`do`/`de` which are on `_NAME_CONNECTIVES` and therefore survive"
-)
+#
+# CLOSED for six of the seven nouns by `_is_an_opener_and_an_ordinary_word`, which reads
+# `_SENTENCE_OPENERS` and `_ORDINARY_AFTER_OPENER` and nothing else. The history stays because
+# the remaining gap only makes sense with it: a capitalised opener and a capitalised noun are
+# two `_TITLE_WORD` tokens, the shape `_NAME_SEQUENCE_RE` trusts, and `na`, `no`, `nas`, `nos`,
+# `pela`, `pelo` and `em` are on no other shield list -- unlike `da`/`do`/`de`, which are on
+# `_NAME_CONNECTIVES` and were therefore already surviving (`fp_connective`).
+#
+# Calendar words held OUT of `_ORDINARY_AFTER_OPENER` because they are plausible pt-BR surnames,
+# so the opener rule cannot tell `Depois Maio` from a person. None is on `_BR_TOP_SURNAMES` --
+# that list has 102 entries and the country has rather more, which is exactly why the mechanical
+# disjointness check did not catch them and review did.
+#
+# The cost is that these stay redacted behind an opener. A lost date is cheaper than a published
+# name, which is the direction the shield fails in everywhere.
+# Only the words a case in this file can actually reach. `Marco` is held back too -- accent
+# folding collapses it onto `marco` on `_BR_TOP_NAMES` -- and it is NOT listed here, because no
+# `fp_preposition` noun is `Marco` and an entry that cannot fire is the defect this corpus spends
+# three tests refusing. `_MONTHS_STILL_WRONG` is where `Marco` is priced.
+_CALENDAR_HELD_BACK: dict[str, str] = {
+    "Janeiro": "also a plausible pt-BR surname, so the opener rule cannot separate it from a "
+    "person; held out of `_ORDINARY_AFTER_OPENER` together with `Maio`, `Abril`, `Agosto` and "
+    "`Domingo`, after `Depois Maio` leaked for exactly this reason",
+}
 
 
 def _false_positives() -> list[Case]:
@@ -544,8 +563,9 @@ def _false_positives() -> list[Case]:
             )
         )
 
-    # The live defect. Two Title Case tokens, so the sequence pattern reaches them, and it claims
-    # them: every one of these comes back `[[PERSON_NAME_1]]` today.
+    # Two Title Case tokens, so the sequence pattern reaches them. Every one of these came back
+    # `[[PERSON_NAME_1]]` until the opener rule landed; the ones still marked as gaps are the
+    # calendar words that rule deliberately refuses to claim, and the note says which and why.
     for pi, prep in enumerate(pools.PREPOSITIONS):
         for ni, noun in enumerate(pools.PREPOSITION_NOUNS):
             cases.append(
@@ -554,8 +574,8 @@ def _false_positives() -> list[Case]:
                     shape="fp_preposition",
                     text=f"{prep} {noun} o time revisou o escopo.",
                     must_survive=(prep, noun),
-                    status=KNOWN_GAP,
-                    note=_PREPOSITION_GAP,
+                    status=KNOWN_GAP if noun in _CALENDAR_HELD_BACK else REQUIRED,
+                    note=_CALENDAR_HELD_BACK.get(noun, ""),
                     tags=(f"prep_{pi:02d}", f"noun_{ni:02d}"),
                 )
             )
@@ -1011,8 +1031,10 @@ def _adversarial() -> list[Case]:
             "Na Segunda-feira o time revisou o escopo.",
             (),
             ("Segunda",),
-            status=KNOWN_GAP,
-            note="`Segunda` is spliced out of `Segunda-feira`, leaving `-feira` behind",
+            note="PROMOTED. Was a gap: `Na Segunda` matched `_NAME_SEQUENCE_RE` and `Segunda` "
+            "was spliced out of `Segunda-feira`, leaving `-feira` behind. Closed by "
+            "`_is_an_opener_and_an_ordinary_word` -- `na` is an opener and `segunda` is on "
+            "`_ORDINARY_AFTER_OPENER`, so the pair is no longer read as a name",
         ),
         # ---- a lone surname behind a phrase head, and the genitive ----
         #
