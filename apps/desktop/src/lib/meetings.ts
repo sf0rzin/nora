@@ -1,41 +1,19 @@
-import { apiClient } from "./api-client";
-import { invoke } from "@tauri-apps/api/core";
-import type { MeetingsPage, MeetingDetail } from "./types";
-
-export async function listMeetings(params?: {
-  page?: number;
-  size?: number;
-  search?: string;
-  status?: string;
-  tag?: string;
-}): Promise<MeetingsPage> {
-  const searchParams = new URLSearchParams();
-  if (params?.page !== undefined) searchParams.set("page", String(params.page));
-  if (params?.size !== undefined) searchParams.set("size", String(params.size));
-  if (params?.search) searchParams.set("search", params.search);
-  if (params?.status) searchParams.set("status", params.status);
-  if (params?.tag) searchParams.set("tag", params.tag);
-
-  const qs = searchParams.toString();
-  return apiClient.request<MeetingsPage>(`/meetings${qs ? `?${qs}` : ""}`);
-}
-
-export async function getMeeting(meetingId: string): Promise<MeetingDetail> {
-  return apiClient.request<MeetingDetail>(`/meetings/${meetingId}`);
-}
-
 /**
- * Re-queues the NLP analysis of a meeting that failed (processingStatus FAILED).
- * Backend validates the state, goes back to PENDING and re-fires the async pipeline.
+ * Upload of a finished recording to the NORA API.
+ *
+ * The module used to open with three more wrappers — listMeetings, getMeeting and
+ * reprocessMeeting — that went through `apiClient.request` and therefore through the
+ * `http_proxy` Tauri command. None of the three had a caller: the screens that would have
+ * listed and reopened meetings live in the web app the main window loads, not here. They were
+ * deleted together with api-client.ts, auth.ts, secrets.ts and types.ts, which existed only to
+ * serve them (desktop audit #15).
+ *
+ * What survives is the one live path: uploadTranscript, called by use-recording.ts when the dock
+ * stops a recording, and again by its retry worker for anything queued offline. It does NOT go
+ * through the proxy — `invoke("upload_meeting")` posts the multipart body from Rust, which is
+ * where the session cookie is read.
  */
-export async function reprocessMeeting(
-  meetingId: string,
-): Promise<{ processingStatus: string }> {
-  return apiClient.request<{ processingStatus: string }>(
-    `/meetings/${meetingId}/reprocess`,
-    { method: "POST" },
-  );
-}
+import { invoke } from "@tauri-apps/api/core";
 
 export interface UploadTranscriptRequest {
   title: string;

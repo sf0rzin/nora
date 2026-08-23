@@ -16,7 +16,5 @@ pub fn web_session_jwt(app: &AppHandle) -> Result<String, String> {
         .iter()
         .find(|c| c.name() == "nora_access")
         .map(|c| c.value().to_string())
-        .ok_or_else(|| {
-            "Session not found — please log in in the Nora main window.".to_string()
-        })
+        .ok_or_else(|| "Session not found — please log in in the Nora main window.".to_string())
 }

@@ -10,7 +10,24 @@ import { useLiveHighlights, useLiveAnalysisTrigger } from "./use-live-highlights
 interface UseRecordingOptions {
   language?: string;
   captureSystemAudio?: boolean;
-  systemAudioDevice?: string | null;
+}
+
+/** Payload of the "capture-error" event emitted by audio_capture.rs / system_audio.rs. */
+interface CaptureErrorPayload {
+  track: string;
+  message: string;
+}
+
+/**
+ * pt-BR copy for a capture that stopped. The Rust side sends the technical reason in English
+ * (it goes to the console and to support); what the user reads has to say which half of the
+ * meeting they are losing, because that is the part they can act on — plug the headset back in,
+ * or accept a recording without the remote participants.
+ */
+function captureErrorMessage(track: string): string {
+  return track === "system"
+    ? "Não foi possível capturar o áudio do sistema. Apenas o seu microfone está sendo gravado."
+    : "A captura do microfone parou (dispositivo removido ou indisponível). A gravação foi interrompida.";
 }
 
 /** Builds the transcript with a [speaker] prefix per line. Shared between
@@ -115,6 +132,23 @@ export function useRecording(options: UseRecordingOptions = {}) {
       }),
     );
 
+    // A capture path that died mid-recording, or a system-audio track that never started.
+    // Both used to be silent: the dock kept showing the recording indicator and the timer kept
+    // running over silence, and the user found out at upload time (desktop audit #11/#12).
+    attach(
+      listen<CaptureErrorPayload>("capture-error", (event) => {
+        const track = event.payload?.track ?? "mic";
+        console.error("[recording] capture error:", track, event.payload?.message);
+        setError(captureErrorMessage(track));
+        if (track !== "system") {
+          // The mic is the recording. Stop the clock here as well as reverting the status,
+          // otherwise the duration keeps climbing over audio nobody is capturing.
+          if (timerRef.current) clearInterval(timerRef.current);
+          startTimeRef.current = null;
+        }
+      }),
+    );
+
     const checkStatus = async () => {
       try {
         const status = await invoke<RecordingStatus>("get_recording_status");
@@ -161,7 +195,6 @@ export function useRecording(options: UseRecordingOptions = {}) {
   const startRecording = useCallback(async (overrides?: {
     deviceName?: string | null;
     captureSystemAudio?: boolean;
-    systemAudioDevice?: string | null;
     language?: string;
   }) => {
     setError(null);
@@ -175,8 +208,9 @@ export function useRecording(options: UseRecordingOptions = {}) {
       language: overrides?.language ?? options.language ?? "pt-BR",
       captureSystemAudio:
         overrides?.captureSystemAudio ?? options.captureSystemAudio ?? false,
-      systemAudioDevice:
-        overrides?.systemAudioDevice ?? options.systemAudioDevice ?? null,
+      // No system-audio device travels with this: the WASAPI loopback always captures the
+      // Windows default output, and the field the request used to carry was accepted and then
+      // dropped by the capture (desktop audit #14).
     };
 
     try {

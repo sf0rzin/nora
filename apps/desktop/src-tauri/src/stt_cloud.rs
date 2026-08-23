@@ -50,6 +50,11 @@ use crate::stt_token::{self, RealtimeSession};
 ///
 /// Bounded on purpose. An unbounded retry against a provider that is refusing us is a loop that
 /// spends the user's session budget and their battery while the overlay says nothing new.
+///
+/// CONSECUTIVE is the load-bearing word, and `record_failure` is what makes it true. The counter
+/// used to only ever grow, so five transient drops spread across a two-hour meeting — Wi-Fi
+/// wobbling, the provider closing an idle session — silenced the track for the rest of it while
+/// the recording carried on as if nothing had happened.
 const MAX_CONSECUTIVE_FAILURES: u32 = 5;
 
 /// First backoff step; doubles up to `MAX_BACKOFF`.
@@ -187,7 +192,34 @@ enum Outcome {
     /// `stop()` was called, or capture closed the channel. Terminal.
     Stopped,
     /// The socket died. Reconnectable, with a reason for the user.
-    Lost(String),
+    ///
+    /// `progressed` says whether this connection had delivered any transcript before dying. It
+    /// is what separates a run of failures from a working session that happened to drop — see
+    /// [`record_failure`].
+    Lost { reason: String, progressed: bool },
+}
+
+/// A connection lost before it ever produced anything.
+fn lost(reason: impl Into<String>) -> Outcome {
+    Outcome::Lost {
+        reason: reason.into(),
+        progressed: false,
+    }
+}
+
+/// The consecutive-failure budget after one lost connection.
+///
+/// A connection that delivered transcript before dying PROVES the credential, the provider and
+/// the network all work, so whatever run of failures preceded it is over: this failure is the
+/// first of a new run rather than the fifth of an old one. Without that reset the counter was
+/// cumulative, contradicting the name of [`MAX_CONSECUTIVE_FAILURES`], its doc-comment, and a
+/// backoff that grows per attempt.
+fn record_failure(consecutive: u32, progressed: bool) -> u32 {
+    if progressed {
+        1
+    } else {
+        consecutive + 1
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -214,7 +246,7 @@ async fn run(
             None => match stt_token::fetch_session(&app, &language).await {
                 Ok(s) => s,
                 Err(e) => {
-                    consecutive_failures += 1;
+                    consecutive_failures = record_failure(consecutive_failures, false);
                     emit_error(&app, &session_id, &track, e.code, &e.message);
                     if consecutive_failures >= MAX_CONSECUTIVE_FAILURES {
                         emit_gave_up(&app, &session_id, &track);
@@ -242,8 +274,8 @@ async fn run(
 
         match outcome {
             Outcome::Stopped => return,
-            Outcome::Lost(reason) => {
-                consecutive_failures += 1;
+            Outcome::Lost { reason, progressed } => {
+                consecutive_failures = record_failure(consecutive_failures, progressed);
                 emit_error(
                     &app,
                     &session_id,
@@ -310,22 +342,22 @@ async fn stream_one_session(
     // The URL comes from our own backend over TLS, but a scheme check costs one line and stops a
     // misconfigured server from talking this client into a cleartext socket.
     if !session.websocket_url.starts_with("wss://") {
-        return Outcome::Lost("endpoint is not wss".to_string());
+        return lost("endpoint is not wss");
     }
 
     let mut request = match session.websocket_url.as_str().into_client_request() {
         Ok(r) => r,
-        Err(e) => return Outcome::Lost(format!("invalid endpoint: {}", e)),
+        Err(e) => return lost(format!("invalid endpoint: {}", e)),
     };
     let bearer = match format!("Bearer {}", session.client_secret).parse() {
         Ok(v) => v,
-        Err(_) => return Outcome::Lost("credential is not a valid header value".to_string()),
+        Err(_) => return lost("credential is not a valid header value"),
     };
     request.headers_mut().insert("Authorization", bearer);
 
     let (socket, _) = match tokio_tungstenite::connect_async(request).await {
         Ok(pair) => pair,
-        Err(e) => return Outcome::Lost(format!("handshake failed: {}", e)),
+        Err(e) => return lost(format!("handshake failed: {}", e)),
     };
     let (mut write, mut read) = socket.split();
 
@@ -334,8 +366,12 @@ async fn stream_one_session(
     // audio, so the two can never disagree about the sample rate.
     let update = session_update_payload(session);
     if let Err(e) = write.send(Message::Text(update.into())).await {
-        return Outcome::Lost(format!("could not configure the session: {}", e));
+        return lost(format!("could not configure the session: {}", e));
     }
+
+    // Set by the first transcript event this connection delivers. A session that spoke is a
+    // session that worked, and `run` uses that to tell one bad night from a run of refusals.
+    let mut progressed = false;
 
     loop {
         tokio::select! {
@@ -347,14 +383,25 @@ async fn stream_one_session(
                 match incoming {
                     Some(Ok(Message::Text(text))) => {
                         for event in interpret(&text) {
+                            if matches!(event, Interpreted::Partial(_) | Interpreted::Final(_)) {
+                                progressed = true;
+                            }
                             emit_transcript(app, session_id, track, clock, last_final_end_ms, event);
                         }
                     }
                     Some(Ok(Message::Close(_))) | None => {
-                        return Outcome::Lost("the provider closed the connection".to_string());
+                        return Outcome::Lost {
+                            reason: "the provider closed the connection".to_string(),
+                            progressed,
+                        };
                     }
                     Some(Ok(_)) => {}
-                    Some(Err(e)) => return Outcome::Lost(format!("socket error: {}", e)),
+                    Some(Err(e)) => {
+                        return Outcome::Lost {
+                            reason: format!("socket error: {}", e),
+                            progressed,
+                        }
+                    }
                 }
             }
             chunk = audio_rx.recv() => {
@@ -363,7 +410,10 @@ async fn stream_one_session(
                         clock.advance(samples.len());
                         let payload = append_payload(&samples);
                         if let Err(e) = write.send(Message::Text(payload.into())).await {
-                            return Outcome::Lost(format!("could not send audio: {}", e));
+                            return Outcome::Lost {
+                                reason: format!("could not send audio: {}", e),
+                                progressed,
+                            };
                         }
                     }
                     // Capture closed the channel: the recording is over.
@@ -452,7 +502,10 @@ fn interpret(text: &str) -> Vec<Interpreted> {
             }
         }
         "conversation.item.input_audio_transcription.completed" => {
-            let full = value.get("transcript").and_then(|v| v.as_str()).unwrap_or("");
+            let full = value
+                .get("transcript")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             if full.trim().is_empty() {
                 Vec::new()
             } else {
@@ -608,12 +661,19 @@ mod tests {
 
     #[test]
     fn a_delta_is_a_partial_and_a_completed_is_a_final() {
-        let delta = r#"{"type":"conversation.item.input_audio_transcription.delta","delta":"bom "}"#;
-        assert_eq!(interpret(delta), vec![Interpreted::Partial("bom ".to_string())]);
+        let delta =
+            r#"{"type":"conversation.item.input_audio_transcription.delta","delta":"bom "}"#;
+        assert_eq!(
+            interpret(delta),
+            vec![Interpreted::Partial("bom ".to_string())]
+        );
 
         let done = r#"{"type":"conversation.item.input_audio_transcription.completed",
                        "transcript":"  bom dia  "}"#;
-        assert_eq!(interpret(done), vec![Interpreted::Final("bom dia".to_string())]);
+        assert_eq!(
+            interpret(done),
+            vec![Interpreted::Final("bom dia".to_string())]
+        );
     }
 
     #[test]
@@ -669,6 +729,50 @@ mod tests {
         assert_eq!(offset, 5_000);
         assert_eq!(end, 5_000);
         assert_eq!(last_final_end_ms, 5_000);
+    }
+
+    /// The two-hour meeting on a flaky link: every drop is preceded by a connection that
+    /// delivered transcript. Those are isolated failures, not a run of them, and the track must
+    /// still be transcribing after far more than `MAX_CONSECUTIVE_FAILURES` of them.
+    #[test]
+    fn drops_spread_between_working_sessions_never_exhaust_the_budget() {
+        let mut failures = 0u32;
+        for drop_number in 1..=20 {
+            failures = record_failure(failures, true);
+            assert!(
+                failures < MAX_CONSECUTIVE_FAILURES,
+                "gave up after {} spaced drops — the counter is cumulative again",
+                drop_number
+            );
+        }
+    }
+
+    /// The other half of the same semantics: nothing came back between the attempts, so the
+    /// bound still fires. This is the loop the bound exists for.
+    #[test]
+    fn a_run_of_failures_with_nothing_in_between_still_gives_up() {
+        let mut failures = 0u32;
+        for _ in 0..MAX_CONSECUTIVE_FAILURES {
+            failures = record_failure(failures, false);
+        }
+        assert_eq!(failures, MAX_CONSECUTIVE_FAILURES);
+    }
+
+    /// A working session resets the count that came before it rather than merely pausing it.
+    #[test]
+    fn a_working_session_wipes_the_failures_that_preceded_it() {
+        let mut failures = 0u32;
+        failures = record_failure(failures, false);
+        failures = record_failure(failures, false);
+        failures = record_failure(failures, false);
+        assert_eq!(failures, 3);
+
+        // The fourth attempt connects and transcribes before dropping.
+        failures = record_failure(failures, true);
+        assert_eq!(
+            failures, 1,
+            "the run before the working session must not carry over"
+        );
     }
 
     fn test_session(sample_rate: u32) -> RealtimeSession {

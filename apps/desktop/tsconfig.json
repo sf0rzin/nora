@@ -20,5 +20,7 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "//exclude": "The tests run on Node's own runner (npm test), which strips the types instead of compiling them; they import node:test and node:assert, and this package has no @types/node. Type-checking them would mean adding that dependency for files vite never bundles, so they are excluded here and checked by running.",
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

@@ -7,18 +7,17 @@ mod auth_bridge;
 pub mod commands;
 mod http_proxy;
 mod live_analysis;
-mod secrets;
+mod stealth_mode;
 mod stt;
 mod stt_cloud;
 mod stt_token;
-mod stealth_mode;
 mod system_audio;
 mod windows;
 
 use commands::CaptureState;
 use live_analysis::LiveHighlightsState;
-use stealth_mode::StealthModeState;
 use std::sync::{Arc, Mutex, OnceLock};
+use stealth_mode::StealthModeState;
 use tauri::Manager;
 
 /// Live STT backends (one per track). Still `Box<dyn SttBackend>` with one
@@ -26,6 +25,20 @@ use tauri::Manager;
 /// `Vec` and stop them uniformly. The name stayed `SidecarState` to avoid spreading
 /// a rename everywhere; nothing here has been a sidecar since the Python one went.
 pub type SidecarState = Arc<Mutex<Vec<Box<dyn stt::SttBackend>>>>;
+
+// `mod secrets` used to sit in the list above, and five commands — `http_proxy` plus
+// `secret_set/get/has/delete` — used to sit in `generate_handler!` below. They are gone, and
+// what they were is worth stating so nobody re-adds them out of habit.
+//
+// The path had neither end. The login form that wrote the keyring's `access-token` was deleted
+// with the local UI (PR #465); the `apiClient` that read it back through `http_proxy` had no
+// live caller. `stt_token.rs` recorded that measurement and then built on `auth_bridge`
+// instead. Registering a command is what exposes it to the IPC, so five commands with access to
+// the Windows Credential Manager and to the authenticated API stayed reachable for a year
+// without a single caller (audit #15). The keyring dependency went with them.
+//
+// The reqwest client that lived in the same module DID have callers — `commands.rs`,
+// `live_analysis.rs` and `stt_token.rs` — and it stayed. That is all `http_proxy.rs` holds now.
 
 // `nora_config_str` used to live here, reading arbitrary `plugins.nora` keys out of the
 // bundled `tauri.conf.json`. Its two callers were the STT backend selector and the Whisper
@@ -48,7 +61,10 @@ pub fn api_base_url() -> String {
         let config: serde_json::Value = match serde_json::from_str(CONFIG_JSON) {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("[nora] failed to parse tauri.conf.json: {}, using default", e);
+                eprintln!(
+                    "[nora] failed to parse tauri.conf.json: {}, using default",
+                    e
+                );
                 return "http://localhost:8080".to_string();
             }
         };
@@ -70,11 +86,14 @@ pub fn run() {
     let live_state: LiveHighlightsState = Arc::new(Mutex::new(None));
     let stealth_state: StealthModeState = Arc::new(Mutex::new(false));
 
+    // Parsed here rather than merely printed: `api_base_url()` memoizes a string that every
+    // network call in the app then joins paths onto, and a typo in tauri.conf.json should fail
+    // at startup instead of at the first upload. The parsed value itself is no longer kept as
+    // managed state — its only reader was the deleted `http_proxy` command.
     let api_base_url = api_base_url();
+    url::Url::parse(&api_base_url).expect("Invalid apiBaseUrl in tauri.conf.json");
     #[cfg(debug_assertions)]
     eprintln!("[nora] api_base_url={}", api_base_url);
-    let base_url = url::Url::parse(&api_base_url)
-        .expect("Invalid apiBaseUrl in tauri.conf.json");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -88,8 +107,6 @@ pub fn run() {
         .manage(sidecar_state)
         .manage(live_state)
         .manage(stealth_state)
-        .manage(http_proxy::ApiBaseUrl(base_url))
-        .manage(secrets::SecretStore::new())
         .setup(|app| {
             // System tray: native entry point to open the main window
             // (web) and trigger the recording (shows the floating dock).
@@ -156,11 +173,6 @@ pub fn run() {
             commands::stop_recording,
             commands::get_recording_status,
             commands::upload_meeting,
-            http_proxy::http_proxy,
-            secrets::secret_set,
-            secrets::secret_get,
-            secrets::secret_has,
-            secrets::secret_delete,
             live_analysis::analyze_live,
             live_analysis::toggle_overlay,
             live_analysis::clear_live_highlights,

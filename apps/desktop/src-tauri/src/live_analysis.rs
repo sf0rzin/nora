@@ -2,11 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::stealth_mode::StealthModeState;
-
-#[cfg(target_os = "windows")]
-use crate::stealth_mode::set_stealth_for_window;
-
 pub type LiveHighlightsState = Arc<Mutex<Option<LiveHighlights>>>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,10 +58,13 @@ pub struct LiveAnalysisTelemetry {
 
 #[tauri::command]
 pub async fn analyze_live(
+    window: tauri::Window,
     app_handle: AppHandle,
     state: State<'_, LiveHighlightsState>,
     request: AnalyzeLiveRequest,
 ) -> Result<(), String> {
+    crate::commands::ensure_local_window(&window)?;
+
     // Token comes from the web session (nora_access cookie in the main webview), not the keychain —
     // login now happens inside the main window that loads nora.systems.
     let access_token = crate::auth_bridge::web_session_jwt(&app_handle)?;
@@ -85,7 +83,10 @@ pub async fn analyze_live(
                     .map(|o| o.insert("previousHighlights".to_string(), value));
             }
             Err(e) => {
-                eprintln!("[live_analysis] failed to serialize previousHighlights: {}", e);
+                eprintln!(
+                    "[live_analysis] failed to serialize previousHighlights: {}",
+                    e
+                );
             }
         }
     }
@@ -206,7 +207,10 @@ fn parse_highlights_from_response(value: &serde_json::Value) -> LiveHighlights {
                     .filter_map(|item| {
                         Some(LiveTaskItem {
                             title: item.get("title")?.as_str()?.to_string(),
-                            assignee: item.get("assignee").and_then(|v| v.as_str()).map(String::from),
+                            assignee: item
+                                .get("assignee")
+                                .and_then(|v| v.as_str())
+                                .map(String::from),
                             priority: item.get("priority")?.as_str()?.to_string(),
                             source_quote: item.get("sourceQuote")?.as_str()?.to_string(),
                         })
@@ -219,18 +223,17 @@ fn parse_highlights_from_response(value: &serde_json::Value) -> LiveHighlights {
     LiveHighlights {
         decisions: parse_items(value.get("decisions").unwrap_or(&serde_json::Value::Null)),
         next_steps: parse_items(value.get("nextSteps").unwrap_or(&serde_json::Value::Null)),
-        observations: parse_items(value.get("observations").unwrap_or(&serde_json::Value::Null)),
+        observations: parse_items(
+            value
+                .get("observations")
+                .unwrap_or(&serde_json::Value::Null),
+        ),
         tasks: parse_tasks(value.get("tasks").unwrap_or(&serde_json::Value::Null)),
     }
 }
 
 #[tauri::command]
-#[allow(unused_variables)]
-pub fn toggle_overlay(
-    app_handle: AppHandle,
-    state: State<'_, StealthModeState>,
-    show: bool,
-) -> Result<(), String> {
+pub fn toggle_overlay(app_handle: AppHandle, show: bool) -> Result<(), String> {
     if let Some(window) = app_handle.get_webview_window("overlay") {
         if show {
             let _ = window.show();
@@ -242,16 +245,11 @@ pub fn toggle_overlay(
             // (Meet/Zoom). Explicit focus is handled by focus_overlay_window
             // when the user clicks to open the overlay (dock-bar). Audit #26.
 
-            // If stealth mode is active, apply it to the overlay now that it became visible
+            // If stealth mode is active, apply it to the overlay now that it became visible.
+            // The dock goes through the same helper in `windows::toggle_dock` — it used to be
+            // an inline copy here and no copy at all there (audit #10).
             #[cfg(target_os = "windows")]
-            {
-                let stealth_enabled = state.lock().map_err(|e| e.to_string())?;
-                if *stealth_enabled {
-                    #[cfg(debug_assertions)]
-                    eprintln!("[toggle_overlay] applying stealth to newly visible overlay");
-                    let _ = set_stealth_for_window(&window, true);
-                }
-            }
+            crate::stealth_mode::reapply_stealth(&app_handle, &window);
         } else {
             let _ = window.hide();
         }

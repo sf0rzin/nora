@@ -164,7 +164,10 @@ mod tests {
         let b = speaker_id_for_track("system");
         assert_eq!(a, b);
         assert_eq!(a.as_deref(), Some(SYSTEM_SPEAKER_ID));
-        assert!(!SYSTEM_SPEAKER_ID.is_empty(), "empty id is falsy in JS and disappears from detectedSpeakers");
+        assert!(
+            !SYSTEM_SPEAKER_ID.is_empty(),
+            "empty id is falsy in JS and disappears from detectedSpeakers"
+        );
     }
 
     /// The number the whole pipeline agrees on. It is asserted rather than merely declared

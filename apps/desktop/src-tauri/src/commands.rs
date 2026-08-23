@@ -7,6 +7,34 @@ use tauri::{AppHandle, Manager, State};
 
 pub type CaptureState = Arc<Mutex<AudioCapture>>;
 
+/// The windows whose content this repository wrote.
+///
+/// `main` is deliberately absent. It loads `https://nora.systems/dashboard`, so everything
+/// running in it is remote content — a stored XSS, a compromised third-party script, anything a
+/// corporate proxy decides to inject — and the commands below start recordings, read the log
+/// directory and sign requests with the user's session. The `updater-remote` capability that
+/// window carries says "Minimal scope: only updater + restart"; this is the sentence that makes
+/// the claim true from the command's own side rather than trusting the ACL to be the only lock
+/// on the door (audit #8). `lib.rs` already used the same `window.label()` test to decide which
+/// window closing quits the app.
+const LOCAL_WINDOWS: &[&str] = &["overlay", "dock"];
+
+pub(crate) fn is_local_window(label: &str) -> bool {
+    LOCAL_WINDOWS.contains(&label)
+}
+
+/// Rejects a command that did not come from one of the application's own windows.
+pub fn ensure_local_window(window: &tauri::Window) -> Result<(), String> {
+    if is_local_window(window.label()) {
+        Ok(())
+    } else {
+        Err(format!(
+            "command not available to the '{}' window",
+            window.label()
+        ))
+    }
+}
+
 /// Brings up ONE STT backend for a track.
 ///
 /// The event contract for the front end is `transcript` with a `TranscriptEvent`
@@ -69,33 +97,46 @@ fn log_line(app_handle: &AppHandle, msg: &str) {
 }
 
 #[tauri::command]
-pub fn list_audio_devices() -> Result<Vec<String>, String> {
+pub fn list_audio_devices(window: tauri::Window) -> Result<Vec<String>, String> {
+    ensure_local_window(&window)?;
     AudioCapture::list_devices()
 }
 
+/// `systemAudioDevice` used to be a field here.
+///
+/// The UI offered a list of output devices, this struct carried the choice, `AudioCapture::start`
+/// interpolated it into the status label, and `SystemAudioCapture::start` named the parameter
+/// `_source` and ignored it — the loopback records the default render endpoint and nothing else.
+/// The field is gone rather than plumbed through, because the list the UI populated it from was
+/// of INPUT devices: there was no correct choice for the capture to honour (audit #14). Serde
+/// ignores unknown fields, so an older front end sending it still starts a recording.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartRecordingRequest {
     pub device_name: Option<String>,
     pub language: Option<String>,
     pub capture_system_audio: Option<bool>,
-    pub system_audio_device: Option<String>,
 }
 
 #[tauri::command]
 pub async fn start_recording(
+    window: tauri::Window,
     app_handle: AppHandle,
     state: State<'_, CaptureState>,
     sidecar_state: State<'_, SidecarState>,
     request: StartRecordingRequest,
 ) -> Result<RecordingStatus, String> {
+    ensure_local_window(&window)?;
+
     #[cfg(debug_assertions)]
     {
         eprintln!("[commands] start_recording called");
         eprintln!("[commands] device_name: {:?}", request.device_name);
         eprintln!("[commands] language: {:?}", request.language);
-        eprintln!("[commands] capture_system_audio: {:?}", request.capture_system_audio);
-        eprintln!("[commands] system_audio_device: {:?}", request.system_audio_device);
+        eprintln!(
+            "[commands] capture_system_audio: {:?}",
+            request.capture_system_audio
+        );
     }
 
     log_line(
@@ -147,7 +188,10 @@ pub async fn start_recording(
             s
         }
         Err(e) => {
-            log_line(&app_handle, &format!("start_recording: stt mic ERROR: {}", e));
+            log_line(
+                &app_handle,
+                &format!("start_recording: stt mic ERROR: {}", e),
+            );
             return Err(format!("Failed to start mic sidecar: {}", e));
         }
     };
@@ -217,7 +261,6 @@ pub async fn start_recording(
                 app_handle.clone(),
                 request.device_name.clone(),
                 capture_system,
-                request.system_audio_device.clone(),
                 sinks,
             )
             .map_err(|e| {
@@ -240,6 +283,24 @@ pub async fn start_recording(
         "[commands] capture started ok - mic: {}, system: {:?}, sr: {}",
         status.mic_device, status.system_audio_device, status.sample_rate
     );
+
+    // The system track's transcription session had to be minted BEFORE the capture: a failure
+    // there must fail the whole start, while the user is still looking at the record button.
+    // If the loopback then did not come up, that session would stay open for the length of the
+    // meeting waiting for audio that has no producer — a paid session for a track that will
+    // never speak. Close it, and let the recording continue as the mic-only one the status now
+    // reports (audit #12). `AudioCapture::start` has already warned the user on "capture-error".
+    let system_sidecar = match system_sidecar {
+        Some(s) if AudioCapture::is_system_audio_degraded(&status, capture_system) => {
+            log_line(
+                &app_handle,
+                "start_recording: system audio unavailable, closing its stt session",
+            );
+            s.stop();
+            None
+        }
+        other => other,
+    };
 
     // Store sidecars in app state so they stay alive
     {
@@ -275,10 +336,13 @@ pub async fn start_recording(
 
 #[tauri::command]
 pub fn stop_recording(
+    window: tauri::Window,
     app_handle: AppHandle,
     state: State<'_, CaptureState>,
     sidecar_state: State<'_, SidecarState>,
 ) -> Result<(), String> {
+    ensure_local_window(&window)?;
+
     #[cfg(debug_assertions)]
     eprintln!("[commands] stop_recording called");
 
@@ -290,7 +354,10 @@ pub fn stop_recording(
     let mut sidecars = sidecar_state.lock().map_err(|e| e.to_string())?;
     for sidecar in sidecars.drain(..) {
         #[cfg(debug_assertions)]
-        eprintln!("[commands] stopping stt session_id={}", sidecar.session_id());
+        eprintln!(
+            "[commands] stopping stt session_id={}",
+            sidecar.session_id()
+        );
         // The backend closes its socket after this signal, so one last `transcript`
         // event can still arrive — the provider may already have a completed
         // utterance in flight.
@@ -302,8 +369,10 @@ pub fn stop_recording(
 
 #[tauri::command]
 pub fn get_recording_status(
+    window: tauri::Window,
     state: State<'_, CaptureState>,
 ) -> Result<RecordingStatus, String> {
+    ensure_local_window(&window)?;
     let capture = state.lock().map_err(|e| e.to_string())?;
     Ok(capture.get_status())
 }
@@ -338,9 +407,12 @@ pub struct UploadMeetingResponse {
 
 #[tauri::command]
 pub async fn upload_meeting(
+    window: tauri::Window,
     app_handle: AppHandle,
     request: UploadMeetingRequest,
 ) -> Result<UploadMeetingResponse, String> {
+    ensure_local_window(&window)?;
+
     let access_token = crate::auth_bridge::web_session_jwt(&app_handle)?;
 
     let backend_url = crate::api_base_url();
@@ -366,13 +438,19 @@ pub async fn upload_meeting(
     let file_bytes = request.file_content.into_bytes();
 
     let form = reqwest::multipart::Form::new()
-        .part("metadata", reqwest::multipart::Part::bytes(metadata_bytes)
-            .mime_str("application/json")
-            .map_err(|e| e.to_string())?)
-        .part("file", reqwest::multipart::Part::bytes(file_bytes)
-            .file_name(request.file_name)
-            .mime_str("text/plain")
-            .map_err(|e| e.to_string())?);
+        .part(
+            "metadata",
+            reqwest::multipart::Part::bytes(metadata_bytes)
+                .mime_str("application/json")
+                .map_err(|e| e.to_string())?,
+        )
+        .part(
+            "file",
+            reqwest::multipart::Part::bytes(file_bytes)
+                .file_name(request.file_name)
+                .mime_str("text/plain")
+                .map_err(|e| e.to_string())?,
+        );
 
     let response = crate::http_proxy::http_client()
         .post(format!("{}/meetings", backend_url))
@@ -384,7 +462,9 @@ pub async fn upload_meeting(
         .map_err(|e| format!("Upload request failed: {}", e))?;
 
     let status = response.status();
-    let body_text = response.text().await
+    let body_text = response
+        .text()
+        .await
         .map_err(|e| format!("Failed to read response body: {}", e))?;
 
     if !status.is_success() {
@@ -400,7 +480,10 @@ pub async fn upload_meeting(
         .to_string();
     Ok(UploadMeetingResponse {
         meeting_id,
-        processing_status: json["processingStatus"].as_str().unwrap_or("PENDING").to_string(),
+        processing_status: json["processingStatus"]
+            .as_str()
+            .unwrap_or("PENDING")
+            .to_string(),
     })
 }
 
@@ -414,3 +497,35 @@ pub async fn upload_meeting(
 // same time: the overlay's "install BlackHole" notice here, and `src/pages/settings.tsx`
 // with the local UI (PR #465). Bring it back if there is ever something it can answer "no"
 // to.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The window that loads `https://nora.systems/dashboard` is the one window whose content
+    /// this repository did not write. Everything guarded by `ensure_local_window` reaches the
+    /// Credential Manager, the user's session or the recording, so the answer for `main` has to
+    /// stay no even if the ACL in front of it ever changes (audit #8).
+    #[test]
+    fn the_remote_window_is_not_a_local_one() {
+        assert!(!is_local_window("main"));
+    }
+
+    /// The two windows the dock and the overlay actually run in. Getting this wrong the other
+    /// way is not a security hole but a dead application: every button in the product invokes
+    /// from one of them.
+    #[test]
+    fn the_applications_own_windows_are_allowed() {
+        assert!(is_local_window("overlay"));
+        assert!(is_local_window("dock"));
+    }
+
+    /// A label that is not in the list at all — an unnamed webview, a window added later — is
+    /// refused rather than allowed by default.
+    #[test]
+    fn an_unknown_label_is_refused() {
+        assert!(!is_local_window(""));
+        assert!(!is_local_window("overlay2"));
+        assert!(!is_local_window("DOCK"));
+    }
+}

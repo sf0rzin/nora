@@ -10,12 +10,14 @@
 //! `auth_bridge::web_session_jwt`, the session cookie read out of the remote `main` window, the
 //! same way `commands.rs::upload_meeting` and `live_analysis.rs` already do it.
 //!
-//! It is NOT `http_proxy.rs`, and that is a decision rather than an omission. `http_proxy` signs
-//! with the keyring's `access-token`, and measured on this tree that path has neither end: the
-//! login form that used to write the secret was deleted with the local UI (PR #465), and nothing
-//! reads it either — `apiClient.request` has no live caller, `meetings.ts`'s three wrappers have no
-//! callers, and `uploadTranscript` goes through `invoke("upload_meeting")`. Building a new feature
-//! on a path with no producer and no consumer would have made a dead branch look alive.
+//! It is NOT the keyring's `access-token`, and that was a decision rather than an omission. The
+//! `http_proxy` command signed with that secret, and measured on this tree the path had neither
+//! end: the login form that used to write it was deleted with the local UI (PR #465), and
+//! nothing read it either — `apiClient.request` had no live caller, and `uploadTranscript` goes
+//! through `invoke("upload_meeting")`. Building a new feature on a path with no producer and no
+//! consumer would have made a dead branch look alive. The measurement has since been acted on:
+//! the command, the keyring store and the TypeScript modules that reached them were deleted
+//! (audit #15), and `http_proxy.rs` is now only the shared reqwest client used below.
 //!
 //! ## This module is the ONLY thing between a recording and a paid provider
 //!
@@ -143,7 +145,10 @@ pub async fn fetch_session(
     let jwt = crate::auth_bridge::web_session_jwt(app)
         .map_err(|e| SessionError::new("STT_AUTH_REJECTED", e))?;
 
-    let url = format!("{}/stt/sessions", crate::api_base_url().trim_end_matches('/'));
+    let url = format!(
+        "{}/stt/sessions",
+        crate::api_base_url().trim_end_matches('/')
+    );
     let body = serde_json::json!({ "language": language });
 
     let response = crate::http_proxy::http_client()
@@ -169,7 +174,11 @@ pub async fn fetch_session(
         // redacts on its side and refuses to echo the provider's body).
         return Err(SessionError::new(
             classify(status),
-            format!("the NORA API refused the session (HTTP {}): {}", status, first_line(&text)),
+            format!(
+                "the NORA API refused the session (HTTP {}): {}",
+                status,
+                first_line(&text)
+            ),
         ));
     }
 
@@ -230,7 +239,11 @@ mod tests {
     #[test]
     fn debug_never_prints_the_credential() {
         let printed = format!("{:?}", session("2099-01-01T00:00:00Z"));
-        assert!(!printed.contains("ek_supersecret"), "debug leaked the credential: {}", printed);
+        assert!(
+            !printed.contains("ek_supersecret"),
+            "debug leaked the credential: {}",
+            printed
+        );
         assert!(printed.contains("<redacted>"));
     }
 

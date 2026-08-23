@@ -32,14 +32,19 @@ mod platform {
         KSDATAFORMAT_SUBTYPE_IEEE_FLOAT, WAVE_FORMAT_IEEE_FLOAT,
     };
     use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize,
-        CLSCTX_ALL, COINIT_MULTITHREADED,
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_ALL,
+        COINIT_MULTITHREADED,
     };
     use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
 
-    pub fn find_system_audio_source() -> Option<String> {
-        Some("wasapi_loopback".to_string())
-    }
+    use tauri::AppHandle;
+
+    // `find_system_audio_source` used to live here, returning the constant "wasapi_loopback"
+    // wrapped in a Some. It answered a question this module cannot be asked: the loopback
+    // attaches to whatever the Windows default render endpoint is at the moment it starts, so
+    // there is no source to look for and never was one to choose. Its only caller used the
+    // string as a fallback label, which then reached the user as the name of "their" device
+    // (audit #14).
 
     pub struct SystemAudioCapture {
         stop_flag: Arc<AtomicBool>,
@@ -51,8 +56,17 @@ mod platform {
         /// [`crate::stt::TARGET_SAMPLE_RATE`] like every other capture path, and taking the
         /// caller's word for the rate would be one more place for the two to drift apart. The
         /// parameter stays so the call site reads the same as the mic's.
+        ///
+        /// There is no device parameter, and that is deliberate rather than missing: the
+        /// capture is always the default render endpoint (see `run_loop`). The `_source` this
+        /// used to take was accepted and dropped on the floor (audit #14).
+        ///
+        /// `app` is here for the failure path. Every WASAPI call in the loop propagates with
+        /// `?`, so `AUDCLNT_E_DEVICE_INVALIDATED` — the headset pulled, the dock removed, the
+        /// default endpoint switched mid-meeting — ends the thread; that used to be an
+        /// `eprintln!` compiled only in debug, against a release binary with no console.
         pub fn start(
-            _source: &str,
+            app: AppHandle,
             _sample_rate_hint: u32,
             sink: tokio::sync::mpsc::Sender<Vec<i16>>,
             flag: Arc<AtomicBool>,
@@ -62,13 +76,19 @@ mod platform {
                 .name("nora-wasapi-loopback".into())
                 .spawn(move || unsafe {
                     if let Err(e) = run_loop(sink, flag) {
-                        #[cfg(debug_assertions)]
-                        eprintln!("[wasapi] loop error: {}", e);
+                        crate::audio_capture::emit_capture_error(
+                            &app,
+                            "system",
+                            &format!("system audio capture stopped: {}", e),
+                        );
                     }
                 })
                 .map_err(|e| format!("spawn wasapi thread: {}", e))?;
 
-            Ok(Self { stop_flag, thread: Some(thread) })
+            Ok(Self {
+                stop_flag,
+                thread: Some(thread),
+            })
         }
 
         pub fn stop(&mut self) {
@@ -80,7 +100,9 @@ mod platform {
     }
 
     impl Drop for SystemAudioCapture {
-        fn drop(&mut self) { self.stop(); }
+        fn drop(&mut self) {
+            self.stop();
+        }
     }
 
     unsafe fn run_loop(
@@ -90,7 +112,13 @@ mod platform {
         CoInitializeEx(None, COINIT_MULTITHREADED).ok()?;
 
         struct ComGuard;
-        impl Drop for ComGuard { fn drop(&mut self) { unsafe { CoUninitialize(); } } }
+        impl Drop for ComGuard {
+            fn drop(&mut self) {
+                unsafe {
+                    CoUninitialize();
+                }
+            }
+        }
         let _guard = ComGuard;
 
         let enumerator: IMMDeviceEnumerator =
@@ -126,11 +154,15 @@ mod platform {
 
         while flag.load(Ordering::SeqCst) {
             let wait = WaitForSingleObject(event, 100);
-            if wait != WAIT_OBJECT_0 { continue; }
+            if wait != WAIT_OBJECT_0 {
+                continue;
+            }
 
             loop {
                 let frames_avail = capture_client.GetNextPacketSize()?;
-                if frames_avail == 0 { break; }
+                if frames_avail == 0 {
+                    break;
+                }
 
                 let mut data: *mut u8 = std::ptr::null_mut();
                 let mut frames: u32 = 0;
@@ -160,7 +192,9 @@ mod platform {
     }
 
     unsafe fn is_ieee_float(fmt: &WAVEFORMATEX) -> bool {
-        if fmt.wFormatTag as u32 == WAVE_FORMAT_IEEE_FLOAT { return true; }
+        if fmt.wFormatTag as u32 == WAVE_FORMAT_IEEE_FLOAT {
+            return true;
+        }
         if fmt.wFormatTag as u32 == WAVE_FORMAT_EXTENSIBLE && fmt.cbSize >= 22 {
             let ext = &*(fmt as *const _ as *const WAVEFORMATEXTENSIBLE);
             // WAVEFORMATEXTENSIBLE is packed; access to SubFormat has to be unaligned
@@ -170,7 +204,10 @@ mod platform {
         false
     }
 
-    unsafe fn decode_to_f32_mono(
+    // `pub(super)` for the tests at the bottom of this file: this is the one piece of the
+    // loopback that can be exercised without an audio endpoint, and getting the i16 scaling
+    // wrong is silent — it produces a track that clips rather than an error.
+    pub(super) unsafe fn decode_to_f32_mono(
         data: *mut u8,
         frames: usize,
         channels: usize,
@@ -196,4 +233,33 @@ mod platform {
 }
 
 #[cfg(target_os = "windows")]
-pub use platform::{find_system_audio_source, SystemAudioCapture};
+pub use platform::SystemAudioCapture;
+
+#[cfg(test)]
+mod tests {
+    /// The mix format WASAPI hands back is whatever the endpoint runs at, and the decoder has
+    /// to fold it to mono before the resampler sees it. These two are the shapes that actually
+    /// show up: 32-bit float stereo (the usual mix format) and 16-bit stereo.
+    ///
+    /// The decoder itself is `unsafe` and takes a raw pointer, so the test builds the buffer
+    /// and hands over its address — exactly what `GetBuffer` does.
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn float_stereo_frames_are_folded_to_mono() {
+        let frames: Vec<f32> = vec![1.0, 0.0, 0.5, -0.5, -1.0, 1.0];
+        let mono =
+            unsafe { super::platform::decode_to_f32_mono(frames.as_ptr() as *mut u8, 3, 2, true) };
+        assert_eq!(mono, vec![0.5, 0.0, 0.0]);
+    }
+
+    /// i16 has to be scaled by 32768 on the way in, or the loopback track arrives four orders
+    /// of magnitude louder than the mic's and clips into noise.
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn integer_frames_are_normalised_before_downmixing() {
+        let frames: Vec<i16> = vec![16_384, 16_384, -32_768, -32_768];
+        let mono =
+            unsafe { super::platform::decode_to_f32_mono(frames.as_ptr() as *mut u8, 2, 2, false) };
+        assert_eq!(mono, vec![0.5, -1.0]);
+    }
+}

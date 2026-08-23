@@ -41,7 +41,10 @@ pub fn remove_window_border(window: &WebviewWindow) {
             std::mem::size_of::<u32>() as u32,
         ) {
             #[cfg(debug_assertions)]
-            eprintln!("[windows] DwmSetWindowAttribute(BORDER_COLOR) failed: {:?}", e);
+            eprintln!(
+                "[windows] DwmSetWindowAttribute(BORDER_COLOR) failed: {:?}",
+                e
+            );
             let _ = e;
         }
     }
@@ -71,8 +74,7 @@ pub fn toggle_dock(app_handle: AppHandle, show: bool) -> Result<(), String> {
             let monitor_pos = monitor.position();
             let window_size = window.outer_size().map_err(|e| e.to_string())?;
             let top_margin = (24.0 * scale) as i32;
-            let x = monitor_pos.x
-                + ((monitor_size.width as i32 - window_size.width as i32) / 2);
+            let x = monitor_pos.x + ((monitor_size.width as i32 - window_size.width as i32) / 2);
             let y = monitor_pos.y + top_margin;
             let _ = window.set_position(PhysicalPosition { x, y });
         }
@@ -82,6 +84,13 @@ pub fn toggle_dock(app_handle: AppHandle, show: bool) -> Result<(), String> {
         // paint white — same care as stealth).
         #[cfg(target_os = "windows")]
         remove_window_border(&window);
+        // Stealth is a per-window property, and `set_stealth_mode` skips a window that is
+        // hidden. The dock is exactly that window — it starts hidden, and it is where the
+        // stealth button lives — so without re-reading the setting here the bar came back
+        // fully visible in the screen share while its own icon claimed otherwise (audit #10).
+        // `toggle_overlay` has done this for the overlay since audit #26.
+        #[cfg(target_os = "windows")]
+        crate::stealth_mode::reapply_stealth(&app_handle, &window);
         // We do not call set_focus — we want the dock visible but
         // without stealing focus from the foreground app (Meet/Zoom/Teams).
     } else {
@@ -121,8 +130,11 @@ pub fn focus_overlay_window(app_handle: AppHandle) -> Result<(), String> {
 /// the log folder in Explorer/Finder via the shell plugin — best-effort, but
 /// returns an error to JS if the folder does not exist or the open fails.
 #[tauri::command]
-pub fn open_log_dir(app: AppHandle) -> Result<(), String> {
+pub fn open_log_dir(window: tauri::Window, app: AppHandle) -> Result<(), String> {
     use tauri_plugin_shell::ShellExt;
+
+    // Opens a shell handler. Remote content has no business asking for that.
+    crate::commands::ensure_local_window(&window)?;
 
     let dir = app
         .path()

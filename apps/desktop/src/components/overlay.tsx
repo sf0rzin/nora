@@ -531,7 +531,6 @@ function AudioConfigSection({
   const [devices, setDevices] = useState<string[]>([]);
   const [mic, setMic] = useState<string>(currentMic || "");
   const [sysEnabled, setSysEnabled] = useState<boolean>(currentSysAudio !== null);
-  const [sysDevice, setSysDevice] = useState<string>(currentSysAudio ?? "");
   const [applying, setApplying] = useState(false);
 
   // There used to be a `check_system_audio_prerequisites` call here whose only job was to
@@ -549,14 +548,12 @@ function AudioConfigSection({
     setMic(currentMic || "");
   }, [currentMic]);
   useEffect(() => {
-    setSysDevice(currentSysAudio ?? "");
     setSysEnabled(currentSysAudio !== null);
   }, [currentSysAudio]);
 
   const dirty =
     (mic || null) !== (currentMic || null) ||
-    sysEnabled !== (currentSysAudio !== null) ||
-    (sysEnabled && (sysDevice || null) !== (currentSysAudio || null));
+    sysEnabled !== (currentSysAudio !== null);
 
   const apply = async () => {
     if (!dirty || applying) return;
@@ -565,7 +562,6 @@ function AudioConfigSection({
       await emit("nora://restart-recording", {
         deviceName: mic || null,
         captureSystemAudio: sysEnabled,
-        systemAudioDevice: sysEnabled ? sysDevice || null : null,
       });
     } catch (e) {
       console.error("[overlay] emit restart failed:", e);
@@ -657,33 +653,28 @@ function AudioConfigSection({
           <span style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
             Áudio do sistema
           </span>
-          {sysEnabled ? (
-            <select
-              value={sysDevice}
-              onChange={(e) => setSysDevice(e.target.value)}
-              style={selectStyle}
-            >
-              <option value="">Auto-detectar monitor</option>
-              {devices.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <div
-              style={{
-                ...selectStyle,
-                color: "var(--muted)",
-                background: "var(--sidebar)",
-                cursor: "default",
-                backgroundImage: "none",
-                padding: "5px 9px",
-              }}
-            >
-              Desativado
-            </div>
-          )}
+          {/* Not a selector, on purpose. The WASAPI loopback attaches to the Windows default
+              output device and to nothing else; the <select> that used to be here was filled
+              with INPUT devices, sent the chosen one through three layers, and had it
+              discarded — while the status echoed the choice back as if it had been honoured
+              (desktop audit #14). */}
+          <div
+            style={{
+              ...selectStyle,
+              color: "var(--muted)",
+              background: "var(--sidebar)",
+              cursor: "default",
+              backgroundImage: "none",
+              padding: "5px 9px",
+            }}
+            title={
+              sysEnabled
+                ? "A captura acompanha o dispositivo de saída padrão do Windows."
+                : undefined
+            }
+          >
+            {sysEnabled ? "Saída padrão do Windows" : "Desativado"}
+          </div>
         </label>
       </div>
       <label className="flex items-center gap-2 cursor-pointer" style={{ fontSize: 11.5 }}>
@@ -1027,6 +1018,33 @@ export function OverlayPage() {
           duration: 5000,
         });
       }
+    },
+    [pushNotification],
+  );
+
+  // A capture path that stopped producing audio: the mic device pulled mid-meeting, or the
+  // system-audio loopback that never came up. Rust emits "capture-error" with the track and a
+  // technical reason; both cases used to be silent all the way to the upload (audit #11/#12).
+  useTauriListener<{ track?: string; message?: string }>(
+    "capture-error",
+    (e) => {
+      const track = e.payload?.track ?? "mic";
+      console.error("[overlay] capture error:", track, e.payload?.message);
+      pushNotification(
+        track === "system"
+          ? {
+              variant: "warn",
+              title: "Áudio do sistema indisponível",
+              body: "A gravação continua apenas com o seu microfone — a fala dos outros participantes não será transcrita.",
+              duration: 10000,
+            }
+          : {
+              variant: "warn",
+              title: "Captura do microfone interrompida",
+              body: "O dispositivo de áudio deixou de responder. Pare a gravação e comece de novo depois de reconectá-lo.",
+              duration: 12000,
+            },
+      );
     },
     [pushNotification],
   );

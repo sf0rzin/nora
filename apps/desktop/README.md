@@ -76,7 +76,7 @@ apps/desktop/
 ├── dock.html               # Entry point of the `dock` window
 ├── src/                    # React frontend — overlay and dock ONLY
 │   ├── hooks/             # Custom hooks (use-recording, use-live-transcript)
-│   ├── lib/               # Utilities and API client
+│   ├── lib/               # Upload, local queue, formatting, shared event names
 │   └── components/        # The overlay, the dock and their shared primitives
 └── src-tauri/             # Rust backend
     ├── src/
@@ -90,8 +90,7 @@ apps/desktop/
     │   ├── stealth_mode.rs       # Hide the windows from screen capture (Windows only)
     │   ├── windows.rs            # Window management (dock, overlay, focus)
     │   ├── auth_bridge.rs        # Reads the session JWT out of the main webview
-    │   ├── http_proxy.rs         # HTTP proxy for the API
-    │   ├── secrets.rs            # Secrets storage
+    │   ├── http_proxy.rs         # The one shared reqwest client (timeouts, pooling)
     │   └── commands.rs           # Tauri commands
     ├── tauri.conf.json           # Tauri config
     └── Cargo.toml
@@ -256,6 +255,22 @@ audio format, VAD, session lifetime — is resolved by the backend that pays for
 > effective value comes from `tauri.conf.json` or from the env injected at build time by
 > `build.rs`.
 
+## Tests
+
+```bash
+# Rust — unit tests of the pure layers (protocol frames, resampling, credential handling,
+# the window guard, the reconnection budget).
+cd src-tauri && cargo test
+
+# TypeScript — runs on Node's own test runner, which strips the types instead of compiling
+# them. No test framework in devDependencies, and none needed.
+npm test
+```
+
+> The TypeScript tests are excluded from `tsc --noEmit` (see `tsconfig.json`): they import
+> `node:test`, and this package deliberately carries no `@types/node`. Running them is what
+> checks them.
+
 ## CI/CD
 
 The `desktop-bundle` job builds one artifact, Windows (x86_64) `.msi`, and it runs only on
@@ -291,6 +306,23 @@ Check that `stt::TARGET_SAMPLE_RATE` and the API's `nora.stt.openai.sample-rate`
 same number. A mismatch is the one failure mode in this path that produces confident
 garbage instead of an error, and the desktop log carries a `[stt_cloud]` warning naming
 both values.
+
+### The update installs nothing, or reports a signature error
+
+The updater signing key was rotated. A client installed BEFORE the rotation has the previous
+public key compiled into it (`plugins.updater.pubkey` is a build-time constant), so it REJECTS
+every release signed with the current key — correctly, since that is what the signature is for.
+There is no migration path for that: download the current `.msi` from the releases page and
+reinstall over the top. Settings and the queue of pending meetings live outside the bundle and
+survive.
+
+### The recording stops on its own, or a "capture interrupted" warning appears
+
+A capture device went away mid-meeting: headset unplugged, USB dock removed, Windows switching
+the default endpoint. The microphone case ends the recording and says so, because there is
+nothing left to record. The system-audio case keeps recording the microphone alone and says
+THAT instead, because the half of the meeting being lost is the remote participants'.
+Reconnect the device and start a new recording; what was already transcribed is kept.
 
 ## License
 

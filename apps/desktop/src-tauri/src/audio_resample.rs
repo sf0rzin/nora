@@ -1,5 +1,5 @@
-use rubato::{Fft, FixedSync, Resampler};
 use audioadapter_buffers::owned::InterleavedOwned;
+use rubato::{Fft, FixedSync, Resampler};
 
 pub struct MonoResampler {
     inner: Option<Fft<f32>>,
@@ -21,35 +21,35 @@ impl MonoResampler {
             });
         }
         let chunk_in = (src_sr as usize / 50).max(64); // ~20ms
-        // Argument order is (input rate, output rate, chunk_size, nbr_channels, fixed), and
-        // `sub_chunks` is chosen automatically as `(chunk_size / 256).max(1)` to target roughly
-        // 256 frames per sub-chunk. `new_custom` takes it back if needed.
-        //
-        // Verified unchanged from rubato 4 to 5 by reading `synchro.rs` at 5.0.0 rather than by
-        // assuming it: the signature and that expression are identical. The 5.0.0 upgrade broke
-        // the build without touching this call — `rubato` moved to `audioadapter` 5 while
-        // `Cargo.toml` still pinned `audioadapter-buffers` 4, so the buffers below implemented a
-        // different crate's traits of the same name. The manifest comment explains why those two
-        // version numbers move together.
-        //
-        // This is a BEHAVIOUR change at 48 kHz, not just an API one, and it is the reason the
-        // two tests below were run rather than merely compiled. `chunk_in` is 960 there, so
-        // rubato picks 3 sub-chunks where this code used to pass 2, and the internal FFT block
-        // goes from 480 frames to 320. Delay and filter shape move with it. At 44.1 kHz
-        // (`chunk_in` 882) the arithmetic lands on the same block either way. Both tests pass
-        // at 48 kHz under the new value: output length within 90-100% of input/3, peak above
-        // 0.1, and ~2000 zero crossings per second for a 1 kHz tone.
-        //
-        // Worth keeping, because every parameter here is a usize and nothing rejects a wrong
-        // order at compile time: on rubato 2 this call read (.., 1, chunk_in, 2, ..) with
-        // comments claiming the 1 was the channel count and the 2 the sub-chunk count. It
-        // actually asked for a chunk of one frame, 960 sub-chunks and two channels. At run time
-        // the resampler was configured for stereo while the buffers below are mono,
-        // process_into_buffer returned WrongNumberOfInputChannels on every call, and `process`
-        // broke out of the loop and returned an empty Vec — so any capture device not already
-        // at 16 kHz fed silence into transcription, with nothing failing anywhere. The two
-        // tests at the bottom of this file exist for exactly that: they assert the output is
-        // non-empty and that a tone survives, which is what a swapped argument breaks.
+                                                       // Argument order is (input rate, output rate, chunk_size, nbr_channels, fixed), and
+                                                       // `sub_chunks` is chosen automatically as `(chunk_size / 256).max(1)` to target roughly
+                                                       // 256 frames per sub-chunk. `new_custom` takes it back if needed.
+                                                       //
+                                                       // Verified unchanged from rubato 4 to 5 by reading `synchro.rs` at 5.0.0 rather than by
+                                                       // assuming it: the signature and that expression are identical. The 5.0.0 upgrade broke
+                                                       // the build without touching this call — `rubato` moved to `audioadapter` 5 while
+                                                       // `Cargo.toml` still pinned `audioadapter-buffers` 4, so the buffers below implemented a
+                                                       // different crate's traits of the same name. The manifest comment explains why those two
+                                                       // version numbers move together.
+                                                       //
+                                                       // This is a BEHAVIOUR change at 48 kHz, not just an API one, and it is the reason the
+                                                       // two tests below were run rather than merely compiled. `chunk_in` is 960 there, so
+                                                       // rubato picks 3 sub-chunks where this code used to pass 2, and the internal FFT block
+                                                       // goes from 480 frames to 320. Delay and filter shape move with it. At 44.1 kHz
+                                                       // (`chunk_in` 882) the arithmetic lands on the same block either way. Both tests pass
+                                                       // at 48 kHz under the new value: output length within 90-100% of input/3, peak above
+                                                       // 0.1, and ~2000 zero crossings per second for a 1 kHz tone.
+                                                       //
+                                                       // Worth keeping, because every parameter here is a usize and nothing rejects a wrong
+                                                       // order at compile time: on rubato 2 this call read (.., 1, chunk_in, 2, ..) with
+                                                       // comments claiming the 1 was the channel count and the 2 the sub-chunk count. It
+                                                       // actually asked for a chunk of one frame, 960 sub-chunks and two channels. At run time
+                                                       // the resampler was configured for stereo while the buffers below are mono,
+                                                       // process_into_buffer returned WrongNumberOfInputChannels on every call, and `process`
+                                                       // broke out of the loop and returned an empty Vec — so any capture device not already
+                                                       // at 16 kHz fed silence into transcription, with nothing failing anywhere. The two
+                                                       // tests at the bottom of this file exist for exactly that: they assert the output is
+                                                       // non-empty and that a tone survives, which is what a swapped argument breaks.
         let inner = Fft::<f32>::new(
             src_sr as usize,
             dst_sr as usize,
@@ -84,11 +84,7 @@ impl MonoResampler {
                 }
             };
             let mut output_buf = InterleavedOwned::new(0.0f32, 1, resampler.output_frames_next());
-            match resampler.process_into_buffer(
-                &input_buf,
-                &mut output_buf,
-                None,
-            ) {
+            match resampler.process_into_buffer(&input_buf, &mut output_buf, None) {
                 Ok((_input_frames, output_frames)) => {
                     // Extract data from output buffer
                     let data = output_buf.take_data();

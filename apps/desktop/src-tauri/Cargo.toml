@@ -75,10 +75,11 @@ audioadapter-buffers = "5.1.0"
 url = "2.5.8"
 urlencoding = "2"
 chrono = { version = "0.4", features = ["serde"] }
-# Only the Windows backend (Credential Manager / DPAPI). `apple-native` (Keychain) and
-# `sync-secret-service` (D-Bus) were the macOS and Linux stores and pulled their platform
-# stacks into the lock for platforms this client no longer builds for.
-keyring = { version = "3", features = ["windows-native"] }
+# `keyring` used to be here, built with the `windows-native` feature alone (Credential Manager /
+# DPAPI). It backed `secrets.rs`, whose four Tauri commands and single `http_proxy` consumer had
+# no producer and no consumer left — the login form that wrote the tokens went with the local UI
+# in PR #465. Both went in audit #15, and the dependency with them: an application that does not
+# store secrets should not link the API that stores them.
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 
