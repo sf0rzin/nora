@@ -26,6 +26,10 @@
 #      changed. An emergency escape hatch exists and is deliberately loud — see
 #      ALLOW_MIGRATION_EDIT below.
 #
+#      Scope note: this rule covers the two FLYWAY directories only. The operational SQL
+#      (see OPERATIONAL_DIRS below) is re-runnable by construction and editing it is its
+#      normal life — applying rule 2 there would forbid the thing it exists for.
+#
 #   3. DESTRUCTIVE DDL WITHOUT ACKNOWLEDGEMENT. Gap 2 states the worst case in its own
 #      words: "a migration applies a destructive ALTER TABLE (drop column), then fails,
 #      data lost". This does not forbid destructive statements — V027 legitimately DELETEs
@@ -40,6 +44,24 @@ cd "$(git rev-parse --show-toplevel)"
 
 MIGRATIONS="services/api/src/main/resources/db/migration"
 PLATFORM="services/api/src/main/resources/db/platform"
+
+# OPERATIONAL SQL — the schema changes Flyway does NOT own, and which this guard could not see.
+#
+# Two directories run DDL against the production database without ever passing through a
+# Flyway history:
+#   - db/operational/R001__provision_app_roles.sql, run by scripts/rls-cutover.sh on a live,
+#     already-migrated database. It creates nora_app and nora_telemetry and hands out the
+#     GRANTs that ADR 0026/0028 depend on.
+#   - infra/host/postgres/init/01-roles-and-db.sql, run by the Postgres image's entrypoint on
+#     the first boot of the `postgres` container, as the superuser, with ON_ERROR_STOP.
+#
+# Rules 1, 2 and 3 deliberately do NOT extend here and extending them would be wrong: these
+# files are re-runnable by design, so "edited after reaching main" is their normal life and
+# there is no version ordering to violate. Rule 4 is the one that applies, and applies harder
+# than it does to migrations — this SQL runs as a superuser, by hand, on the real database,
+# and nothing about it is reviewed by Flyway.
+OPERATIONAL_DIRS="services/api/src/main/resources/db/operational infra/host/postgres/init"
+
 BASE_REF="${1:-${MIGRATION_BASE_REF:-origin/main}}"
 
 failures=0
@@ -161,7 +183,7 @@ fi
 # ---------------------------------------------------------------------------
 # 4. Destructive DDL has to be acknowledged in the file.
 # ---------------------------------------------------------------------------
-echo "4. destructive statements (in migrations ADDED by this branch)"
+echo "4. destructive statements (migrations ADDED, operational SQL ADDED OR EDITED, by this branch)"
 # SCOPED TO NEW FILES, and that scoping is not a softening — it is the only coherent rule.
 # Running this over the whole tree on first write reported three already-applied migrations
 # (V018, V027 and platform V002), and the "fix" it demanded was to edit them and add the
@@ -181,6 +203,14 @@ if ! git rev-parse --verify --quiet "$BASE_REF" >/dev/null; then
   NEW_MIGRATIONS=""
 else
   NEW_MIGRATIONS=$(git diff --name-only --diff-filter=A "$BASE_REF"...HEAD -- "$MIGRATIONS" "$PLATFORM" || true)
+  # ADDED **or MODIFIED** for the operational SQL, and the difference is the point. A Flyway
+  # migration is frozen once it merges (rule 2 enforces exactly that), so "added" is the only
+  # moment it can be reviewed. The operational files are the opposite: they are meant to be
+  # re-run and therefore edited, so a DROP arriving in an EDIT is the realistic shape of the
+  # accident here — and it was previously invisible to every rule in this file.
+  # shellcheck disable=SC2086
+  OPERATIONAL_TOUCHED=$(git diff --name-only --diff-filter=AM "$BASE_REF"...HEAD -- $OPERATIONAL_DIRS || true)
+  NEW_MIGRATIONS=$(printf '%s\n%s\n' "$NEW_MIGRATIONS" "$OPERATIONAL_TOUCHED" | grep -v '^$' || true)
   [ -n "$NEW_MIGRATIONS" ] || echo "  none added by this branch"
 fi
 for f in $NEW_MIGRATIONS; do

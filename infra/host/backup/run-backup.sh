@@ -38,9 +38,20 @@
 # A BACKUP ON THE SAME HOST IS NOT A BACKUP
 #   These dumps land in ${BACKUP_DIR:-/srv/nora/backups} — the SAME disk as Postgres.
 #   They cover: a wrong DROP TABLE, a destructive migration, logical corruption.
-#   They do NOT cover: loss of the host. There is no hypervisor snapshot and no external
-#   copy today (ADR 0036 withdraws that leg — no hypervisor, no second machine). See
-#   host-deploy.md §On-demand manual backup.
+#   They do NOT cover, ON THEIR OWN: loss of the host. There is no hypervisor snapshot
+#   (ADR 0036 withdraws that leg — no hypervisor, no second machine).
+#
+#   THE SECOND LEG NOW EXISTS AND IS NOT PART OF THIS SCRIPT: ../scripts/offsite-backup.sh
+#   copies the newest verified dump of each database off the machine, on its own systemd
+#   timer (bootstrap-host.sh installs nora-offsite-backup.timer). It refuses to run until
+#   NORA_OFFSITE_TARGET is set in /etc/nora/offsite.env, and `none` is the way to say "off
+#   by decision" — there is deliberately no configuration under which it quietly does
+#   nothing. Read its header before assuming this host is covered; an unconfigured timer is
+#   a failing unit, not a backup.
+#
+#   It runs on the HOST rather than in this container because this container is on the
+#   `data` bridge (`internal: true`, no egress) and this image has no rclone, rsync or ssh.
+#   See host-deploy.md §On-demand manual backup.
 #
 set -eu
 

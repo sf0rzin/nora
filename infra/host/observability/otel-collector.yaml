@@ -50,6 +50,74 @@ receivers:
         endpoint: 0.0.0.0:4318
 
   # ---------------------------------------------------------------------------
+  # HOST FILESYSTEM — the series behind the disk alert
+  # ---------------------------------------------------------------------------
+  # Added for one rule: `nora-root-disk-low` in grafana/provisioning/alerting/rules.yaml.
+  # Before it there was NO disk metric anywhere in the stack (no node-exporter, no cAdvisor —
+  # see the closing section of prometheus.yml), so "the disk is filling" was a condition this
+  # host could not state, on a machine where /srv holds both the Postgres volume and the only
+  # backups.
+  #
+  # NO HOST MOUNT, and that is the whole reason this is acceptable. The usual recipe for
+  # hostmetrics is `- /:/hostfs:ro` plus `root_path: /hostfs`, which hands the collector a
+  # readable copy of the entire host — including /etc/nora/age.key, the single private key
+  # that decrypts every secret this stack has. Not worth a gauge.
+  #
+  # What it reads instead is the CONTAINER's own root mount, which is an overlay whose statfs
+  # reports the backing filesystem: the host's /var/lib/docker device, which on the default
+  # layout is the same filesystem as /srv. So the number is the number that matters and the
+  # collector gains no new read access at all.
+  #
+  # `include_mount_points` restricted to `/` on purpose: without it the scraper also reports
+  # /dev/shm (64 MiB tmpfs) and every bind mount, and a `min()` across all of them would fire
+  # the disk alert permanently. rules.yaml filters on `mountpoint="/"` as well — keep the two
+  # in step, and prefer changing this file, since a series that is never produced is cheaper
+  # to notice than one that is produced and quietly ignored.
+  hostmetrics:
+    collection_interval: 60s
+    scrapers:
+      filesystem:
+        include_mount_points:
+          mount_points: ["/"]
+          match_type: strict
+
+  # ---------------------------------------------------------------------------
+  # POSTGRES — the series behind "the database is unreachable"
+  # ---------------------------------------------------------------------------
+  # Also added for one rule (`nora-postgres-unreachable`). The stack could detect a broken API
+  # and a broken edge and had nothing at all to say about the database underneath them: the
+  # apps expose no /metrics, there is no postgres_exporter, and the `backup` service's hourly
+  # `pg_isready` is a log line an hour late.
+  #
+  # THE TRADE, stated rather than buried: this puts the primary database's credentials into
+  # the telemetry container and attaches that container to the `data` bridge (see the
+  # `otel-collector` service in docker-compose.yml). Compromising the collector now yields a
+  # database login as well. The reason that is acceptable here and would not be elsewhere is
+  # the neighbourhood: `alloy` on the same `internal` bridge already mounts the Docker socket,
+  # which is root on the host and strictly more than a Postgres password — the collector is
+  # not the weakest link, and pretending otherwise would be the only thing gained by leaving
+  # the database unmonitored.
+  #
+  # The credentials come from the compose environment, which sets them unconditionally from
+  # POSTGRES_ADMIN_USER/POSTGRES_ADMIN_PASSWORD. They are never absent: the compose marks the
+  # password `:?` and refuses to render without it, so `${env:...}` below cannot expand to
+  # nothing and take the collector down at boot.
+  #
+  # `tls.insecure: true` because the Postgres image comes up with SSL off and the traffic
+  # never leaves the `data` bridge (`internal: true`) — the same reasoning that removed
+  # `sslmode=require` from the API's JDBC URL.
+  postgresql:
+    endpoint: postgres:5432
+    transport: tcp
+    username: ${env:NORA_PG_MONITOR_USER}
+    password: ${env:NORA_PG_MONITOR_PASSWORD}
+    databases:
+      - nora
+    collection_interval: 60s
+    tls:
+      insecure: true
+
+  # ---------------------------------------------------------------------------
   # OPTIONAL (off) — per-container metrics via docker_stats
   # ---------------------------------------------------------------------------
   # This is what gives CPU/memory/restarts per container, the closest thing there is to
@@ -243,8 +311,14 @@ service:
     # Source today: ONLY the API (OTel javaagent). worker, web and admin have
     # OTEL_EXPORTER_OTLP_ENDPOINT set in the compose but do NOT have an SDK installed —
     # the env var does nothing on its own. See the folder's README.
+    # `hostmetrics` and `postgresql` join `otlp` here: both are scrapers, both feed the same
+    # remote-write path, and both exist to make an alert rule possible rather than to fill a
+    # dashboard. If either is removed, the matching rule in
+    # grafana/provisioning/alerting/rules.yaml starts evaluating against a series that does
+    # not exist — with `noDataState: Alerting` on the Postgres rule that is loud, which is the
+    # intended direction.
     metrics:
-      receivers: [otlp]
+      receivers: [otlp, hostmetrics, postgresql]
       # include docker_stats here if you mount the socket:  [otlp, docker_stats]
       processors: [memory_limiter, resourcedetection, batch]
       exporters: [prometheusremotewrite]

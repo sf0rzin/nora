@@ -89,7 +89,7 @@ jobs:
         if: failure()
         run: |
           {
-            echo "## Supply-chain drift"
+            echo "## Supply-chain drift — Rust"
             echo ""
             echo "\`cargo-deny\` failed on a lock file that nobody changed, so this is almost"
             echo "certainly a NEWLY PUBLISHED advisory rather than something a commit did."
@@ -104,3 +104,217 @@ jobs:
             echo "Read the log before editing the policy. Adding an \`ignore\` is the last"
             echo "resort and needs the same reachability argument the existing entries carry."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ===========================================================================
+  # THE OTHER SEVEN DEPENDENCY GRAPHS
+  # ===========================================================================
+  # Until this job existed, vulnerability scanning in this repository covered ONE of eight
+  # dependency graphs: the desktop Rust crate, through cargo-deny above. The three Node
+  # packages, the two Python packages and every Docker image the host runs — the four this
+  # repository publishes AND the third-party ones underneath them — were scanned by nothing at
+  # all. Dependabot opens version-bump pull requests, which is a different thing from anybody
+  # ever asking "does what we ship today contain a known vulnerability".
+  #
+  # WHY IT LIVES HERE AND NOT IN ci-gate, which is the same argument this file's header makes
+  # for cargo-deny: an advisory published against an unchanged lock is nothing to do with the
+  # pull request that happens to run next. Putting `npm audit` on the merge gate means the
+  # first person to open an unrelated PR after a new advisory lands gets a red check for
+  # somebody else's problem, learns the check is noise, and stops reading it. A weekly job
+  # that is allowed to be red is a worse alarm and a much better one.
+  #
+  # `continue-on-error` on every step, with an aggregate at the end: one failing ecosystem must
+  # not hide the state of the other three. The job still fails — the last step sees to it.
+  dependencies:
+    runs-on: ubuntu-latest
+    # 30 rather than 20 since the host compose images joined the Trivy pass: that is nine more
+    # image pulls and scans on a cold cache, and a timeout that fires reads as a scanner
+    # failure rather than as the schedule problem it would be.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      # `--audit-level=high` and not `critical`: these three graphs are a Next.js app, an
+      # operator console and a Tauri front end, where a high-severity issue in a transitive
+      # dependency is routinely a prototype-pollution or ReDoS bug a request can reach.
+      # `--omit=dev` is deliberately NOT passed — the build toolchain runs in CI holding a
+      # token, so a compromised dev dependency is a supply-chain problem in its own right.
+      - name: npm audit — apps/web
+        id: audit_web
+        continue-on-error: true
+        working-directory: apps/web
+        run: npm audit --audit-level=high
+
+      - name: npm audit — apps/admin
+        id: audit_admin
+        continue-on-error: true
+        working-directory: apps/admin
+        run: npm audit --audit-level=high
+
+      - name: npm audit — apps/desktop
+        id: audit_desktop
+        continue-on-error: true
+        working-directory: apps/desktop
+        run: npm audit --audit-level=high
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      # pip-audit reads the RESOLVED environment rather than the declaration, which is what
+      # makes the install step part of the check instead of setup for it: `pyproject.toml`
+      # names ranges, and the vulnerability is always in the version that got installed.
+      #
+      # The version is pinned for the same reason cargo-deny's is — a tool that quietly
+      # changes what it reports makes the report unreadable over time.
+      - name: Install the Python packages and pip-audit
+        id: pip_install
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install 'pip-audit==2.7.3'
+          pip install -e packages/nlp-baseline
+          pip install -e 'services/nlp-worker[dev]'
+
+      - name: pip-audit — the worker environment (worker + nlp-baseline)
+        id: audit_python
+        continue-on-error: true
+        run: pip-audit --strict --progress-spinner=off
+
+      # ---------------------------------------------------------------------
+      # The four images the host pulls.
+      #
+      # Scanned IN THE REGISTRY rather than rebuilt: the question is what is deployed, and
+      # `:latest` on GHCR is what a fresh `docker compose pull` fetches. A local rebuild would
+      # scan an image nobody runs.
+      #
+      # Trivy runs as a container on a version-pinned tag. There is no `uses:` here, so
+      # scripts/check-action-pins.sh does not apply and pinning the tag is the equivalent
+      # discipline; the vulnerability database is fetched fresh on every run regardless of the
+      # tool version, which is the property a weekly job actually needs.
+      #
+      # HIGH and CRITICAL only, plus `--ignore-unfixed`: a base-image CVE with no fix
+      # available is not actionable by anybody here, and a report dominated by unactionable
+      # entries is how a report stops being read. `--exit-code 1` makes it a finding rather
+      # than a log line.
+      - name: Trivy — the four published images
+        id: audit_images
+        continue-on-error: true
+        env:
+          TRIVY_IMAGE: 'aquasec/trivy:0.58.1'
+        run: |
+          set -uo pipefail
+          rc=0
+          mkdir -p /tmp/trivy-cache
+          for svc in api worker web admin; do
+            echo "::group::ghcr.io/sf0rzin/nora-$svc:latest"
+            docker run --rm \
+              -v /tmp/trivy-cache:/root/.cache/trivy \
+              "$TRIVY_IMAGE" image \
+              --severity HIGH,CRITICAL \
+              --ignore-unfixed \
+              --scanners vuln \
+              --exit-code 1 \
+              --no-progress \
+              "ghcr.io/sf0rzin/nora-$svc:latest" || rc=1
+            echo "::endgroup::"
+          done
+          exit "$rc"
+
+      # ---------------------------------------------------------------------
+      # The images the host RUNS but does not build — Postgres, Caddy, cloudflared and the
+      # whole observability stack. The step above covers the four this repository publishes,
+      # and those four are the smaller half of what is exposed: cloudflared terminates the only
+      # ingress and Postgres holds every tenant's data, and neither was looked at by anything.
+      #
+      # DERIVED FROM THE COMPOSE, never listed here. A second copy of the tags would go stale
+      # the first time one moved, and the whole point is to scan what the host actually pulls.
+      # The filter drops any `image:` containing `$` — those are the four NORA images
+      # (`${REGISTRY:-ghcr.io}/…-api:${API_TAG:-latest}`), already scanned above by their real
+      # names. An empty list is a hard failure: a scanner that silently scans nothing is worse
+      # than no scanner.
+      #
+      # Same severity policy as above, and the same relationship to Dependabot: `--ignore-unfixed`
+      # means everything reported here has a published fix, and the fix is the image bump the
+      # `docker` ecosystem entry for `/infra/host` now opens.
+      - name: Trivy — the third-party images in the host compose
+        id: audit_host_images
+        continue-on-error: true
+        env:
+          TRIVY_IMAGE: 'aquasec/trivy:0.58.1'
+          COMPOSE: infra/host/docker-compose.yml
+        run: |
+          set -uo pipefail
+          mapfile -t images < <(
+            grep -oE '^[[:space:]]+image:[[:space:]]+[^[:space:]$]+$' "$COMPOSE" |
+              awk '{ print $2 }' | sort -u
+          )
+          if [ "${#images[@]}" -eq 0 ]; then
+            echo "::error::No literal image tag found in $COMPOSE — refusing to report clean having scanned nothing."
+            exit 1
+          fi
+          rc=0
+          mkdir -p /tmp/trivy-cache
+          for image in "${images[@]}"; do
+            echo "::group::$image"
+            docker run --rm \
+              -v /tmp/trivy-cache:/root/.cache/trivy \
+              "$TRIVY_IMAGE" image \
+              --severity HIGH,CRITICAL \
+              --ignore-unfixed \
+              --scanners vuln \
+              --exit-code 1 \
+              --no-progress \
+              "$image" || rc=1
+            echo "::endgroup::"
+          done
+          exit "$rc"
+
+      # WHAT IS NOT HERE, so the absence is a decision rather than an oversight: CodeQL. It
+      # needs Code Scanning enabled on the repository and `security-events: write`, which is a
+      # settings change outside this file — a workflow referencing it while the feature is off
+      # fails every run with a permissions error that looks exactly like a finding.
+      - name: Aggregate — fail the job if any ecosystem reported something
+        if: always()
+        env:
+          R_WEB: ${{ steps.audit_web.outcome }}
+          R_ADMIN: ${{ steps.audit_admin.outcome }}
+          R_DESKTOP: ${{ steps.audit_desktop.outcome }}
+          R_PIP_INSTALL: ${{ steps.pip_install.outcome }}
+          R_PYTHON: ${{ steps.audit_python.outcome }}
+          R_IMAGES: ${{ steps.audit_images.outcome }}
+          R_HOST_IMAGES: ${{ steps.audit_host_images.outcome }}
+        run: |
+          set -uo pipefail
+          {
+            echo "## Supply-chain drift — dependencies"
+            echo ""
+            echo "| graph | tool | result |"
+            echo "|---|---|---|"
+            echo "| apps/web | npm audit (high) | $R_WEB |"
+            echo "| apps/admin | npm audit (high) | $R_ADMIN |"
+            echo "| apps/desktop | npm audit (high) | $R_DESKTOP |"
+            echo "| worker + nlp-baseline (install) | pip | $R_PIP_INSTALL |"
+            echo "| worker + nlp-baseline | pip-audit | $R_PYTHON |"
+            echo "| the four GHCR images | trivy (high/critical, fixed only) | $R_IMAGES |"
+            echo "| the host compose third-party images | trivy (high/critical, fixed only) | $R_HOST_IMAGES |"
+            echo ""
+            echo "A failure here is almost always a NEWLY PUBLISHED advisory against an unchanged"
+            echo "lock — nothing a commit did. Read the log for the affected package before"
+            echo "changing anything; the fix is usually a version bump Dependabot will also open."
+            echo ""
+            echo "The desktop Rust graph is covered by the advisories job above, not here."
+          } >> "$GITHUB_STEP_SUMMARY"
+          failed=0
+          for r in "$R_WEB" "$R_ADMIN" "$R_DESKTOP" "$R_PIP_INSTALL" "$R_PYTHON" "$R_IMAGES" "$R_HOST_IMAGES"; do
+            [ "$r" = "failure" ] && failed=1
+          done
+          if [ "$failed" -eq 1 ]; then
+            echo "::error::At least one dependency graph reported a vulnerability or failed to scan."
+            exit 1
+          fi
+          echo "OK — every dependency graph scanned clean."

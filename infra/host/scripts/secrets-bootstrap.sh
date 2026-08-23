@@ -301,7 +301,10 @@ export SOPS_AGE_KEY_FILE="$AGE_KEY_FILE"
 sops --encrypt --input-type dotenv --output-type dotenv "$PLAIN" > "$SOPS_FILE.tmp" \
   || die "sops failed to encrypt. Does .sops.yaml have this host's age recipient?"
 mv -f "$SOPS_FILE.tmp" "$SOPS_FILE"
-chmod 0644 "$SOPS_FILE"   # encrypted: can be versioned
+# 0644 because the ciphertext is not a secret, not because it travels: this file stays on
+# the host and is untracked (ADR 0036 §4). Readable so a non-root operator can inspect the
+# SOPS metadata; only /etc/nora/age.key decrypts it.
+chmod 0644 "$SOPS_FILE"
 
 # Round-trip proof. A secret corrupted while assembling is invisible in here --
 # it only shows up as a container in CrashLoop, or worse, as wrong behaviour in

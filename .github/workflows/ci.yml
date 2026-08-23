@@ -30,11 +30,16 @@ jobs:
       infra: ${{ steps.filter.outputs.infra }}
       desktop: ${{ steps.filter.outputs.desktop }}
       desktop_code: ${{ steps.filter.outputs.desktop_code }}
+      unrouted: ${{ steps.route.outputs.unrouted }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
+          # `list-files: json` is what makes the `route` step below possible: every filter also
+          # emits `<name>_files`, a JSON array of the paths IT matched, so "what did no filter
+          # match" becomes a set difference instead of a second copy of these patterns.
+          list-files: json
           filters: |
             # `.github/workflows/ci.yml` is in both of these for the fourth time this file has
             # had to learn the same thing (see the `admin`, `desktop` and `infra` notes below):
@@ -103,11 +108,17 @@ jobs:
             # verified nothing about the change it contained. Found on the commit that turned
             # `cargo check --all-targets` into `cargo test`, which CI then did not run.
             #
-            # `desktop_code` gates the FULL BUNDLE, which is a three-platform Tauri build with
-            # a 60-minute timeout per platform, and it deliberately does NOT watch this file:
-            # otherwise every merge that edits ci.yml for an unrelated reason — a tweak to the
-            # api job, say — would pay for three bundle builds. The compile checks are worth
-            # running on a workflow edit; the release bundle is not.
+            # `desktop_code` gates the FULL BUNDLE, which is a Tauri build with a 60-minute
+            # timeout, and it deliberately does NOT watch this file: otherwise every merge that
+            # edits ci.yml for an unrelated reason — a tweak to the api job, say — would pay for
+            # a bundle build. The compile checks are worth running on a workflow edit; the
+            # release bundle is not.
+            #
+            # This comment said "a three-platform Tauri build" and "three bundle builds" until
+            # 2026-08-23. The `desktop-bundle` matrix has had a single `windows-latest` entry
+            # since the scope realignment took macOS and Linux out (see that job's own note), so
+            # the numbers described a workflow that no longer existed — while the argument they
+            # supported stayed correct at one platform.
             desktop:
               - 'apps/desktop/**'
               - '.github/workflows/ci.yml'
@@ -116,14 +127,107 @@ jobs:
             # The `infra` filter stopped watching infra/bicep/** (deleted; ADR 0036) and now
             # watches the self-hosted stack — the `infra` job (below) swapped content in the
             # migration.
-            # `.github/workflows/**` is in here so that editing a workflow actually
+            # `.github/**` is in here so that editing anything under it actually
             # gates on something: the `infra` job runs shellcheck and the action-pin
             # check, and without this entry a PR touching only CI matched no filter at
             # all — every job skipped and ci-gate went green having verified nothing.
+            #
+            # SIXTH INSTANCE, and the last one to be closed by adding a pattern. Three paths
+            # were still outside every filter: `Makefile` (which the file itself calls "the
+            # source of truth for how to run the thing"), `infra/docker/**` (a compose that no
+            # job validated — the `infra` job below now runs `docker compose config` on it too)
+            # and `.github/dependabot.yml`, which is not under `workflows/` and whose own
+            # comment records a duplicate `labels:` key breaking that file silently.
+            #
+            # `infra/**` rather than `infra/host/**`, and `.github/**` rather than
+            # `.github/workflows/**`: a subtree entry stops the next file added under it from
+            # reopening the same hole. The class-level fix is the `all`/`unverified` pair and
+            # the `route` step below — this filter only had to stop being wrong.
             infra:
-              - 'infra/host/**'
+              - 'infra/**'
               - 'scripts/**'
-              - '.github/workflows/**'
+              - 'Makefile'
+              - '.github/**'
+            # ---------------------------------------------------------------------------
+            # THE CATCH-ALL PAIR. Five comments above narrate the same failure found five
+            # times: a pull request matching no filter runs no job and ci-gate reports green
+            # having verified nothing about it. Every one of those was closed by adding a
+            # pattern, which fixes the instance and leaves the class open — the sixth instance
+            # (see the `infra` note) proves it.
+            #
+            # `all` matches everything. `unverified` names the paths that deliberately have no
+            # job. The `route` step subtracts every other filter's matched files from `all`;
+            # whatever is left is a path this workflow does not verify and does not know it
+            # does not verify, and `repo-hygiene` fails on it, naming the files.
+            #
+            # Adding a real filter automatically shrinks the remainder — nothing here has to be
+            # kept in step. Adding a path to `unverified` is a deliberate statement that no
+            # check applies to it, made in the one place a reviewer will look for it.
+            all:
+              - '**'
+            # Nothing in this list has a check anywhere in the repository, and none of it is
+            # code that runs. Datasets and notebooks: `data/synthetic/**` (the worker's
+            # fixtures) is under the `worker` filter and is NOT here. Root metadata files:
+            # nothing parses them in CI. Anything that starts being executed, generated from,
+            # or depended on has to leave this list.
+            unverified:
+              - '.dockerignore'
+              - '.editorconfig'
+              - '.env.example'
+              - '.gitignore'
+              - 'LICENSE'
+              - 'data/samples/**'
+              - 'notebooks/**'
+
+            # Every file that sits directly in the repository root, whatever its name. This is
+            # not a hole: root files ARE verified, by the `No unexpected files at the repository
+            # root` step of `repo-hygiene`, which holds the allowlist and is the place a new root
+            # file becomes a decision. Naming them one by one here is what could not work — the
+            # first PR to exercise this job was the one that DELETED a junk file from the root,
+            # and a deleted path can be named by no filter written in advance and is gone before
+            # the allowlist step can see it. `*` matches depth 1 only, so nothing inside a
+            # directory reaches this line.
+            root:
+              - '*'
+
+      # Set difference, not a second copy of the patterns above — that duplication is what
+      # made every previous instance of this hole possible. `jq` is preinstalled on the runner.
+      # Filenames arrive as JSON, so no shell quoting decides what a path means: this workflow
+      # runs on pull requests from forks, where a filename is attacker-controlled text.
+      - name: Which changed paths matched no filter
+        id: route
+        env:
+          F_API: ${{ steps.filter.outputs.api_files }}
+          F_WORKER: ${{ steps.filter.outputs.worker_files }}
+          F_WEB: ${{ steps.filter.outputs.web_files }}
+          F_ADMIN: ${{ steps.filter.outputs.admin_files }}
+          F_DOCS: ${{ steps.filter.outputs.docs_files }}
+          F_DESKTOP: ${{ steps.filter.outputs.desktop_files }}
+          F_INFRA: ${{ steps.filter.outputs.infra_files }}
+          F_UNVERIFIED: ${{ steps.filter.outputs.unverified_files }}
+          F_ROOT: ${{ steps.filter.outputs.root_files }}
+          F_ALL: ${{ steps.filter.outputs.all_files }}
+        run: |
+          set -euo pipefail
+          routed=$(mktemp); everything=$(mktemp)
+          for v in "$F_API" "$F_WORKER" "$F_WEB" "$F_ADMIN" "$F_DOCS" "$F_DESKTOP" "$F_INFRA" "$F_UNVERIFIED" "$F_ROOT"; do
+            printf '%s' "${v:-[]}" | jq -r '.[]' >> "$routed"
+          done
+          printf '%s' "${F_ALL:-[]}" | jq -r '.[]' > "$everything"
+          sort -u -o "$routed" "$routed"
+          sort -u -o "$everything" "$everything"
+          unrouted=$(comm -23 "$everything" "$routed")
+          if [ -n "$unrouted" ]; then
+            echo "Changed paths matched by no filter:"
+            printf '%s\n' "$unrouted" | sed 's/^/  /'
+          else
+            echo "Every changed path is routed to a job or declared unverified."
+          fi
+          {
+            echo "unrouted<<ROUTE_EOF"
+            echo "$unrouted"
+            echo "ROUTE_EOF"
+          } >> "$GITHUB_OUTPUT"
 
   api:
     needs: changes
@@ -185,6 +289,21 @@ jobs:
       - name: Format check
         working-directory: services/nlp-worker
         run: ruff format --check .
+      # The baseline package has its own suite and it had never run. `packages/nlp-baseline/**`
+      # is in this job's path filter and the package is installed above with `pip install -e .`,
+      # which reads as coverage — but the only pytest in this job runs with
+      # `working-directory: services/nlp-worker`, whose pyproject pins `testpaths = ["tests"]`,
+      # so it collects the worker's tests and nothing else. Its own directory has to be entered.
+      #
+      # This is not an optional extra: `services/baseline.py` calls into the package on every
+      # /analyze, and what it returns reaches the user as `baselineTerms`.
+      #
+      # No install of its own. The step above installs the worker with `[dev]`, which brings the
+      # same `pytest>=8.3` this package declares — running it here rather than before that step
+      # is what keeps a second pytest out of the job.
+      - name: Tests (nlp-baseline)
+        working-directory: packages/nlp-baseline
+        run: pytest
       # `--cov=nora_nlp` rides along on the suite that was going to run anyway, so the
       # worker-wide figure costs no second pytest invocation. There is deliberately NO
       # `--cov-fail-under` here: this run reports, the next step gates. Adding a global
@@ -197,7 +316,14 @@ jobs:
       # the worker-wide number and the pii_shield number the gate below applies to. Printed
       # together on purpose — quoting the gated module's rate as "the worker's coverage" is the
       # exact overstatement the documents used to carry.
+      #
+      # `if: !cancelled()` for the same reason the PII corpus step below carries it and the
+      # `api` job's JaCoCo report carries `always()`: the step above is the gate AND the
+      # producer of the `.coverage` this reads, so a red pytest skipped the report on exactly
+      # the runs where the two numbers are wanted. It reports and never gates — the script
+      # exits 0 whatever it finds, and exits 0 with a message when there is no report at all.
       - name: Coverage report (worker-wide vs. the gated module)
+        if: ${{ !cancelled() }}
         run: bash scripts/report-coverage.sh worker
       # Coverage gate scoped to the PII Shield (ADR 0012 + ADR 0018: >85% sustained on
       # IAM/Auth/PII). We do NOT enforce global worker coverage on purpose — llm.py and
@@ -283,7 +409,15 @@ jobs:
       # the `api` and `worker` jobs already use, and the same script. It reads the report the step
       # above wrote and measures nothing, so a figure quoted from CI and one read on a workstation
       # come from one implementation. Never a gate: it exits 0 whatever the numbers say.
+      #
+      # `if: !cancelled()` because "on every run" was not true. `npm run test:coverage` is the
+      # gate and the producer of `coverage-summary.json` at once, so a per-module threshold
+      # failing aborted the job and skipped this step — leaving the reviewer with vitest's raw
+      # assertion instead of the table that says WHICH module fell and by how much. That is the
+      # run where the table matters most, which is the argument already written out for the PII
+      # corpus step in the `worker` job.
       - name: Coverage report (whole app vs. the gated modules)
+        if: ${{ !cancelled() }}
         run: bash scripts/report-coverage.sh web
 
       # `NEXT_PUBLIC_API_BASE_URL` is new here and is not cosmetic. Unset, `next.config.mjs`'s
@@ -329,9 +463,12 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # Operator console (ADR 0023/0025). Lint + typecheck + build, which is every check its
-  # package.json defines — there is no test script and no test file in apps/admin, and inventing
-  # a `npm test` that runs nothing would read as coverage this app does not have.
+  # Operator console (ADR 0023/0025). Lint + typecheck + test + build, which is every check its
+  # package.json defines. This comment used to say the opposite — "there is no test script and no
+  # test file in apps/admin" — and that was true and worth saying until the Vitest suite landed.
+  # It is left here in corrected form rather than deleted because a stale honesty note is worse
+  # than none: it describes a gap that has been closed, and keeping it would be the very
+  # misinformation it existed to prevent.
   #
   # No `env:` on the build, on purpose, and that absence is the interesting part. The console's
   # own default is now the production shape: `NORA_ADMIN_USE_MOCKS` unset means the real data
@@ -361,6 +498,20 @@ jobs:
       - name: Typecheck
         working-directory: apps/admin
         run: npm run typecheck
+
+      # Before Build and after Typecheck, for the same reason the `web` job orders it that way:
+      # Vitest needs neither a production build nor a browser, so a broken pure function fails in
+      # seconds instead of after `next build`.
+      #
+      # `test:coverage` rather than `test`, and the difference is a gate rather than a report. The
+      # per-module `coverage.thresholds` in `apps/admin/vitest.config.mts` are only applied by a
+      # coverage run, and the one module they cover is `src/lib/access.ts` — the console's single
+      # authentication boundary, whose regression from fail-closed to fail-open has no visible
+      # symptom. A bare `npm test` would run the same assertions and skip that floor.
+      - name: Unit tests + coverage
+        working-directory: apps/admin
+        run: npm run test:coverage
+
       - name: Build
         working-directory: apps/admin
         run: npm run build
@@ -390,6 +541,23 @@ jobs:
           npm ci
           npm run build
 
+      # The TypeScript half of this app had no test step at all: `cargo test` below covers the
+      # crate, and everything in `src/lib` — the dock preference codec, the duration formatting
+      # and the pending-upload queue, all of which decode whatever `localStorage` happens to
+      # hold — was verified by nothing. `npm test` now exists there and runs on Node's own test
+      # runner, so this costs a step and no new dependency.
+      #
+      # It needs no build of its own and runs after the one above only because that step is
+      # where `npm ci` happens.
+      #
+      # NODE VERSION IS LOAD-BEARING: the specs are `.ts` and the script hands them straight to
+      # `node --test`, which strips the types itself. That is on by default from Node 22.18; a
+      # `node-version` moved BACKWARDS from the '22' above would fail on the syntax, not skip.
+      - name: Test frontend (node --test)
+        working-directory: apps/desktop
+        shell: bash
+        run: npm test
+
       # Pinned to a commit SHA, so the toolchain can no longer be inferred from the ref
       # name — it is stated explicitly instead.
       - name: Install Rust stable
@@ -413,6 +581,16 @@ jobs:
       # config were deleted, so nothing here has to stub a binary before Rust will
       # typecheck. tauri-build resolves `externalBin` in the BUILD SCRIPT, which is why
       # having it in the base config used to make even a `cargo check` fail.
+
+      # Formatting, before anything that compiles. This crate was the one package no linter in
+      # the repository had ever read: `make lint` skipped it and CI ran only `cargo check`, so
+      # rustfmt drift accumulated silently until a reformat became too large to put in any PR
+      # that also changed behaviour. The crate is formatted now and this step is what keeps it
+      # that way. `cargo clippy` is deliberately not here yet — it compiles the whole Tauri
+      # graph a second time, and the `cargo check` below already pays for that once.
+      - name: cargo fmt --check
+        working-directory: apps/desktop/src-tauri
+        run: cargo fmt --check
 
       # One configuration, one check. The crate has no `[features]` section at all since the
       # local Whisper engine was deleted (ADR 0039/0045), so there is nothing to vary.
@@ -711,6 +889,93 @@ jobs:
       - name: Relative markdown links
         run: bash scripts/check-doc-links.sh
 
+  # ┌──────────────────────────────────────────────────────────────────────────────────┐
+  # │ THE JOB THAT MAKES ci-gate's GREEN MEAN SOMETHING.                               │
+  # └──────────────────────────────────────────────────────────────────────────────────┘
+  # Two checks, both of the same shape: a thing this repository has repeatedly failed to
+  # notice because no job was looking at it.
+  #
+  #   1. UNROUTED PATHS. Read the catch-all note in the `changes` job. Five separate comments
+  #      in this file narrate a PR that matched no filter, ran no job, and got a green
+  #      ci-gate. Each was closed by adding a pattern; a sixth appeared anyway. This fails the
+  #      gate on the general case and prints the offending paths, so the fix is one line in
+  #      the filter list (or one line in `unverified`, which is a decision, stated).
+  #
+  #   2. UNEXPECTED FILES AT THE REPOSITORY ROOT. A 0-byte file whose name was mojibake for
+  #      `**Audience:**` — shell redirection debris from an editing session — sat tracked in
+  #      the root next to Makefile and README.md for eighteen commits. There are gates for
+  #      markdown links and for language, and there was none for "a file with no purpose in
+  #      the most visible directory of a public repository".
+  #
+  # No path filter, on purpose: both checks are about what a PR did NOT touch a job for, and
+  # a filtered guard cannot see the case where every filter missed.
+  repo-hygiene:
+    needs: changes
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Every changed path is routed to a job
+        env:
+          UNROUTED: ${{ needs.changes.outputs.unrouted }}
+        run: |
+          set -euo pipefail
+          # Empty or whitespace-only means routed. The output is a heredoc block, so a run
+          # with nothing unrouted still carries a newline.
+          if [ -z "$(printf '%s' "$UNROUTED" | tr -d '[:space:]')" ]; then
+            echo "OK — every changed path matched a filter or is declared unverified."
+            exit 0
+          fi
+          echo "::error::These changed paths match NO filter in the changes job, so nothing"
+          echo "::error::verified them and ci-gate would otherwise be green about them:"
+          printf '%s\n' "$UNROUTED" | sed '/^[[:space:]]*$/d;s/^/  /'
+          echo ""
+          echo "Route them: add the path to the filter of the job that should check it, or —"
+          echo "if genuinely nothing checks it — to the 'unverified' filter, which is a"
+          echo "statement a reviewer can argue with rather than a hole nobody sees."
+          exit 1
+
+      - name: No unexpected files at the repository root
+        run: |
+          set -euo pipefail
+          # The allowlist IS the inventory: a new root file is a decision, and this is where it
+          # gets made. Only depth 1 — `:(exclude)*/*` drops everything inside a directory, so
+          # what is left is exactly the tracked entries sitting in the root.
+          #
+          # `git ls-files` quotes a path with non-ASCII bytes (core.quotePath), which is a
+          # feature here rather than an annoyance: the debris this check exists for was
+          # invisible precisely because its name rendered as ordinary punctuation. The octal
+          # escapes make it readable.
+          expected=$(mktemp)
+          cat > "$expected" <<'ROOT_FILES'
+          .dockerignore
+          .editorconfig
+          .env.example
+          .gitignore
+          AGENTS.md
+          LICENSE
+          Makefile
+          README.md
+          SECURITY.md
+          ROOT_FILES
+          sed -i 's/^[[:space:]]*//' "$expected"
+          sort -o "$expected" "$expected"
+          actual=$(mktemp)
+          git ls-files --full-name -- ':(exclude)*/*' | sort > "$actual"
+          unexpected=$(comm -23 "$actual" "$expected")
+          if [ -n "$unexpected" ]; then
+            echo "::error::Tracked file(s) at the repository root that are not in the allowlist:"
+            printf '%s\n' "$unexpected" | sed 's/^/  /'
+            echo ""
+            echo "If the file belongs, add it to the heredoc in this step. If it is debris —"
+            echo "the last one was a 0-byte file whose name was mojibake for '**Audience:**',"
+            echo "left behind by a shell redirection — delete it."
+            exit 1
+          fi
+          echo "OK — the repository root holds only the $(wc -l < "$expected") declared files."
+
   # Always runs (no path filter): the language gate has to see a PR that touches ONE file
   # as much as one that touches a hundred. It is a single pass of grep over the tracked
   # files, so it costs seconds.
@@ -862,6 +1127,21 @@ jobs:
           docker compose --env-file .env.ci -f docker-compose.yml --profile platform config -q
           echo "docker-compose.yml valid (platform profile)."
 
+      # The OTHER compose in this repository. `infra/docker/docker-compose.yml` is what
+      # `make db-up` and `make dev` start on every contributor's machine, and until this step
+      # existed nothing validated it: the two `config -q` passes above name the production
+      # stack exclusively, and no path filter even watched the directory (see the `infra`
+      # filter note in the `changes` job). A broken interpolation or a stray key there is
+      # discovered by whoever clones next, not by CI.
+      #
+      # No `--env-file`: every variable in that file carries a default, which is also why the
+      # Makefile no longer demands `.env.local` before it will run.
+      - name: Compose config (local development stack)
+        run: |
+          set -euo pipefail
+          docker compose -f infra/docker/docker-compose.yml config -q
+          echo "infra/docker/docker-compose.yml valid."
+
       # The Caddyfile is the routing plane of the only HTTP ingress, and `docker compose config`
       # says nothing about it: it is a bind-mounted file, so a syntax error or an unknown
       # directive is only discovered when the container restarts and takes the whole site with
@@ -923,6 +1203,71 @@ jobs:
           shellcheck -x -S warning "${files[@]}"
           echo "shellcheck OK (gate: error+warning)."
 
+      # `.github/dependabot.yml` is the other file that only just started matching a filter,
+      # and the reason it needed one is written inside it: a DUPLICATE `labels:` key took the
+      # whole configuration out once, and Dependabot reports a bad file on a settings page
+      # nobody opens — so the symptom was simply that no dependency pull request ever arrived
+      # again. Nothing in this repository parsed it.
+      #
+      # Python's yaml.safe_load with a duplicate-key hook rather than a schema validator:
+      # there is no offline schema for this file, and the two failures worth catching are the
+      # two this can catch — it does not parse at all, or a key silently overwrites another.
+      # Everything else about the file is a semantic question GitHub answers.
+      - name: dependabot.yml parses, with no duplicate keys
+        run: |
+          set -euo pipefail
+          python -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          python - <<'PY'
+          import sys
+          import yaml
+
+          DUPES = []
+
+          class StrictLoader(yaml.SafeLoader):
+              pass
+
+          # `deep=True` on both construct_object calls, not the signature's default: a
+          # non-generator constructor that builds children lazily can hand back placeholders
+          # that are only filled in later, and the checks below read the nested values.
+          def no_duplicates(loader, node, deep=False):
+              mapping = {}
+              for key_node, value_node in node.value:
+                  key = loader.construct_object(key_node, deep=True)
+                  if key in mapping:
+                      DUPES.append((key, key_node.start_mark.line + 1))
+                  mapping[key] = loader.construct_object(value_node, deep=True)
+              return mapping
+
+          StrictLoader.add_constructor(
+              yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, no_duplicates
+          )
+
+          with open('.github/dependabot.yml', encoding='utf-8') as handle:
+              config = yaml.load(handle, Loader=StrictLoader)
+
+          if DUPES:
+              for key, line in DUPES:
+                  print(f"::error file=.github/dependabot.yml,line={line}::duplicate key '{key}' — the second one silently wins and the first is lost")
+              sys.exit(1)
+
+          if config.get('version') != 2:
+              print('::error::dependabot.yml must declare `version: 2`')
+              sys.exit(1)
+
+          updates = config.get('updates') or []
+          if not updates:
+              print('::error::dependabot.yml has no `updates` entries — nothing would ever be checked')
+              sys.exit(1)
+
+          for entry in updates:
+              for required in ('package-ecosystem', 'directory', 'schedule'):
+                  if required not in entry:
+                      print(f"::error::an updates entry is missing `{required}`: {entry.get('package-ecosystem', '?')}")
+                      sys.exit(1)
+
+          print(f"OK — dependabot.yml parses, no duplicate keys, {len(updates)} ecosystems declared.")
+          PY
+
       # Supply-chain gate. Third-party actions must be referenced by an immutable commit
       # SHA: a tag or a branch is a pointer the upstream owner can move at any time, and
       # what it points at then executes inside our jobs — including the jobs that hold the
@@ -951,7 +1296,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [changes, api, worker, web, admin, desktop-rust, supply-chain, docs-link-check, language, openapi-coverage, pr-title, migrations, infra]
+    needs: [changes, api, worker, web, admin, desktop-rust, supply-chain, docs-link-check, language, openapi-coverage, pr-title, migrations, infra, repo-hygiene]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

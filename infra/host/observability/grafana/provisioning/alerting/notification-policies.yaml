@@ -1,0 +1,35 @@
+# NORA — Grafana unified alerting: the routing tree
+# =============================================================================
+# This file REPLACES Grafana's root notification policy, it does not add a branch to it. That
+# is the documented behaviour of `policies:` in provisioning and it is the reason the default
+# receiver below has to be a real one: whatever is not matched by a child route is delivered
+# here, and Grafana's stock `grafana-default-email` receiver has no address configured in this
+# stack, so leaving it as the root would route every alert into a black hole that reports
+# success.
+#
+# ONE ROUTE, deliberately. There is one operator (ADR 0038 §6a: "there is nobody on call") and
+# a routing tree that separates pages from tickets is a tree that has to be maintained for an
+# audience of one. When there is a second recipient, add a child route on `severity` — the
+# rules already carry that label.
+apiVersion: 1
+
+policies:
+  - orgId: 1
+    receiver: nora-operator
+    # Grouped by rule and by instance, so twelve unhealthy scrape targets are one message with
+    # twelve lines rather than twelve messages. `grafana_folder` is in the key because the
+    # folder is what carries the "which stack" context in a message with no other framing.
+    group_by:
+      - grafana_folder
+      - alertname
+      - instance
+    # 30s from the first firing instance before sending, so a rolling restart that trips three
+    # rules within a few seconds produces one message. 5m between updates of a group that is
+    # still changing.
+    group_wait: 30s
+    group_interval: 5m
+    # 4h between repeats of an alert that keeps firing. Short enough that something broken
+    # overnight is still shouting in the morning; long enough that a known-broken thing does
+    # not train the operator to mute the channel, which is the failure mode that makes an
+    # alerting stack worse than none.
+    repeat_interval: 4h

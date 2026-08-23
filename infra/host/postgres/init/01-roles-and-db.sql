@@ -45,9 +45,10 @@
 --      What carries the weight is the ALTER DEFAULT PRIVILEGES of item 5.
 --   b) The GRANT EXECUTE on nora.current_tenant_id() becomes ALTER DEFAULT
 --      PRIVILEGES ... ON FUNCTIONS, because the function is only born in V016.
---   c) The GRANT SELECT on meeting_analyses (nora_telemetry) is CONDITIONAL --
---      the table comes in V005. See the big warning in section 4: it is that
---      GRANT that stays pending, and its failure is SILENT.
+--   c) The GRANTs SELECT of nora_telemetry are CONDITIONAL -- the three tables
+--      come from migrations (meetings V004, meeting_analyses V005,
+--      meeting_embeddings V021). See the big warning in section 4: those are
+--      the GRANTs that stay pending, and their failure is SILENT or misdirected.
 --   d) The passwords come from an ENVIRONMENT variable (\getenv), not from
 --      `psql -v`, because the container entrypoint does not accept passing -v.
 --
@@ -174,31 +175,49 @@ GRANT EXECUTE                        ON ALL FUNCTIONS IN SCHEMA nora   TO nora_a
 GRANT USAGE ON SCHEMA public TO nora_telemetry;
 
 -- #########################################################################
--- # WARNING -- the only grant that cannot be closed in the initdb.        #
+-- # WARNING -- the only grants that cannot be closed in the initdb.       #
 -- #                                                                       #
--- # meeting_analyses is born in V005, that is, after this script runs.    #
--- # The block below grants if the table exists (manual re-run) and        #
--- # WARNS if it does not. It is deliberately a SELECT on ONE table, and   #
--- # not an ALTER DEFAULT PRIVILEGES: nora_telemetry has BYPASSRLS, a      #
--- # broad grant would give it cross-tenant reads of EVERYTHING.           #
+-- # The three tables are born in migrations (meetings V004,               #
+-- # meeting_analyses V005, meeting_embeddings V021), that is, AFTER this  #
+-- # script runs. The block below grants on the ones that already exist    #
+-- # (manual re-run) and WARNS about the ones that do not. It is           #
+-- # deliberately a SELECT on a NAMED list, and not an ALTER DEFAULT       #
+-- # PRIVILEGES: nora_telemetry has BYPASSRLS, so a broad grant would give #
+-- # it cross-tenant reads of EVERYTHING.                                  #
 -- #                                                                       #
--- # If this grant is never done, the operator business panel does not     #
--- # error: it returns ZERO. Silent failure. Run after the first           #
--- # `flyway migrate` (the full R001 also closes this):                    #
+-- # The list mirrors section 4 of R001 and comes from the code, not from  #
+-- # memory -- every operator-console source that resolves the telemetry   #
+-- # template is on it:                                                    #
+-- #   - PrimaryDbBusinessMetricsSource -> meeting_analyses                #
+-- #   - PrimaryDbEmbeddingIndexStatus  -> meetings, meeting_embeddings    #
+-- #                                                                       #
+-- # Neither failure points at the missing grant. Without meeting_analyses #
+-- # the operator business panel returns ZERO, silently. Without the other #
+-- # two the RAG backfill preview answers 503 naming the PRIMARY database: #
+-- # under enforce the telemetry datasource is REQUIRED                    #
+-- # (RlsEnforceTelemetryGuard), so it is always the template that         #
+-- # answers, and `permission denied for table meetings` (SQLSTATE 42501)  #
+-- # surfaces there. Run after the first `flyway migrate` (the full R001   #
+-- # also closes this):                                                    #
 -- #                                                                       #
 -- #   docker compose exec -T postgres psql -U nora_admin -d nora \        #
--- #     -c "GRANT SELECT ON meeting_analyses TO nora_telemetry"           #
+-- #     -c "GRANT SELECT ON meetings, meeting_analyses,                   #
+-- #         meeting_embeddings TO nora_telemetry"                         #
 -- #########################################################################
 DO $$
+DECLARE
+    target_table text;
 BEGIN
-    IF to_regclass('public.meeting_analyses') IS NOT NULL THEN
-        EXECUTE 'GRANT SELECT ON public.meeting_analyses TO nora_telemetry';
-        RAISE NOTICE 'nora_telemetry: GRANT SELECT on meeting_analyses applied.';
-    ELSE
-        RAISE WARNING 'nora_telemetry: meeting_analyses does not exist yet (it comes in V005). '
-                      'GRANT SELECT PENDING -- without it the business panel returns zero '
-                      'SILENTLY. Run after the migrations.';
-    END IF;
+    FOREACH target_table IN ARRAY ARRAY['meetings', 'meeting_analyses', 'meeting_embeddings'] LOOP
+        IF to_regclass('public.' || target_table) IS NOT NULL THEN
+            EXECUTE format('GRANT SELECT ON public.%I TO nora_telemetry', target_table);
+            RAISE NOTICE 'nora_telemetry: GRANT SELECT on % applied.', target_table;
+        ELSE
+            RAISE WARNING 'nora_telemetry: % does not exist yet (it comes from a migration). '
+                          'GRANT SELECT PENDING -- see the warning block above for the symptom. '
+                          'Run after the migrations.', target_table;
+        END IF;
+    END LOOP;
 END
 $$;
 

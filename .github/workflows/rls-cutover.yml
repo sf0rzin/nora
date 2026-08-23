@@ -51,6 +51,29 @@ name: rls-cutover
 #
 # It does NOT turn on enforce (stage 3 = NORA_RLS_ENFORCE=true in the host .env + recreate api).
 
+# TWO TRIGGERS, AND THEY ASK FOR DIFFERENT THINGS.
+#
+#   `workflow_dispatch` is the CUTOVER REQUEST: it validates, then emits the runbook artifact
+#   and the auditable record of who asked and when, which ADR 0028 requires. It still demands
+#   the typed confirmation.
+#
+#   `pull_request`/`push` are the GATE, and they are why this half of the workflow existed in
+#   the first place. R001 is the SQL that provisions the production RLS roles, and it reached
+#   `main` through no automatic check of any kind: `scripts/check-migrations.sh` covers
+#   `db/operational` for destructive DDL, but nothing APPLIED the file and looked at what came
+#   out. The proof that this matters is in this repository's own history — R001 was missing
+#   `GRANT SELECT ON meetings` and `ON meeting_embeddings` for the telemetry role, and a
+#   missing grant is invisible in `pg_roles`: it surfaces as an operator dashboard reading
+#   zero, with no error anywhere. A validation that only runs when somebody remembers to press
+#   a button is a validation that runs after the mistake.
+#
+# The paths list watches this file as well, for the reason ci.yml has now learned six times:
+# without it, an edit to the job below is gated by nothing.
+#
+# WHAT THIS DOES NOT DO: block a merge. `ci-gate` is the only required status check on main
+# (ADR 0027) and it aggregates jobs from ci.yml, which this workflow is not part of. A red run
+# here is a visible failed check on the pull request, not a closed door — making it required
+# is a branch-protection setting, not something this file can assert.
 on:
   workflow_dispatch:
     inputs:
@@ -62,6 +85,16 @@ on:
         description: 'Target database on the host (default: nora)'
         required: false
         default: 'nora'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'services/api/src/main/resources/db/operational/**'
+      - '.github/workflows/rls-cutover.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'services/api/src/main/resources/db/operational/**'
+      - '.github/workflows/rls-cutover.yml'
 
 # No `id-token: write`: there is no federated login into any cloud anymore.
 permissions:
@@ -69,7 +102,11 @@ permissions:
 
 concurrency:
   group: rls-cutover-${{ github.ref }}
-  cancel-in-progress: false
+  # Never cancel a dispatch: that run produces the runbook artifact and the record of who asked
+  # for a cutover, and a superseded one is not a thing. A branch validation IS superseded by the
+  # next push to the same branch, and queueing those behind one another (which is what
+  # `false` did for every trigger) only delays the answer.
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   validate-r001:
@@ -105,7 +142,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # Only on a dispatch. The confirmation exists so that ASKING FOR A CUTOVER is deliberate;
+      # applying R001 to a container that is deleted with the runner is not something anyone
+      # needs to confirm, and requiring it on a pull request would mean the gate could never
+      # run automatically at all.
       - name: Guard — explicit confirmation
+        if: github.event_name == 'workflow_dispatch'
         env:
           CONFIRM: ${{ inputs.confirm }}
         run: |
@@ -122,12 +164,17 @@ jobs:
           sudo apt-get install -y -qq postgresql-client
 
       # R001 does GRANT on objects the Flyway migrations create (schema nora,
-      # nora.current_tenant_id(), users, meetings, meeting_analyses). On an empty database
-      # it would fail on a missing object, not on a defect of its own.
+      # nora.current_tenant_id(), users, meetings, meeting_analyses, meeting_embeddings). On an
+      # empty database it would fail on a missing object, not on a defect of its own.
       #
       # We create here the MINIMUM that R001 references. This is a validation fixture, not
       # a copy of the schema — if R001 starts touching a new table, this step fails on
       # purpose: that is the signal that the runbook and the fixture have to follow.
+      #
+      # `meeting_embeddings` is here because R001 started granting on it, and it is the
+      # concrete case that design was written for: PrimaryDbEmbeddingIndexStatus reads
+      # `meetings LEFT JOIN meeting_embeddings` through the telemetry role, the grants for both
+      # were missing, and nothing said so until an operator saw a zeroed backfill preview.
       - name: Minimal fixture (objects the R001 references)
         run: |
           set -euo pipefail
@@ -136,9 +183,10 @@ jobs:
           CREATE OR REPLACE FUNCTION nora.current_tenant_id() RETURNS uuid
             LANGUAGE sql STABLE AS
             $$ SELECT nullif(current_setting('nora.current_tenant_id', true), '')::uuid $$;
-          CREATE TABLE IF NOT EXISTS users            (id uuid PRIMARY KEY DEFAULT gen_random_uuid());
-          CREATE TABLE IF NOT EXISTS meetings         (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL);
-          CREATE TABLE IF NOT EXISTS meeting_analyses (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL);
+          CREATE TABLE IF NOT EXISTS users              (id uuid PRIMARY KEY DEFAULT gen_random_uuid());
+          CREATE TABLE IF NOT EXISTS meetings           (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL);
+          CREATE TABLE IF NOT EXISTS meeting_analyses   (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL);
+          CREATE TABLE IF NOT EXISTS meeting_embeddings (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), meeting_id uuid NOT NULL);
           ALTER TABLE meetings ENABLE ROW LEVEL SECURITY;
           DROP POLICY IF EXISTS meetings_tenant_isolation ON meetings;
           CREATE POLICY meetings_tenant_isolation ON meetings
@@ -191,18 +239,49 @@ jobs:
           SQL
 
           # The old workflow NEVER tested this: it checked nora_telemetry's flags in
-          # pg_roles and stopped there. A missing GRANT SELECT on meeting_analyses does
-          # not show in pg_roles — it shows as a zeroed operator panel, with no error.
-          echo "== nora_telemetry: connects and READS meeting_analyses (the smoke test that was missing) =="
-          tel=$(PGPASSWORD=ci-tel-pw psql -U nora_telemetry -tAc "SELECT count(*) FROM meeting_analyses")
-          echo "  meeting_analyses visible = $tel"
-          case "$tel" in
-            ''|*[!0-9]*) echo "::error::nora_telemetry could not read meeting_analyses."; exit 1 ;;
-          esac
+          # pg_roles and stopped there. A missing GRANT SELECT does not show in pg_roles — it
+          # shows as a zeroed operator panel, with no error.
+          #
+          # EVERY table R001 grants to this role, and the list is READ OUT OF R001 rather than
+          # written here. Testing one of the three is how the meetings/meeting_embeddings grants
+          # went missing while this step reported OK: the panel that broke was the embedding
+          # backfill preview, which reads `meetings LEFT JOIN meeting_embeddings` and never
+          # touches meeting_analyses. A hardcoded list here would reproduce that exactly once
+          # somebody adds a fourth grant, so there is no list to keep in step.
+          #
+          # Single-line `GRANT SELECT ON <table> TO nora_telemetry;` is the shape section 4 of
+          # R001 uses; a grant split across lines would not be seen. The empty case below is a
+          # hard failure for that reason — a smoke test that silently checks nothing is worse
+          # than no smoke test.
+          echo "== nora_telemetry: connects and READS every table R001 grants it =="
+          mapfile -t granted < <(
+            grep -oEi 'GRANT[[:space:]]+SELECT[[:space:]]+ON[[:space:]]+[A-Za-z_][A-Za-z0-9_.]*[[:space:]]+TO[[:space:]]+nora_telemetry' "$R001" |
+              awk '{ print $4 }' | sort -u
+          )
+          if [ "${#granted[@]}" -eq 0 ]; then
+            echo "::error::No 'GRANT SELECT ON <table> TO nora_telemetry' found in $R001."
+            echo "::error::Either section 4 changed shape or the file moved — refusing to pass having tested nothing."
+            exit 1
+          fi
+          for table in "${granted[@]}"; do
+            tel=$(PGPASSWORD=ci-tel-pw psql -U nora_telemetry -tAc "SELECT count(*) FROM $table") || tel=''
+            echo "  $table visible = ${tel:-<error>}"
+            case "$tel" in
+              ''|*[!0-9]*)
+                echo "::error::nora_telemetry could not read $table — the GRANT in section 4 of R001 did not take effect."
+                exit 1
+                ;;
+            esac
+          done
 
           echo "OK — the three roles check out."
 
+      # The runbook, the artifact and the summary below are the CUTOVER REQUEST half, and they
+      # are dispatch-only. A pull request that edits R001 wants the validation above and nothing
+      # else: emitting a "run this on production" runbook from a branch would put a plan for a
+      # database change in an artifact before the change was even reviewed.
       - name: Generate the host execution runbook
+        if: github.event_name == 'workflow_dispatch'
         env:
           TARGET_DB: ${{ inputs.target_db }}
         run: |
@@ -264,6 +343,7 @@ jobs:
           echo "runbook generated."
 
       - name: Upload the plan
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: rls-cutover-plan-${{ github.run_id }}
@@ -271,8 +351,11 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
+      # `success()`, not `always()`. Every line below asserts that the three roles were
+      # verified; printing it after a failed assertion publishes the opposite of what happened,
+      # and the failing step has already said what went wrong.
       - name: Summary
-        if: always()
+        if: ${{ success() && github.event_name == 'workflow_dispatch' }}
         run: |
           {
             echo "## RLS cutover — validated plan"

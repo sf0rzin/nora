@@ -4,10 +4,11 @@ name: build-images
 # NOT talk to the host — it pushes no deploy anywhere (ADR 0034 / Azure -> self-hosted
 # migration; ADR 0036 corrects the substrate).
 #
-# NOTE, BEFORE THE REST OF THIS FILE TALKS ABOUT "the pull agent": the pointer has no
-# consumer. Nothing on the host reads it, and rolling forward is a manual `deploy.sh --tag`.
-# The full statement, with the commands behind it, is in the header of deploy-host.yml.
-# Every "the agent does X" below describes the design.
+# NOTE, BEFORE THE REST OF THIS FILE TALKS ABOUT "the pull agent": it exists now. This note
+# used to say the opposite — the pointer had no consumer and rolling forward was a manual
+# `deploy.sh --tag`. The consumer is `deploy.sh --follow-release`, installed by
+# bootstrap-host.sh as `nora-deploy.timer`, and it reads the GIT TAG rather than the artifact
+# below. deploy-host.yml's header has the full path.
 #
 # Triggers:
 #   - push on main: rebuild of the services that changed (path filter) + release pointer
@@ -21,9 +22,9 @@ name: build-images
 #
 # ROLLOUT (release-pointer job): replaced the old `deploy-apps`, which did
 # `azure/login` + `az containerapp update` via OIDC. The model is now PULL: this job only
-# ANNOUNCES which IMMUTABLE `sha-<short>` tags were built. Applying them was meant to be the
-# agent's job; there is no agent, so today it is an operator running
-# `infra/host/scripts/deploy.sh --tag sha-<short>`. See deploy-host.yml's header.
+# ANNOUNCES which IMMUTABLE `sha-<short>` tags were built. Applying them is the pull agent's
+# job — `deploy.sh --follow-release` on `nora-deploy.timer` — and it reads the git tag
+# deploy-host.yml publishes from this announcement, not this artifact.
 #
 # Why the immutable tag is still the mechanism: `docker compose up -d` compares the
 # RESOLVED image of the service. With `:latest` the reference does not change, Compose
@@ -135,7 +136,28 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=api
           cache-to: type=gha,scope=api,mode=max
-          provenance: false
+          # SLSA PROVENANCE + SBOM. These four builds carried `provenance: false` and no
+          # `sbom:` at all, so nothing published alongside an image said what produced it or
+          # what is inside it. That is the cheap half of image supply chain, and it was off.
+          #
+          # `mode=max` rather than `true`: the minimal mode records the build definition and
+          # little else, while max also records the materials — which base image, which source
+          # commit, which build args. "Which release am I actually running" and "does this image
+          # contain the vulnerable version of X" become answerable from the registry
+          # (`docker buildx imagetools inspect --format "{{ json .Provenance }}"`) instead of by
+          # rebuilding and hoping it is reproducible.
+          #
+          # BOTH ARE OFF ON PULL REQUESTS, and that is not caution about cost: with
+          # `push: false` the build uses the local docker exporter, which cannot carry
+          # attestations, and buildx fails the step outright. A PR build validates the
+          # Dockerfile; only a pushed image needs to be attestable.
+          #
+          # WHAT THIS STILL DOES NOT DO: sign anything. There is no cosign here and the host
+          # verifies no signature — deploy.sh trusts the digest it finds in GHCR. An attestation
+          # proves provenance to whoever reads the registry; it does not stop a compromised
+          # publishing account from pushing an image the host will pull.
+          provenance: ${{ github.event_name != 'pull_request' && 'mode=max' || 'false' }}
+          sbom: ${{ github.event_name != 'pull_request' }}
 
   worker:
     needs: changes
@@ -170,7 +192,9 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=worker
           cache-to: type=gha,scope=worker,mode=max
-          provenance: false
+          # Provenance + SBOM, off on pull requests — see the note in the `api` job above.
+          provenance: ${{ github.event_name != 'pull_request' && 'mode=max' || 'false' }}
+          sbom: ${{ github.event_name != 'pull_request' }}
 
   web:
     needs: changes
@@ -205,7 +229,9 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
-          provenance: false
+          # Provenance + SBOM, off on pull requests — see the note in the `api` job above.
+          provenance: ${{ github.event_name != 'pull_request' && 'mode=max' || 'false' }}
+          sbom: ${{ github.event_name != 'pull_request' }}
           # NEXT_PUBLIC_* are baked in at build-time. Set via NEXT_PUBLIC_API_BASE_URL here
           # (override by workflow vars/secrets if building for a different environment).
           # The fallback is now the public domain served by Cloudflare Tunnel -> caddy -> api
@@ -250,18 +276,19 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=admin
           cache-to: type=gha,scope=admin,mode=max
-          provenance: false
+          # Provenance + SBOM, off on pull requests — see the note in the `api` job above.
+          provenance: ${{ github.event_name != 'pull_request' && 'mode=max' || 'false' }}
+          sbom: ${{ github.event_name != 'pull_request' }}
 
   # ANNOUNCES the rollout — does not execute it. Replaced the old `deploy-apps` (azure/login
   # + `az containerapp update`). There is no host credential, SSH, self-hosted runner nor
   # inbound port here: the job only materializes "which immutable tags exist for this SHA" in
-  # two formats a pull agent on the host could consume. NOTE: that agent does not exist — see
-  # the header block in deploy-host.yml. These artifacts are produced and nothing reads them.
-  # The two formats are:
+  # two formats. The two formats are:
   #
-  #   - artifact `nora-release-pointer` (release.json + deploy.env) — the agent downloads it
-  #     via the Actions API (GET /repos/{owner}/{repo}/actions/artifacts?name=nora-release-pointer)
-  #     with a read-only PAT and merges deploy.env into the compose .env;
+  #   - artifact `nora-release-pointer` (release.json + deploy.env) — consumed by
+  #     deploy-host.yml, which validates every manifest in it before turning it into the git
+  #     tags. It is NOT what the host reads: an artifact needs a PAT and expires in 90 days,
+  #     while the tag is public and permanent, so `deploy.sh --follow-release` reads the tag.
   #   - step summary — human reading in the run.
   #
   # Publishing the long-lived "canonical pointer" (git tag `release/prod/*`, which does not

@@ -31,8 +31,16 @@ global:
     cluster: nora-host
     env: prod
 
-# No Alertmanager in the stack yet. Alerting today is Grafana's (unified alerting),
-# which queries this Prometheus as a datasource. If an Alertmanager enters the compose,
+# No Alertmanager in the stack, and no rule_files here — BY DESIGN, and the design now has an
+# implementation behind it. Alerting is Grafana's unified alerting, provisioned from
+# grafana/provisioning/alerting/ (rules.yaml, contact-points.yaml, notification-policies.yaml),
+# which queries this Prometheus as a datasource. That sentence used to appear in three files
+# with nothing behind it: there was no rule anywhere under infra/host.
+#
+# Where a rule belongs, so the two halves do not drift: if it can be expressed as a PromQL
+# query, it goes in rules.yaml with the rest. Moving rules HERE would split alerting across
+# two engines, require an Alertmanager for delivery, and put half the rules outside the
+# datasource the dashboards are built on. If an Alertmanager ever does enter the compose,
 # this is where it gets pointed at.
 # alerting:
 #   alertmanagers:

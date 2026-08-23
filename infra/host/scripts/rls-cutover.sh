@@ -199,19 +199,33 @@ SQL
 
 # THIS is the smoke the old workflow was missing. It checked the nora_telemetry flags
 # in pg_roles but NEVER tested the connection nor the SELECT — exactly the path that fails
-# silently. A missing GRANT on meeting_analyses would only show up as a zeroed panel.
-log "Smoke 3/3 — nora_telemetry connects and reads meeting_analyses CROSS-TENANT (BYPASSRLS)"
-TEL_OUT="$(docker exec -i -e PGPASSWORD="$NORA_TELEMETRY_PASSWORD" "$PG_CID" \
-  psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U nora_telemetry -d "$PG_DB" -tAc \
-  "SELECT count(*) FROM meeting_analyses" | tr -d '\r')"
-log "  meeting_analyses visible to nora_telemetry: ${TEL_OUT}"
+# silently. A missing GRANT would only show up as a zeroed panel or as a 503 blaming the
+# primary database.
+#
+# One table per operator-console source that resolves the telemetry template, because a
+# per-table GRANT can be missing one at a time and each miss has its own symptom:
+#   - meeting_analyses                 -> PrimaryDbBusinessMetricsSource (panel returns zero)
+#   - meetings, meeting_embeddings     -> PrimaryDbEmbeddingIndexStatus  (backfill preview 503)
+# Smoking only the first one is what let a half-provisioned cutover declare success.
+log "Smoke 3/3 — nora_telemetry connects and reads CROSS-TENANT (BYPASSRLS)"
+for tel_table in meeting_analyses meetings meeting_embeddings; do
+  # Without a tenant SET, a NOBYPASSRLS role would see 0. nora_telemetry has BYPASSRLS, so
+  # what is being validated is that the SELECT raised no permission error — a count of 0 is
+  # legitimate on a fresh database. `|| true` keeps set -e from aborting before the message
+  # below can name WHICH table was refused; psql's own stderr (the `permission denied for
+  # table X` with its SQLSTATE) is left to reach the operator's terminal.
+  TEL_OUT="$(docker exec -i -e PGPASSWORD="$NORA_TELEMETRY_PASSWORD" "$PG_CID" \
+    psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U nora_telemetry -d "$PG_DB" -tAc \
+    "SELECT count(*) FROM ${tel_table}" | tr -d '\r' || true)"
+  log "  ${tel_table} visible to nora_telemetry: ${TEL_OUT:-<no answer>}"
 
-# Without a tenant SET, a NOBYPASSRLS role would see 0. nora_telemetry has BYPASSRLS, so
-# we only validate that the query raised no permission error (count 0 is legit on a fresh base).
-case "$TEL_OUT" in
-  ''|*[!0-9]*) fail "nora_telemetry did not return a valid count ('${TEL_OUT}'). Check
-      R001's GRANT SELECT ON meeting_analyses — without it the panel zeroes out silently." ;;
-esac
+  case "$TEL_OUT" in
+    ''|*[!0-9]*) fail "nora_telemetry did not return a valid count for ${tel_table} ('${TEL_OUT}').
+      Check R001's GRANT SELECT ON ${tel_table} — the three grants go together: without
+      meeting_analyses the operator panel zeroes out silently, and without meetings or
+      meeting_embeddings the RAG backfill preview answers 503 naming the PRIMARY database." ;;
+  esac
+done
 
 log "OK — all THREE roles check out."
 log ""

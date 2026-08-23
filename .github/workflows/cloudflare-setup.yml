@@ -1,8 +1,15 @@
 name: cloudflare-setup
 
-# Configures Cloudflare Access to protect admin.nora.systems with mandatory login
-# (allowlist by email). Runs manually via workflow_dispatch; idempotent — a re-run only
-# reconciles the diff (upsert on Access App, Policy, IdP).
+# TWO JOBS, TWO TRIGGERS, and they do not overlap:
+#
+#   setup         (workflow_dispatch only) configures Cloudflare Access to protect
+#                 admin.nora.systems with mandatory login (allowlist by email). Idempotent —
+#                 a re-run only reconciles the diff (upsert on Access App, Policy, IdP).
+#   access-drift  (weekly + dispatch) READ-ONLY. Verifies that every hostname published
+#                 through the tunnel is behind an Access Application that has at least one
+#                 policy. It exists because `setup` covers exactly one of the three, and the
+#                 other two — grafana and ssh — were protected by Applications created by
+#                 hand that nothing checked. Full argument on the job itself.
 #
 # Lanes (ADR 0025 — Cloudflare Tunnel + Access):
 #   - THIS workflow owns the Access App + Policy + IdP on admin.nora.systems.
@@ -33,6 +40,19 @@ name: cloudflare-setup
 #   - For Google/GitHub OAuth, see docs/operations/cloudflare-access.md.
 
 on:
+  # WEEKLY, and it does not run the setup job. The `access-drift` job at the bottom is
+  # read-only and exists because three hostnames are published through the tunnel and only ONE
+  # of them was reconciled by anything: `SUBDOMAIN: admin` below. `grafana.nora.systems` and
+  # `ssh.nora.systems` depend on Access Applications created by hand in the dashboard, and
+  # deleting either turns the hostname into an open door — for `ssh`, an SSH login prompt for
+  # the entire internet. `admin` fails closed in code (apps/admin/src/lib/access.ts blocks
+  # every route when the Access configuration is incomplete); the other two have nothing.
+  #
+  # See the note on `schedule:` in supply-chain-drift.yml: GitHub disables scheduled workflows
+  # after 60 days of repository inactivity, which is exactly when this would matter most.
+  schedule:
+    # Thursdays 07:23 UTC. Off the hour on purpose — scheduled runs queue at :00.
+    - cron: '23 7 * * 4'
   workflow_dispatch:
     inputs:
       admin_hostname:
@@ -60,6 +80,10 @@ env:
 jobs:
   setup:
     name: setup
+    # The scheduled trigger must NOT run this job: it upserts an Access Application and a
+    # policy from `inputs`, and on a schedule those inputs are empty — it would reconcile the
+    # allowlist to nothing. Only `access-drift` below is safe to run unattended.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -322,4 +346,130 @@ jobs:
             echo '```'
             echo ""
             echo "Step by step in [\`docs/operations/cloudflare-access.md\`](../docs/operations/cloudflare-access.md)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ===========================================================================
+  # DRIFT DETECTION FOR THE ACCESS APPLICATIONS NOTHING RECONCILES
+  # ===========================================================================
+  # Three hostnames reach this stack through the Cloudflare Tunnel and each is protected by a
+  # different mechanism:
+  #
+  #   admin.nora.systems    Access App reconciled by the `setup` job above, AND the console
+  #                         itself fails closed (apps/admin/src/lib/access.ts refuses every
+  #                         route when CF_ACCESS_TEAM_DOMAIN/CF_ACCESS_AUD are incomplete).
+  #                         Two independent layers.
+  #   grafana.nora.systems  an Access App created by hand. Grafana's own login is behind it,
+  #                         so losing the App exposes a login form rather than the data.
+  #   ssh.nora.systems      an Access App created by hand, in front of `ssh://172.17.0.1:22`
+  #                         (infra/host/cloudflared/config.yml). Losing this App publishes the
+  #                         host's sshd to the entire internet, and NOTHING in this repository
+  #                         noticed. That asymmetry — one hostname automated, two on trust —
+  #                         is what this job exists for.
+  #
+  # DETECTION, NOT RECONCILIATION, and the distinction is deliberate. Creating the `ssh`
+  # Application from here would mean this workflow deciding its policy — who may open an SSH
+  # session on the production host — from inputs typed into a dispatch form. The Application's
+  # correct shape is not derivable from anything in this repository, so inventing one would
+  # replace an unwatched configuration with a wrong one. What CAN be stated from here is the
+  # invariant: each protected hostname has an Access Application, and that Application has at
+  # least one policy. An App with zero policies allows nothing and is usually a half-finished
+  # edit; a missing App allows EVERYONE, which is the failure that matters.
+  #
+  # Read-only: the token needs `Access: Apps and Policies` READ. Every call here is a GET.
+  access-drift:
+    name: access-drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # The hostnames that must never be reachable without Access in front of them. Keep in
+      # step with the ingress rules in infra/host/cloudflared/config.yml — a Public Hostname
+      # added there and not here is a hostname nothing watches, which is the whole finding.
+      PROTECTED_SUBDOMAINS: 'admin grafana ssh'
+    steps:
+      - name: Every protected hostname has an Access Application with a policy
+        run: |
+          set -euo pipefail
+
+          if [ -z "${CF_TOKEN:-}" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN is not set, so nothing was verified."
+            echo "This job failing for a missing secret is correct: an unverifiable Access"
+            echo "configuration and a broken one look the same from here."
+            exit 1
+          fi
+
+          apps=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
+            "$CF_API/accounts/$CF_ACCOUNT_ID/access/apps?per_page=100")
+
+          if [ "$(printf '%s' "$apps" | jq -r '.success // false')" != "true" ]; then
+            echo "::error::The Access API refused the listing. The token needs 'Access: Apps and Policies' (Read)."
+            printf '%s' "$apps" | jq -r '.errors // empty'
+            exit 1
+          fi
+
+          missing=0
+          for sub in $PROTECTED_SUBDOMAINS; do
+            fqdn="$sub.$DOMAIN"
+            app_id=$(printf '%s' "$apps" | jq -r --arg fqdn "$fqdn" \
+              '.result[] | select(.domain == $fqdn) | .id' | head -1)
+
+            if [ -z "$app_id" ]; then
+              echo "::error::NO Cloudflare Access Application in front of $fqdn."
+              case "$sub" in
+                ssh)
+                  echo "::error::  That hostname routes to the host's sshd through the tunnel."
+                  echo "::error::  Without an Access Application it is an SSH login prompt published to the internet."
+                  ;;
+                grafana)
+                  echo "::error::  That hostname serves the observability stack, including every log line the four apps emit."
+                  ;;
+                admin)
+                  echo "::error::  Run this workflow on workflow_dispatch to recreate it — the setup job owns this one."
+                  ;;
+              esac
+              missing=1
+              continue
+            fi
+
+            policies=$(curl -fsSL -H "Authorization: Bearer $CF_TOKEN" \
+              "$CF_API/accounts/$CF_ACCOUNT_ID/access/apps/$app_id/policies")
+            count=$(printf '%s' "$policies" | jq -r '(.result // []) | length')
+
+            if [ "${count:-0}" -eq 0 ]; then
+              echo "::error::$fqdn has an Access Application ($app_id) with ZERO policies."
+              echo "::error::  An application with no policy decides nothing; this is usually a half-finished edit."
+              missing=1
+              continue
+            fi
+
+            echo "OK — $fqdn: application $app_id, $count policy/policies."
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            echo ""
+            echo "Nothing was changed by this job. Fix the Access configuration in the"
+            echo "Cloudflare Zero Trust dashboard, then re-run."
+            exit 1
+          fi
+          echo "Every protected hostname is behind an Access Application with at least one policy."
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Cloudflare Access — drift check"
+            echo ""
+            echo "Read-only. Verifies that each hostname published through the tunnel has an"
+            echo "Access Application with at least one policy."
+            echo ""
+            echo "| hostname | protected by |"
+            echo "|---|---|"
+            echo "| \`admin.$DOMAIN\` | Access App (reconciled by the setup job) **and** fail-closed code in the console |"
+            echo "| \`grafana.$DOMAIN\` | Access App only — created by hand, watched by this job |"
+            echo "| \`ssh.$DOMAIN\` | Access App only — created by hand, watched by this job |"
+            echo ""
+            echo "This job DETECTS. It never creates or edits an Access Application: the policy"
+            echo "for who may open an SSH session on the production host is not derivable from"
+            echo "anything in this repository, and guessing it would replace an unwatched"
+            echo "configuration with a wrong one."
           } >> "$GITHUB_STEP_SUMMARY"

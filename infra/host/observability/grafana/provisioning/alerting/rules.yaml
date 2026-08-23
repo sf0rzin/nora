@@ -1,0 +1,554 @@
+# NORA — Grafana unified alerting: the rules
+# =============================================================================
+# WHAT THIS FILE IS FOR. Three files pointed at "Grafana unified alerting" as the alerting
+# mechanism of this stack — prometheus.yml (no Alertmanager, no rule_files), loki.yaml (no
+# alertmanager_url) and datasources.yaml (`manageAlerts: false`) — and there was no rule
+# anywhere under infra/host. The consequence was concrete rather than theoretical: a systemd
+# unit failing, the tunnel dropping to zero connections (the 522 that has already taken
+# nora.systems down), the backup failing cycle after cycle and Loki's compactor stopping were
+# all things this stack could SEE and none of them were things it would SAY.
+#
+# EVERY RULE HERE IS BUILT ON A SERIES THAT EXISTS. That constraint did most of the design.
+# The stack has no cAdvisor and no node-exporter, so there is no `container_*` and no `node_*`
+# family; the apps have no /metrics endpoint. What there is:
+#   - Caddy's edge metrics (the `caddy` scrape job, and the `servers { metrics }` opt-in in
+#     the Caddyfile) — request counts by code, and `caddy_reverse_proxy_upstreams_healthy`,
+#     which is the ONLY per-service health signal in the stack;
+#   - cloudflared's `cloudflared_tunnel_ha_connections`;
+#   - Prometheus's own `up` for the seven scrape jobs;
+#   - Loki's compactor timestamp;
+#   - and, added alongside these rules, two receivers in the otel-collector: `hostmetrics`
+#     (root filesystem only) and `postgresql`. Without those two, "the disk is filling" and
+#     "Postgres is unreachable" had no series at all and could only have been written as
+#     rules that never fire. See observability/otel-collector.yaml for what each costs.
+#
+# The queries deliberately reuse the SAME series the nora-overview dashboard plots, so a
+# firing alert and the panel someone opens to look at it cannot disagree. In particular the
+# edge rate rules use `caddy_http_request_duration_seconds_count` and not
+# `caddy_http_requests_total`: the dashboard uses the former, and two counters for one thing
+# is how an alert threshold gets calibrated against a graph that was measuring something else.
+#
+# noDataState IS PART OF EACH RULE'S MEANING, not boilerplate:
+#   Alerting  — "the series vanishing IS the failure". Used where absence and breakage are
+#               the same event (an upstream that stopped being reported, Postgres no longer
+#               being scraped, no successful backup line in the window).
+#   OK        — "absence is normal". Used where a quiet system legitimately produces nothing:
+#               an error RATE with no traffic behind it, a comparison against a timestamp
+#               that does not exist before the first compaction.
+# Getting this backwards is how an alerting stack earns the mute it then never comes back from.
+apiVersion: 1
+
+groups:
+  # ===========================================================================
+  # AVAILABILITY — is the thing serving?
+  # ===========================================================================
+  - orgId: 1
+    name: nora-availability
+    folder: NORA
+    interval: 1m
+    rules:
+      # One rule, one alert instance PER UPSTREAM (api:8080, web:3000, admin:3002,
+      # grafana:3000), because the query is not aggregated away. Four separate rules would
+      # drift apart; this one cannot.
+      #
+      # Caddy is the only component that reports per-service health here, which also sets the
+      # limit: it says an upstream is unhealthy, never why. The `description` therefore points
+      # at the two commands that answer that, rather than pretending the alert knows.
+      - uid: nora-upstream-unhealthy
+        title: NORA upstream unhealthy at the edge
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+          component: edge
+        annotations:
+          summary: 'Caddy reports upstream {{ $labels.upstream }} as unhealthy'
+          description: >-
+            The edge has been unable to use this upstream for five minutes, so requests routed
+            to it are failing or being buffered by lb_try_duration. Look at the container
+            first: `docker compose -p nora ps` and
+            `docker compose -p nora logs --tail 200 <service>`. If the container is healthy
+            and this still fires, the problem is between Caddy and the service — the internal
+            bridge or the service's own port.
+        noDataState: Alerting
+        execErrState: Alerting
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: nora-prometheus
+            model:
+              refId: A
+              instant: true
+              expr: caddy_reverse_proxy_upstreams_healthy
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 1
+
+      # The 522. cloudflared_tunnel_ha_connections is expected to sit at 4; at 0 the site is
+      # unreachable from the internet while every container on the host is perfectly healthy,
+      # which is exactly the failure no internal healthcheck can see.
+      - uid: nora-tunnel-connections-zero
+        title: Cloudflare Tunnel has no connections to the edge
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+          component: edge
+        annotations:
+          summary: 'cloudflared_tunnel_ha_connections is 0 — nora.systems is unreachable'
+          description: >-
+            The tunnel is the ONLY ingress: no container publishes a port on the external
+            interface. With zero connections visitors get a Cloudflare 522 while the stack is
+            up and healthy. Check `docker compose -p nora logs --tail 200 cloudflared`, then
+            the tunnel's status in the Cloudflare Zero Trust dashboard.
+        noDataState: Alerting
+        execErrState: Alerting
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: nora-prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum(cloudflared_tunnel_ha_connections)
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 1
+
+      # Postgres. `count_over_time(...[5m])` rather than the gauge itself, because what is
+      # being asked is "did the collector manage to scrape the database at all in the last
+      # five minutes" — and the honest answer when it did not is NO SERIES, which is why
+      # noDataState is Alerting. A stale gauge would keep reporting a number for five minutes
+      # after the database stopped answering.
+      - uid: nora-postgres-unreachable
+        title: Postgres is not being scraped
+        condition: C
+        for: 5m
+        labels:
+          severity: critical
+          component: data
+        annotations:
+          summary: 'No successful Postgres scrape for five minutes'
+          description: >-
+            The otel-collector has not managed to read `postgresql_backends` from the primary
+            database. Either Postgres is down or unreachable on the `data` bridge, or the
+            collector is. `docker compose -p nora ps postgres otel-collector` separates the
+            two, and `docker compose -p nora exec postgres pg_isready -U nora_admin -d nora`
+            settles it. Note what this does NOT prove: the API's own pool may be broken while
+            this stays green, which is what the upstream rule above covers.
+        noDataState: Alerting
+        execErrState: Alerting
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: nora-prometheus
+            model:
+              refId: A
+              instant: true
+              expr: sum(count_over_time(postgresql_backends[5m]))
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 1
+
+      # One instance per scrape job, so this covers prometheus, otel-collector, caddy,
+      # cloudflared, loki, alloy and grafana without naming any of them. Ten minutes rather
+      # than five: a rollout recreates containers and a target is legitimately down while its
+      # replacement boots.
+      - uid: nora-scrape-target-down
+        title: Prometheus scrape target down
+        condition: C
+        for: 10m
+        labels:
+          severity: warning
+          component: observability
+        annotations:
+          summary: 'Scrape target {{ $labels.job }} has been down for ten minutes'
+          description: >-
+            Prometheus cannot reach this target. If the target is `alloy`, log shipping has
+            stopped and Loki is going quiet without saying so; if it is `otel-collector`, the
+            API's metrics and the two receivers behind the disk and Postgres rules above are
+            all gone at once. `docker compose -p nora ps` and the target's own logs.
+        noDataState: Alerting
+        execErrState: Alerting
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: nora-prometheus
+            model:
+              refId: A
+              instant: true
+              expr: up
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 1
+
+  # ===========================================================================
+  # ERRORS — is it serving the wrong thing?
+  # ===========================================================================
+  - orgId: 1
+    name: nora-errors
+    folder: NORA
+    interval: 1m
+    rules:
+      # RATIO, not an absolute count: 5 errors a minute means something very different at 10
+      # requests a minute than at 10,000, and a threshold on the raw count has to be
+      # recalibrated every time traffic changes. `clamp_min` on the denominator is what keeps
+      # a quiet stack from dividing by zero and producing NaN — with `noDataState: OK` the
+      # rule then simply says nothing while nobody is using the product, which is correct.
+      #
+      # The label is `code` and the series is the histogram's `_count`, matching the edge
+      # panels in nora-overview.json exactly. Caddy's `server` label is the autogenerated
+      # listener name (srv0, srv1), NOT the Host, so this figure is the edge AGGREGATE across
+      # web, api, admin and grafana — it cannot be broken down per service. That limitation is
+      # the reason the upstream-health rule above exists separately.
+      - uid: nora-edge-5xx-rate
+        title: 5xx rate at the edge above 5%
+        condition: C
+        for: 10m
+        labels:
+          severity: critical
+          component: edge
+        annotations:
+          summary: 'More than 5% of edge responses are 5xx'
+          description: >-
+            Sustained for ten minutes across every host Caddy serves. This is an aggregate and
+            does not say which service is failing; the per-service split is in Loki —
+            `{project="nora"} | level="error"` in Explore, or the log panels of the
+            nora-overview dashboard.
+        noDataState: OK
+        execErrState: Alerting
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: nora-prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                sum(rate(caddy_http_request_duration_seconds_count{code=~"5.."}[5m]))
+                /
+                clamp_min(sum(rate(caddy_http_request_duration_seconds_count[5m])), 0.001)
+          - refId: B
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 0.05
+
+  # ===========================================================================
+  # CAPACITY AND RETENTION — the slow failures
+  # ===========================================================================
+  # Five-minute evaluation: none of these move in a minute, and a disk does not fill between
+  # two ticks of a rule that has a `for` on it anyway.
+  - orgId: 1
+    name: nora-capacity
+    folder: NORA
+    interval: 5m
+    rules:
+      # The single most consequential failure this host has available to it. /srv holds the
+      # Postgres volume AND the backups (run-backup.sh says so in its own header), so a full
+      # disk stops Postgres accepting writes and stops the thing that would have let you
+      # recover from that, in the same minute.
+      #
+      # `mountpoint="/"` is not decoration: the otel-collector's filesystem scraper is
+      # restricted to the root mount in otel-collector.yaml precisely so this rule cannot be
+      # tripped by a 64 MiB tmpfs. Keep the two in step.
+      #
+      # 5 GiB, in bytes. bootstrap-host.sh asks for 40 GB+ free at install time and
+      # run-backup.sh refuses to dump below 256 MiB; five gigabytes sits between the two,
+      # which is where an alert belongs — late enough not to cry wolf, early enough that
+      # pruning a few dumps is still a fix rather than a rescue.
+      - uid: nora-root-disk-low
+        title: Root filesystem below 5 GiB free
+        condition: C
+        for: 15m
+        labels:
+          severity: critical
+          component: host
+        annotations:
+          summary: 'Less than 5 GiB free on the host root filesystem'
+          description: >-
+            /srv/nora/backups and the Postgres volume share this filesystem. When it fills,
+            Postgres stops accepting writes and the backup service stops producing dumps — the
+            failure and the recovery path go together. Reclaim first, diagnose second:
+            `docker compose -p nora exec backup /usr/local/bin/run-backup.sh --prune-only`,
+            then `docker system df` and `du -xh --max-depth=2 /srv /var/lib/docker | sort -h`.
+        noDataState: OK
+        execErrState: Alerting
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 1800
+              to: 0
+            datasourceUid: nora-prometheus
+            model:
+              refId: A
+              instant: true
+              expr: min(system_filesystem_usage_bytes{state="free",mountpoint="/"})
+          - refId: B
+            relativeTimeRange:
+              from: 1800
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 1800
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 5368709120
+
+      # The alarm loki.yaml's own warning block asks for. A stopped compactor means the 720h
+      # retention deletes nothing, and the only symptom is the disk filling weeks later — by
+      # which point the rule above fires and looks like a capacity problem instead of a
+      # retention one. 24h without a successful compaction is well past any transient.
+      #
+      # noDataState OK: before the first compaction on a fresh volume the series does not
+      # exist, and a stack that has just been installed must not open with a page.
+      - uid: nora-loki-compactor-stalled
+        title: Loki compactor has not run for a day
+        condition: C
+        for: 30m
+        labels:
+          severity: warning
+          component: observability
+        annotations:
+          summary: 'No successful Loki compaction in over 24 hours'
+          description: >-
+            Loki retention (720h) is applied by the compactor. While it is stopped nothing is
+            deleted and loki_data grows without bound towards the disk alert above. See the
+            retention warning in observability/loki.yaml and
+            `docker compose -p nora logs --tail 200 loki`.
+        noDataState: OK
+        execErrState: Alerting
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: nora-prometheus
+            model:
+              refId: A
+              instant: true
+              expr: >-
+                time() -
+                max(loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds)
+          - refId: B
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 86400
+
+  # ===========================================================================
+  # BACKUP — the one that fails silently by design
+  # ===========================================================================
+  - orgId: 1
+    name: nora-backup
+    folder: NORA
+    interval: 5m
+    rules:
+      # Queried out of LOKI, not Prometheus, because the backup service emits no metrics — it
+      # emits one logfmt line per event, and `event=dump.ok` is the line that only exists when
+      # a dump was written AND verified with `pg_restore --list`. That makes it a stronger
+      # signal than any "the container is running" check: run-backup.sh keeps looping happily
+      # while every cycle fails.
+      #
+      # Three hours against an hourly interval tolerates one missed cycle and a slow one. The
+      # `compose_service` label is set by Alloy (observability/config.alloy, the `labels`
+      # relabel block) — if that label is ever renamed, this rule silently matches nothing,
+      # which is why noDataState is Alerting rather than OK.
+      - uid: nora-backup-not-succeeding
+        title: No verified database dump in three hours
+        condition: C
+        for: 15m
+        labels:
+          severity: critical
+          component: backup
+        annotations:
+          summary: 'The backup service has not written a verified dump for three hours'
+          description: >-
+            run-backup.sh promotes `.part` to `.dump` only after `pg_restore --list` accepts
+            the file, and logs `event=dump.ok` when it does. Three hours without one means
+            either the dumps are failing or the service has stopped cycling — and pruning is
+            held back on purpose while dumps fail, so old backups are still there. Read the
+            reason: `docker compose -p nora logs --tail 100 backup`, or in Explore
+            `{compose_service="backup"} |= "event=dump."`.
+        noDataState: Alerting
+        execErrState: Alerting
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 10800
+              to: 0
+            datasourceUid: nora-loki
+            model:
+              refId: A
+              queryType: instant
+              expr: sum(count_over_time({compose_service="backup"} |= "event=dump.ok" [3h]))
+          - refId: B
+            relativeTimeRange:
+              from: 10800
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              reducer: last
+              expression: A
+          - refId: C
+            relativeTimeRange:
+              from: 10800
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 1

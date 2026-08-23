@@ -2,10 +2,18 @@
 # NORA -- SOPS (age) encryption rule for the self-hosted stack secrets.
 # =============================================================================
 #
-# Model: `secrets.env.sops` (ENCRYPTED) is versioned in git; the age private key
-# exists in ONE place only, on the host, at /etc/nora/age.key (chmod 600, root).
-# The deploy decrypts it into a `.env` on tmpfs, runs the compose and the
+# Model: `secrets.env.sops` (ENCRYPTED) lives ON THE HOST and is NOT versioned; the age
+# private key exists in ONE place only, on the same host, at /etc/nora/age.key (chmod 600,
+# root). The deploy decrypts it into a `.env` on tmpfs, runs the compose and the
 # cleartext file is gone on the next reboot -- it never touches the disk.
+#
+# This header used to say "is versioned in git" while the footer of this same file said the
+# opposite (see "Multiple recipients" at the bottom, and ADR 0036 §4, which is the decision).
+# One recipient means a committed ciphertext buys nothing: the only scenario where a
+# versioned ciphertext would help is the host being gone, and the key that reads it is gone
+# with it. What replaces it is REGENERATION from `secrets.env.example` --
+# `scripts/secrets-bootstrap.sh` is the supported path, and it is what the disaster runbook
+# has to walk, not a `git clone`.
 #
 # The repository is PUBLIC (ADR 0017). A `.env` committed by mistake is an
 # immediate and irreversible leak: rotating everything is the only remedy. This
@@ -24,6 +32,8 @@
 #   age-keygen -y /etc/nora/age.key        # -> age1...
 #
 #   # 3. paste that public key into the `age:` field of the creation_rule below and commit.
+#   #    (the RECIPIENT is what gets committed -- a public key. The encrypted file it
+#   #     produces stays on the host, untracked.)
 #
 #   # 4. KEEP THE PRIVATE KEY OFF THE HOST. If the host dies and the key dies with
 #   #    it, secrets.env.sops becomes encrypted garbage and every secret has to

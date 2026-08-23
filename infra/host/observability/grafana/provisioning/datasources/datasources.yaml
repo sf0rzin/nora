@@ -41,8 +41,12 @@ datasources:
       timeInterval: 15s
       prometheusType: Prometheus
       prometheusVersion: 3.1.0
-      # Alerting is managed by Grafana's unified alerting, not by rules
-      # loaded from Prometheus (there are no rule_files in prometheus.yml).
+      # `manageAlerts: false` says Grafana must not try to READ OR WRITE alert rules through
+      # this datasource's Prometheus rule API — which is correct, because there are no
+      # rule_files in prometheus.yml and never will be (its comment explains why). It does NOT
+      # mean alerting is off: the rules are Grafana-managed and provisioned from
+      # ../alerting/rules.yaml, and every one of them queries THIS datasource by the uid above.
+      # Change that uid and the alerts break exactly as the dashboards do.
       manageAlerts: false
       incrementalQuerying: true
 

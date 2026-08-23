@@ -18,38 +18,35 @@ name: deploy-host
 #   deploy-host.yml (here)             |
 #     -> git tag release/prod/<short>  |
 #     -> moves release/prod/current    |
-#     -> (optional) POST to webhook ---+--> pull agent wakes up   <-- NOT IMPLEMENTED
+#     -> (optional) POST to webhook    |  nora-deploy.timer fires (every 5 min)
 #                                      |      1. reads release/prod/current (git ls-remote)
-#                                      |      2. docker login ghcr.io (PAT read:packages)
-#                                      |      3. merges deploy.env into .env (tmpfs)
+#                                      |      2. refuses it unless release/prod/<short> exists
+#                                      |      3. git pull --ff-only  (--follow-release => --sync)
 #                                      |      4. sops -d secrets.env.sops (local age key)
-#                                      |      5. docker compose up -d --wait
+#                                      |      5. docker compose up -d --wait, service by service
 #
-# ##########################################################################################
-# #  THE RIGHT-HAND COLUMN ABOVE DOES NOT EXIST. Everything this workflow publishes is     #
-# #  real; the consumer that was supposed to read it was never written.                    #
-# ##########################################################################################
+# THE RIGHT-HAND COLUMN EXISTS NOW. It did not for as long as this file did, and the banner
+# that used to sit here said so: "the consumer that was supposed to read it was never
+# written". It is `deploy.sh --follow-release`, and `bootstrap-host.sh` installs the timer as
+# `deploy.sh --if-changed --follow-release`.
 #
-#   $ git ls-remote --tags origin 'refs/tags/release/prod/*'           -> dozens of tags, one
-#                                                                        per promoted SHA, and
-#                                                                        one more on every merge
-#                                                                        that changes a service
-#                                                                        (the tag step is
-#                                                                        guarded on count != 0)
-#   $ grep -rn "ls-remote\|release/prod" infra/host/                   -> one hit, and it is a
-#                                                                         comment in deploy.sh
-#                                                                         saying exactly this.
-#                                                                         No code, no consumer.
+#   $ git ls-remote --tags origin 'refs/tags/release/prod/*'   -> dozens of tags, one per
+#                                                                promoted SHA, and one more on
+#                                                                every merge that changes a
+#                                                                service (the tag step is
+#                                                                guarded on count != 0)
+#   $ grep -rn "ls-remote\|release/prod" infra/host/           -> deploy.sh's
+#                                                                release_pointer_tag(), the
+#                                                                function that reads them
 #
-# What the host actually runs is `nora-deploy.timer` -> `deploy.sh --if-changed` with NO
-# `--tag` (installed by bootstrap-host.sh — see its `ExecStart=` line). Without `--tag`,
-# deploy.sh probes the tag ALREADY RUNNING, whose digest never changes because rollouts use
-# immutable `sha-<short>` tags. So the timer verifies that the running release is intact; it
-# never discovers a newer one. Rolling forward today is a manual `deploy.sh --tag sha-<short>`.
+# WHAT THE CONSUMER STILL WILL NOT DO, so this is not read as continuous deployment: it acts
+# only on a pointer that has been PROMOTED (this workflow runs on a successful build, and
+# `workflow_dispatch` demands the word PROMOTE), and it refuses a `current` whose immutable
+# sibling tag is absent — which is how it inherits the two guards below, the ancestry check
+# and the GHCR manifest check, that a hand-typed `--tag` never had.
 #
-# Every sentence below that says "the agent" describes the DESIGN, not the deployment. Read
-# them as "would". deploy.sh carries the same statement next to the code, in the comment
-# above its `--if-changed` branch ("WHAT THIS DOES NOT DO").
+# The webhook step further down is still optional and still has no receiver: with a five
+# minute timer, a wake-up call buys five minutes.
 #
 # WHY PULL (not a style preference, it is the repo being public — ADR 0017):
 #   1. A self-hosted runner on the home network would execute arbitrary fork PR code.
@@ -82,12 +79,13 @@ name: deploy-host
 #
 # Secrets/Variables:
 #   - NORA_DEPLOY_WEBHOOK_URL  (Secret, OPTIONAL) endpoint published by the Cloudflare
-#       Tunnel that would only WAKE the agent. There is no agent and no receiver for this
-#       endpoint, so the variable is unset and the POST step below is skipped. It is kept
-#       because the design is sound and the step is a no-op when the secret is absent.
-#   - NORA_DEPLOY_WEBHOOK_TOKEN (Secret, OPTIONAL) bearer the agent would validate.
-#   Neither gives access to the host: the webhook takes no command, only a SHA that the
-#   agent checks against the tag before acting.
+#       Tunnel that would only WAKE the pull agent. There is no receiver for it and the
+#       variable is unset, so the POST step below is skipped — and now that the agent exists
+#       and polls every five minutes, what the webhook would buy is at most five minutes.
+#       Kept because the step is a no-op when the secret is absent.
+#   - NORA_DEPLOY_WEBHOOK_TOKEN (Secret, OPTIONAL) bearer a receiver would validate.
+#   Neither gives access to the host: the webhook takes no command, only a SHA the agent
+#   re-checks against the tags before acting.
 
 on:
   # Chained to build-images: it only makes sense to announce a SHA whose images exist.
@@ -291,12 +289,11 @@ jobs:
           if-no-files-found: error
 
       # OPTIONAL notification. Just a "wake up and reconcile" — it carries no command nor
-      # credential, and the agent checks the SHA against the tag before applying. The endpoint
-      # is published by the Cloudflare Tunnel (egress-only): still no inbound port.
-      # If it fails, it does NOT fail the job: the pointer (tag) is already published, and in
-      # the design the agent's polling converges on its own. There is no agent and nothing
-      # polls, so today the failure of this step changes nothing at all — rolling forward was
-      # already going to be a manual `deploy.sh --tag`.
+      # credential, and the agent re-checks the SHA against the tags before applying. The
+      # endpoint is published by the Cloudflare Tunnel (egress-only): still no inbound port.
+      # If it fails, it does NOT fail the job, and now that is a statement about latency
+      # rather than about nothing happening: the pointer is published, `nora-deploy.timer`
+      # polls every five minutes and converges on its own.
       - name: Notify the agent (webhook via Cloudflare Tunnel — optional)
         if: steps.pointer.outputs.count != '0'
         continue-on-error: true
@@ -308,8 +305,10 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${WEBHOOK_URL:-}" ]; then
-            echo "NORA_DEPLOY_WEBHOOK_URL not configured. Nothing polls for this pointer either —"
-            echo "roll forward with: deploy.sh --tag sha-<short>  (see this workflow's header)."
+            echo "NORA_DEPLOY_WEBHOOK_URL not configured — nothing to notify."
+            echo "The host picks this pointer up on its own within one nora-deploy.timer interval"
+            echo "(5 min by default). To apply it immediately:"
+            echo "  ssh <host> 'sudo /opt/nora/infra/host/scripts/deploy.sh --follow-release'"
             exit 0
           fi
           payload=$(jq -nc --arg sha "$SHA" --arg short "$SHORT" \
@@ -330,7 +329,7 @@ jobs:
             -d "$payload" || echo "000")
           echo "webhook HTTP $code"
           if [ "$code" != "200" ] && [ "$code" != "202" ] && [ "$code" != "204" ]; then
-            echo "::warning::Webhook not confirmed (HTTP $code). The pointer was published anyway — but nothing consumes it, so roll forward manually with deploy.sh --tag."
+            echo "::warning::Webhook not confirmed (HTTP $code). The pointer was published anyway, and nora-deploy.timer converges on it within its interval — the notification is a shortcut, not the mechanism."
             head -c 500 /tmp/hook.out || true
           fi
 
@@ -362,12 +361,16 @@ jobs:
               echo "### Check/force on the host"
               echo ""
               echo '```bash'
-              echo "# No agent consumes the pointer — rolling forward is manual:"
-              echo "ssh <host> 'sudo /opt/nora/infra/host/scripts/deploy.sh --tag sha-$SHORT'"
+              echo "# Nothing to do: nora-deploy.timer runs"
+              echo "#   deploy.sh --if-changed --follow-release"
+              echo "# every 5 minutes, reads release/prod/current, refuses it unless"
+              echo "# release/prod/<short> also exists, git pulls, and rolls out sha-$SHORT."
               echo ""
-              echo "# The installed timer is nora-deploy.timer (NOT nora-pull-agent.service,"
-              echo "# which does not exist). It runs deploy.sh --if-changed with no --tag, so"
-              echo "# it re-checks the running release and never picks this pointer up."
+              echo "# To apply it now instead of waiting for the timer:"
+              echo "ssh <host> 'sudo /opt/nora/infra/host/scripts/deploy.sh --follow-release'"
+              echo ""
+              echo "# To watch it happen:"
+              echo "ssh <host> 'journalctl -u nora-deploy.service -f'"
               echo '```'
               echo ""
               echo "### Rollback"

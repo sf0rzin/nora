@@ -45,6 +45,24 @@ networks:
     driver: bridge
     internal: true
 
+# WHICH OF THESE SEVEN IS BACKED UP, AND WHICH IS NOT BY DECISION.
+#
+# The `backup` service dumps the two Postgres databases hourly and
+# scripts/offsite-backup.sh copies the newest verified dump off the host. The other five
+# volumes are covered by nothing, and that is a decision rather than an oversight — the
+# reasoning is in offsite-backup.sh's header, summarised here because this is the list a
+# reader counts:
+#
+#   pgdata, pgdata_platform  -> dumped hourly, verified, copied off-host. Tenant data; it
+#                               cannot be reproduced from anything.
+#   prometheus_data          -> NOT backed up. 30d of metrics, derived. Losing the host loses
+#   loki_data                -> NOT backed up. 30d of logs, derived. ...the forensic record of
+#                               the incident that took the host, which is the real cost and is
+#                               accepted: it is evidence about an event, not the product.
+#   grafana_data             -> NOT backed up, and needs no backup: dashboards and datasources
+#                               are provisioned from this repository, and the rest is UI state.
+#   caddy_data, caddy_config -> NOT backed up. ACME state for certificates the origin does not
+#                               use (TLS terminates at Cloudflare); reissued on demand.
 volumes:
   pgdata:
   pgdata_platform:
@@ -243,6 +261,9 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       LLM_API_KEY: ${OPENAI_API_KEY:-}
       LLM_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      # Wall-clock budget for one request. Must stay under the API's nora.worker.timeout-millis
+      # (120000), or the worker keeps spending tokens after the caller has given up.
+      LLM_REQUEST_BUDGET_SECONDS: ${LLM_REQUEST_BUDGET_SECONDS:-90}
       # Observability: OTLP to the local collector (replaces APPLICATIONINSIGHTS_CONNECTION_STRING).
       OTEL_SERVICE_NAME: nora-worker
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
@@ -601,7 +622,21 @@ services:
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
       - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
-    networks: [internal]
+    environment:
+      # Credentials for the `postgresql` receiver (observability/otel-collector.yaml), which
+      # exists so `nora-postgres-unreachable` in the alerting rules has a series to look at.
+      # Named apart from POSTGRES_* so that pointing the collector at a narrower monitoring
+      # role later is one variable, not a hunt through this file. `:?` on the password for the
+      # same reason the receiver's comment gives: the collector expands `${env:...}` at boot
+      # and an absent variable is a container that does not come up.
+      NORA_PG_MONITOR_USER: ${POSTGRES_ADMIN_USER:-nora_admin}
+      NORA_PG_MONITOR_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}
+    # `data` is new here and is not free — read the TRADE note above the `postgresql` receiver
+    # in observability/otel-collector.yaml before removing or copying it. The collector needs
+    # it to reach postgres:5432; `data` is `internal: true`, so this adds no egress.
+    networks: [internal, data]
+    security_opt:
+      - no-new-privileges:true
     # NO healthcheck, and that is deliberate. The otel-collector-contrib image is
     # distroless: it has no shell, no wget and no curl, so any `test:` based on them
     # never runs and the container stays `unhealthy` FOREVER — `up -d --wait`
@@ -611,6 +646,12 @@ services:
     # is still enabled in observability/otel-collector.yaml and answers on :13133 — it can
     # be probed from outside (`docker compose exec prometheus wget -qO- otel-collector:13133`),
     # just not from inside.
+    #
+    # THAT EXTERNAL PROBE IS NOW IMPLEMENTED, which is the part this comment used to describe
+    # and nothing did: scripts/deploy.sh's `fallback_probe` runs exactly that wget from the
+    # `prometheus` container during the rollout's health gate. So the collector is no longer
+    # passing the gate on `running` alone, and it still has no `healthcheck:` here — which is
+    # the correct combination for a distroless image.
 
   prometheus:
     image: prom/prometheus:v3.1.0
@@ -667,6 +708,33 @@ services:
       - ./observability/config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks: [internal]
+    # THE ONLY CONTAINER HARDENING IN THIS FILE, on the container that most needs it.
+    #
+    # observability/config.alloy already states the exposure in full: `:ro` on a socket blocks
+    # writes to the FILE and nothing about the Docker API served over it, so whoever has this
+    # socket has the host. What it offers as mitigation is network isolation plus a pinned
+    # image, and both are real — but neither touches the vector this service actually presents,
+    # which is that Alloy PARSES untrusted input (see `stage.multiline` in that file: log lines
+    # produced by users, joined by a regex) inside the most privileged container in the stack.
+    # Network isolation does not help when the hostile input arrives from the inside.
+    #
+    # Two settings, neither of which Alloy needs to do its job:
+    #   no-new-privileges  — nothing here execs a setuid binary; this closes the standard
+    #                        escalation step after a code-execution bug in a parser.
+    #   cap_drop: ALL      — Alloy runs as root in this image, talks to the socket (permitted
+    #                        by ownership, not by a capability) and binds :12345 (unprivileged
+    #                        port). It holds no capability it uses. If a future version does
+    #                        need one, add it back by name with `cap_add` rather than deleting
+    #                        this block — the symptom would be a container that fails at boot
+    #                        with a permission error, which deploy.sh's health gate catches.
+    #
+    # WHAT THIS IS NOT: a fix for the socket mount. The real fix is a read-only Docker socket
+    # proxy in front of it, which is a fifteenth service and a change to the service contract
+    # CI asserts. This is the containment available without that.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       loki:
         condition: service_healthy
@@ -681,10 +749,21 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SERVER_ROOT_URL: https://grafana.${NORA_PUBLIC_DOMAIN:-nora.systems}
       GF_ANALYTICS_REPORTING_ENABLED: "false"
+      # The destination of every alert this stack raises. The rules in
+      # observability/grafana/provisioning/alerting/ evaluate and record state whether or not
+      # this is set; what an empty value costs is the notification, not the detection.
+      #
+      # `:-` and not `:?` deliberately. Making it mandatory would mean a host that has not yet
+      # chosen a webhook cannot boot Grafana at all, which trades a missing notification for a
+      # missing dashboard — the wrong way round. secrets.env.example carries the entry and
+      # what to put in it.
+      NORA_ALERT_WEBHOOK_URL: ${NORA_ALERT_WEBHOOK_URL:-}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
     networks: [internal]
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - prometheus
       - loki
@@ -719,6 +798,16 @@ services:
       - ./backup/run-backup.sh:/usr/local/bin/run-backup.sh:ro
     entrypoint: ["/bin/sh", "/usr/local/bin/run-backup.sh"]
     networks: [data]
+    security_opt:
+      - no-new-privileges:true
+    # NO healthcheck here either, and for a different reason from the collector's: this
+    # service exposes no port and answers no request — a `test:` would have to invent a
+    # liveness signal that the script does not publish. What it does publish is one logfmt
+    # line per event, so scripts/deploy.sh's `fallback_probe` reads those instead: preflight
+    # failing is a failed rollout, a started cycle is a pass. Before that it was the third
+    # service crossing the health gate on `running` alone — the one whose silent failure
+    # costs the most, since a backup service that loops without producing a dump looks
+    # identical to a working one from the outside.
     depends_on:
       postgres:
         condition: service_healthy

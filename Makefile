@@ -4,7 +4,18 @@
 SHELL := bash
 .DEFAULT_GOAL := help
 
-COMPOSE := docker compose -f infra/docker/docker-compose.yml --env-file .env.local
+# `--env-file .env.local` is CONDITIONAL, and the conditional is the fix rather than a nicety.
+# On a fresh clone that file does not exist, `docker compose --env-file .env.local` refuses to
+# start before reading anything, and `db-up`, `db-down`, `db-reset`, `dev` and `dev-status` all
+# inherited the failure — the first five commands a new contributor runs. The compose itself
+# needs nothing from the file: every variable it reads carries a default
+# (infra/docker/docker-compose.yml). The file was only mandatory because this line said so.
+#
+# `=` and not `:=`, deliberately: a recursively-expanded variable re-runs the `$(shell)` at USE
+# time, so a target that has `env` as a prerequisite picks up the .env.local that prerequisite
+# just created. With `:=` the probe would run once, at parse time, and always see the old world.
+COMPOSE_ENV_FILE = $(shell [ -f .env.local ] && printf -- '--env-file .env.local')
+COMPOSE = docker compose -f infra/docker/docker-compose.yml $(COMPOSE_ENV_FILE)
 
 # Path to the worker venv. The concrete python is resolved at runtime
 # (Windows uses .venv/Scripts/python.exe; Unix uses .venv/bin/python).
@@ -31,8 +42,13 @@ env: ## Create .env.local at the root and in each service from the examples
 
 # --- Infra local ---
 
+# `env` as a prerequisite on the targets that START something, for the same reason `dev`
+# already declares `worker-setup web-setup`: a bootstrap step that a command silently needs is
+# a trap, and the fix is to declare it rather than to document it. `db-down` and `dev-status`
+# deliberately do NOT get it — a stop and a status must not create files — and they no longer
+# need it either, since COMPOSE_ENV_FILE above degrades to no flag.
 .PHONY: db-up
-db-up: ## Start Postgres + Adminer
+db-up: env ## Start Postgres + Adminer
 	$(COMPOSE) up -d
 
 .PHONY: db-down
@@ -40,7 +56,7 @@ db-down: ## Stop Postgres + Adminer
 	$(COMPOSE) down
 
 .PHONY: db-reset
-db-reset: ## Drop the volume and start the database from scratch
+db-reset: env ## Drop the volume and start the database from scratch
 	$(COMPOSE) down -v
 	$(COMPOSE) up -d
 
@@ -83,7 +99,7 @@ web-setup: ## Install the web dependencies (idempotent)
 	fi
 
 .PHONY: dev
-dev: worker-setup web-setup ## Start DB + worker + API + web (all in the background, logs in .logs/)
+dev: env worker-setup web-setup ## Start DB + worker + API + web (all in the background, logs in .logs/)
 	@mkdir -p "$(DEV_RUN_DIR)" "$(DEV_LOG_DIR)"
 	@echo ">> [1/4] starting Postgres + Adminer (docker compose)..."
 	@$(COMPOSE) up -d
@@ -155,9 +171,17 @@ dev-status: ## Show the status of the registered PIDs
 api-dev: ## Run the Spring Boot backend in dev mode
 	cd services/api && mvn spring-boot:run
 
+# `verify`, not `test`. Both jacoco executions in services/api/pom.xml — `report` and the
+# `check-iam-coverage` rule with haltOnFailure — are bound to the VERIFY phase, so `mvn test`
+# stopped one phase short of the only backend coverage gate this repository has. `make test`
+# advertised itself as the local stand-in for CI while never running it; CI itself has always
+# run `mvn -B verify`. The cost is honest and worth naming: verify also runs the failsafe
+# integration tests, which need Docker for Testcontainers and take minutes rather than seconds.
+# If you want the fast inner loop, run `mvn test` in services/api directly — but know that a
+# green run there says nothing about PolicyEvaluator's coverage floor.
 .PHONY: api-test
-api-test: ## Run the backend tests
-	cd services/api && mvn test
+api-test: ## Run the backend tests AND the JaCoCo gate (mvn verify; needs Docker for Testcontainers)
+	cd services/api && mvn verify
 
 # --- Worker NLP ---
 
@@ -207,6 +231,45 @@ admin-setup: ## Install the operator console dependencies (idempotent)
 admin-dev: admin-setup ## Run the operator console in dev mode (port 3002; NORA_ADMIN_USE_MOCKS=true for mock data)
 	cd apps/admin && npm run dev
 
+# `npm run test:coverage`, not `npm test`, for the reason web-test gives: the coverage run is
+# what applies the thresholds in apps/admin/vitest.config.mts, so this target and the CI step
+# assert the same thing. Here that is one module — `src/lib/access.ts`, the console's only
+# authentication boundary, which can regress from fail-closed to fail-open while every page
+# keeps rendering. Seconds, and no browser.
+.PHONY: admin-test
+admin-test: admin-setup ## Run the operator console unit tests with coverage (Vitest)
+	cd apps/admin && npm run test:coverage
+
+# --- Desktop ---
+
+.PHONY: desktop-setup
+desktop-setup: ## Install the desktop frontend dependencies (idempotent)
+	@if [ ! -d "apps/desktop/node_modules" ]; then \
+		echo ">> installing the desktop dependencies (npm ci)..."; \
+		cd apps/desktop && npm ci; \
+	else \
+		echo ">> desktop: node_modules already exists (npm ci skipped)"; \
+	fi
+
+# TWO SUITES, and the order is the cheap one first. `npm test` is Node's own test runner over
+# `src/lib` — the dock preference codec, the duration formatting and the pending-upload queue,
+# all of which decode whatever localStorage happens to hold — and it needs no toolchain and no
+# build. `cargo test` is the crate: the resampler argument order that compiles wrong and then
+# feeds silence into transcription, the PCM16 endianness, and the assertions that a live session
+# credential stays out of `Debug`.
+#
+# `npm run build` before cargo, and it is not optional: tauri-build resolves `frontendDist`
+# (../dist) inside the BUILD SCRIPT, so a crate with no dist/ fails before compiling a line of
+# Rust. ci.yml's `desktop-rust` job builds the frontend first for exactly this reason.
+#
+# Name the cost: a cold `cargo test` compiles the whole Tauri dependency graph and takes
+# minutes. `make desktop-test` after the first run is fast; the first run is not.
+.PHONY: desktop-test
+desktop-test: desktop-setup ## Run the desktop tests — frontend (node --test) and the Tauri crate (cargo test)
+	cd apps/desktop && npm test
+	cd apps/desktop && npm run build
+	cd apps/desktop/src-tauri && cargo test --locked
+
 # `web-test` is back, and this time the script it calls exists. It was removed because the
 # target invoked `npm test` against a package.json that did not define it, so `make test`
 # failed for that reason alone — advertising a target that cannot work hid the gap rather
@@ -221,20 +284,47 @@ web-test: web-setup ## Run the web unit tests with coverage (Vitest; does not ru
 
 # --- Quality ---
 
+# WHAT "every package" MEANT AND WHAT IT COVERED. This target said "every package" and ran
+# three of the five: `apps/admin` — which has the same eslint setup as `apps/web` and is the
+# operator console — and `apps/desktop` were both silently outside it, so `make lint` was green
+# on a console that eslint had never seen. admin is in now.
+#
+# apps/desktop is in now too, but only half of it, and the halves are not arbitrary.
+# `cargo fmt --check` is in: it reads the source and answers in seconds, and the crate was
+# reformatted so that it passes — before that, the check would have failed on code nobody had
+# touched, which is how a lint target teaches people to stop running it.
+# `cargo clippy` stays out: it compiles the whole Tauri graph, which is minutes on a command
+# people run between edits. It belongs in CI's `desktop-rust` job, not here.
 .PHONY: lint
-lint: ## Lint every package (fails if any linter reports errors)
+lint: web-setup admin-setup ## Lint web, admin, worker, api and the desktop crate's formatting
 	cd apps/web && npm run lint
+	cd apps/admin && npm run lint
 	cd services/nlp-worker && ruff check .
 	cd services/api && mvn spotless:check
+	cd apps/desktop/src-tauri && cargo fmt --check
 
 .PHONY: format
-format: ## Format every package (modifies files)
+format: web-setup admin-setup ## Format web, admin, worker, api and the desktop crate (modifies files)
 	cd apps/web && npm run format
+	cd apps/admin && npm run format
 	cd services/nlp-worker && ruff format .
 	cd services/api && mvn spotless:apply
+	cd apps/desktop/src-tauri && cargo fmt
 
 # Not "the full test suite" in the sense of everything CI runs: the Playwright e2e specs are
 # deliberately out, because they need a production build plus a chromium download and would turn
 # a command people run between edits into a multi-minute one. `make web-test` is the unit half.
+#
+# `api-test` is `mvn verify` since the JaCoCo gate lives in that phase (see its note above), so
+# this target is no longer a fast command: it wants Docker for the backend's Testcontainers.
+# That is the honest shape — a `make test` that skipped the repository's only backend coverage
+# gate was measuring less than it claimed.
+#
+# `admin-test` and `desktop-test` are here because they finally exist. This target ran three of
+# the five packages and did not say so, which is the same defect the `lint` note above records:
+# the operator console and the desktop client had no unit tests at all, then they got some, and
+# a `make test` that keeps skipping them reports a suite narrower than the one CI runs.
+# `desktop-test` is what makes this expensive on a cold checkout — read its note before blaming
+# this line.
 .PHONY: test
-test: api-test worker-test web-test ## Run the backend, worker and web unit suites (not Playwright)
+test: api-test worker-test web-test admin-test desktop-test ## Run every unit suite CI runs — backend (with the JaCoCo gate), worker, web, admin and desktop (not Playwright)

@@ -236,6 +236,118 @@ updates:
       - dependency-name: cpal
         versions: [">=0.16.0"]
 
+  # Docker images — the four Dockerfiles that become the published images, and the two composes
+  # that run everything else.
+  #
+  # The eighth dependency graph, and the one nothing watched. Maven, pip, npm and cargo were
+  # all here; the `FROM` lines were not — so a base image sat on whatever tag it was pinned to
+  # until somebody happened to edit the Dockerfile. Those images are what carries the OS
+  # packages, which is where most of a container's CVEs live, and the scanner in
+  # supply-chain-drift.yml reports exactly that class of finding. This is the half that
+  # produces a pull request for it.
+  #
+  # THE COMPOSE FILES ARE IN HERE TOO, and an earlier version of this comment argued they
+  # should not be. The argument was that their services are chosen together (Loki and Grafana
+  # have to move as a pair, Caddy's tag is duplicated in ci.yml's Caddyfile-validate step), so a
+  # bot bumping them one at a time would open pull requests nobody can evaluate in isolation.
+  # That is a real objection to UNGROUPED updates, not to watching the file — and it bought
+  # silence at the price of every third-party image the production host actually runs
+  # (cloudflared, caddy, pgvector, the otel collector, prometheus, loki, alloy, grafana and
+  # postgres: nine distinct images across ten pinned `image:` lines) receiving no bump from
+  # anything. `groups:` is the answer the objection asks for: one pull request per compose,
+  # every image in it, reviewed as the set it is.
+  #
+  # Dependabot's `docker` ecosystem reads `image:` out of a compose as well as `FROM` out of a
+  # Dockerfile, so `directory:` naming the compose's folder is all this needs. The four NORA
+  # images in the host compose are interpolated
+  # (`${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-sf0rzin/nora}-api:${API_TAG:-latest}`) and are
+  # published by this repository — Dependabot cannot resolve them and must not try.
+  #
+  # Six entries with singular `directory:` rather than one with `directories:`. The plural
+  # form exists and would be shorter; this file's own history is the argument against being
+  # clever with it — a duplicate `labels:` key broke the whole configuration once, silently
+  # (see the note further down), and Dependabot reports a bad file only in a settings page
+  # nobody opens. The verbose form is the form every other entry here already uses.
+  - package-ecosystem: docker
+    directory: /services/api
+    schedule:
+      interval: weekly
+      day: wednesday
+    open-pull-requests-limit: 2
+    labels:
+      - dependencies
+      - infra
+
+  - package-ecosystem: docker
+    directory: /services/nlp-worker
+    schedule:
+      interval: weekly
+      day: wednesday
+    open-pull-requests-limit: 2
+    labels:
+      - dependencies
+      - infra
+
+  - package-ecosystem: docker
+    directory: /apps/web
+    schedule:
+      interval: weekly
+      day: wednesday
+    open-pull-requests-limit: 2
+    labels:
+      - dependencies
+      - infra
+
+  - package-ecosystem: docker
+    directory: /apps/admin
+    schedule:
+      interval: weekly
+      day: wednesday
+    open-pull-requests-limit: 2
+    labels:
+      - dependencies
+      - infra
+
+  # The production host stack (ADR 0034 / ADR 0036). Ten pinned `image:` lines, nine distinct
+  # images, none of them watched by anything until now — and they are the ones carrying the OS
+  # packages where most of a container's CVEs live. `supply-chain-drift.yml` scans them now too;
+  # this is the half that turns a finding into a pull request.
+  #
+  # One group, so the whole stack arrives as a single pull request. Loki, Alloy and Grafana are
+  # a matched set, and `caddy:2.8-alpine` is pinned a second time inside ci.yml's Caddyfile
+  # validate step — a per-image pull request would ask a reviewer to judge one tag of a graph
+  # that only makes sense whole, which is exactly what kept this file out.
+  - package-ecosystem: docker
+    directory: /infra/host
+    schedule:
+      interval: weekly
+      day: wednesday
+    open-pull-requests-limit: 2
+    labels:
+      - dependencies
+      - infra
+    groups:
+      host-stack:
+        patterns:
+          - "*"
+
+  # The local development compose (`make db-up`, `make dev`). Two images and no secrets, but it
+  # is the Postgres every contributor runs migrations against, so a major drifting away from
+  # the host's `pgvector/pgvector:pg16` is a difference between what is tested and what ships.
+  - package-ecosystem: docker
+    directory: /infra/docker
+    schedule:
+      interval: weekly
+      day: wednesday
+    open-pull-requests-limit: 2
+    labels:
+      - dependencies
+      - infra
+    groups:
+      dev-stack:
+        patterns:
+          - "*"
+
   # GitHub Actions (supply chain)
   - package-ecosystem: github-actions
     directory: /
@@ -272,17 +384,21 @@ updates:
       # `latest.json` is still uploaded. The claim that the updater would go quiet was wrong.
       #
       # UNBLOCKER: a release rehearsal. `desktop-release.yml` has `workflow_dispatch` with a
-      # `tag` input, so this needs no throwaway git tag — but two things have to be fixed first
-      # or the rehearsal is worse than not running it:
-      #   (a) `releaseDraft: false` and `prerelease: false` are hardcoded with no input to
-      #       override them, so a dispatch publishes a NON-draft release that GitHub resolves
-      #       as "Latest" — hijacking `releases/latest/download/latest.json`, the endpoint the
-      #       rehearsal exists to protect;
-      #   (b) `actions/checkout` has no `ref:`, so a dispatch builds the selected BRANCH while
-      #       `tagName` uses the input — the rehearsal would not test what it claims to.
-      # And before any of that: the signing key in `TAURI_SIGNING_PRIVATE_KEY` no longer
-      # matches `plugins.updater.pubkey` (key id D899BC42EAD59B16 vs E314FF3F6A268266), so a
-      # release today produces bundles no installed client accepts. Fix that first.
+      # `tag` input, so this needs no throwaway git tag.
+      #
+      # TWO PRECONDITIONS USED TO BE LISTED HERE AND BOTH ARE FIXED — recorded rather than
+      # deleted so nobody re-derives them from this file's history and re-blocks the rehearsal:
+      #   - `releaseDraft`/`prerelease` were hardcoded `false`, so a dispatch published a
+      #     NON-draft release that GitHub resolves as "Latest", hijacking the very endpoint the
+      #     rehearsal exists to protect. Both are now derived from the dispatch and default to
+      #     draft; `desktop-release.yml` also guards the case where the release already exists.
+      #   - `actions/checkout` had no `ref:`, so a dispatch built the selected BRANCH while
+      #     `tagName` used the input. It is now `ref: ${{ inputs.tag || github.ref }}`.
+      #
+      # ONE PRECONDITION REMAINS, and it is the blocking one: the signing key in
+      # `TAURI_SIGNING_PRIVATE_KEY` no longer matches `plugins.updater.pubkey` (key id
+      # D899BC42EAD59B16 vs E314FF3F6A268266), so a release today produces bundles no installed
+      # client accepts. Fix that before rehearsing anything.
       #
       # Closed PR #419 carries the audit, with the correction.
       - dependency-name: tauri-apps/tauri-action

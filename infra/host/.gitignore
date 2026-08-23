@@ -1,9 +1,10 @@
 # Secrets for the self-hosted stack — the repo is PUBLIC (ADR 0017).
 #
-# The only versioned secrets file is the ENCRYPTED `secrets.env.sops`.
-# Anything that could be in cleartext stays out of git, including the intermediate
-# `secrets.env` that SOPS reads before encrypting (the root .gitignore covers
-# `.env`, but would NOT cover `secrets.env`).
+# NO secrets file is versioned here, encrypted or not. `secrets.env.sops` is generated on
+# the host by scripts/secrets-bootstrap.sh and never leaves it (ADR 0036 §4). Anything that
+# could be in cleartext stays out of git too, including the intermediate `secrets.env` that
+# SOPS reads before encrypting (the root .gitignore covers `.env`, but would NOT cover
+# `secrets.env`).
 
 .env
 env.defaults
@@ -19,4 +20,7 @@ age.key
 # Explicit reinforcement that the examples MUST be versioned.
 !.env.example
 !secrets.env.example
+# Kept, and it matches nothing: see the root .gitignore's note. It is a guard for the day a
+# second age recipient makes committing the ciphertext worth doing, not a statement that it
+# is committed now.
 !secrets.env.sops

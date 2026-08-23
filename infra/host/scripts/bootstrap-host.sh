@@ -24,7 +24,12 @@
 #   3. sops + age (official GitHub binaries, with checksum verification).
 #   4. Service user `nora` in the docker group.
 #   5. Tree /srv/nora/{state,backups,secrets} + /etc/nora with the age key.
-#   6. systemd unit + timer that calls deploy.sh (the pull agent).
+#   6. systemd units and timers:
+#        nora-deploy            the pull agent (deploy.sh --if-changed --follow-release)
+#        nora-offsite-backup    hourly copy of the verified dumps OFF this machine
+#        nora-restore-drill     quarterly, unattended, in a disposable container
+#        nora-alert@            OnFailure target of all three — the thing that says a unit
+#                               failed, which nothing used to do
 #   7. Basic hardening: unattended-upgrades, sysctl, journald with a size cap.
 #
 # Usage:
@@ -116,18 +121,80 @@ install_pull_agent() {
   log "Pull agent (systemd)"
 
   if [ "$CHECK_ONLY" -eq 1 ]; then
-    info "[check] would create nora-deploy.service and nora-deploy.timer"
+    info "[check] would create nora-deploy.service, nora-deploy.timer, nora-alert@.service,"
+    info "[check]   nora-offsite-backup.service/.timer and nora-restore-drill.service/.timer"
     info "[check]   WorkingDirectory=${HOST_DIR}"
-    info "[check]   ExecStart=${SCRIPT_DIR}/deploy.sh --if-changed"
+    info "[check]   ExecStart=${SCRIPT_DIR}/deploy.sh --if-changed --follow-release"
     return 0
+  fi
+
+  # -------------------------------------------------------------------------
+  # The unit every other unit here escalates to.
+  #
+  # This script's own header admitted the gap: "nothing in the stack alerts on a failed
+  # unit". That was true of the deploy timer failing every five minutes with 203/EXEC after a
+  # directory rename, and it is true of anything else installed here. systemd knows the unit
+  # failed; nobody was listening.
+  #
+  # `%i` is the failed unit's name, passed by `OnFailure=nora-alert@%n.service`. The endpoint
+  # comes from /etc/nora/alerting.env, the same file the operator points at their chat
+  # webhook. `EnvironmentFile=-` (leading dash) means an absent file is not an error, and the
+  # script below exits 0 when the variable is empty: a host with no webhook configured gets a
+  # journal line rather than a second failed unit chasing the first.
+  #
+  # Deliberately NOT Grafana's alerting: this has to work when the stack is down, which is
+  # the case where a deploy unit fails.
+  # -------------------------------------------------------------------------
+  mkdir -p /etc/nora
+
+  cat > "$SYSTEMD_DIR/nora-alert@.service" <<EOF
+[Unit]
+Description=NORA — reports the failure of %i to the operator webhook
+Documentation=file://${HOST_DIR}/../../docs/operations/host-deploy.md
+
+[Service]
+Type=oneshot
+User=root
+# The payload lives in a script rather than inline here. An inline \`/bin/sh -c\` would have
+# to carry a JSON body through systemd's quoting AND the shell's, and a mis-escaped quote in
+# a unit that only ever runs when something else is already broken is the worst possible
+# place for one.
+EnvironmentFile=-/etc/nora/alerting.env
+# Invoked through \`bash\` so it does not depend on the file mode bit — the same reason
+# ci.yml's action-pin step gives. \`core.filemode\` is false on at least one workstation that
+# writes to this repository, so a script added there arrives 100644 and a direct ExecStart
+# would fail with 203/EXEC on a unit whose entire job is to report failures.
+ExecStart=/bin/bash ${SCRIPT_DIR}/notify-failure.sh %i
+StandardOutput=journal
+StandardError=journal
+EOF
+
+  if [ ! -f /etc/nora/alerting.env ]; then
+    cat > /etc/nora/alerting.env <<'EOF'
+# Where a FAILED systemd unit reports itself. Any endpoint that accepts a JSON POST works:
+# a Slack or Discord incoming webhook, an ntfy topic, a self-hosted receiver.
+#
+# This is host-level alerting and is deliberately separate from Grafana's (whose contact
+# point reads the same value from the stack's secrets file): this one has to work when the
+# stack is DOWN, which is the case where a deploy unit fails.
+#
+# Left COMMENTED: with no value, a failed unit still writes a journal line saying so. That is
+# strictly less than a notification and strictly more than the nothing that was here before.
+#NORA_ALERT_WEBHOOK_URL=
+EOF
+    chmod 0640 /etc/nora/alerting.env
+    info "/etc/nora/alerting.env created — set NORA_ALERT_WEBHOOK_URL in it"
+  else
+    info "/etc/nora/alerting.env already exists (not overwriting)"
   fi
 
   cat > "$SYSTEMD_DIR/nora-deploy.service" <<EOF
 [Unit]
-Description=NORA — reconciles the stack with the latest image published to GHCR
+Description=NORA — rolls the stack forward to the promoted release pointer
 Documentation=file://${HOST_DIR}/../../docs/operations/host-deploy.md
 After=docker.service network-online.target
 Requires=docker.service
+OnFailure=nora-alert@%n.service
 
 [Service]
 Type=oneshot
@@ -137,7 +204,13 @@ WorkingDirectory=${HOST_DIR}
 Environment=SOPS_AGE_KEY_FILE=${AGE_KEY_FILE}
 Environment=NORA_STATE_DIR=${STATE_DIR}
 Environment=BACKUP_DIR=${BACKUP_DIR}
-ExecStart=${SCRIPT_DIR}/deploy.sh --if-changed
+# --follow-release is what makes this a deploy agent instead of an integrity check.
+# Without it, deploy.sh probes the digest of the tag ALREADY RUNNING — and rollouts use
+# immutable sha-<short> tags, whose digest never changes — so the timer could not discover a
+# new release however often it ran. It also implies --sync, so a change to the compose, the
+# Caddyfile or these scripts reaches the machine instead of sitting in git. deploy.sh's
+# --if-changed block carries the full reasoning.
+ExecStart=${SCRIPT_DIR}/deploy.sh --if-changed --follow-release
 TimeoutStartSec=900
 # deploy.sh already rolls back on its own; do not restart in a loop.
 Restart=no
@@ -150,7 +223,7 @@ EOF
 
   cat > "$SYSTEMD_DIR/nora-deploy.timer" <<EOF
 [Unit]
-Description=NORA — checks GHCR for a new image every ${PULL_INTERVAL}
+Description=NORA — checks the release pointer and GHCR every ${PULL_INTERVAL}
 
 [Timer]
 OnBootSec=2min
@@ -163,11 +236,138 @@ Persistent=true
 WantedBy=timers.target
 EOF
 
+  # -------------------------------------------------------------------------
+  # Off-host backup. See ../scripts/offsite-backup.sh for what it copies and what it
+  # deliberately does not.
+  #
+  # Hourly, thirty minutes offset from the top of the hour: the `backup` container dumps on
+  # its own interval and copying a file that is still being written wastes a transfer.
+  #
+  # The unit FAILS on an unconfigured host, on purpose, and escalates to nora-alert@. A
+  # silent success would rebuild exactly the state this leg was written to end.
+  # -------------------------------------------------------------------------
+  if [ ! -f /etc/nora/offsite.env ]; then
+    cat > /etc/nora/offsite.env <<'EOF'
+# Where the verified database dumps are copied OFF this machine.
+# Read infra/host/scripts/offsite-backup.sh for the three accepted forms.
+#
+#   NORA_OFFSITE_TARGET=rclone:<remote>:<path>
+#   NORA_OFFSITE_TARGET=rsync:<user@host:/path>
+#   NORA_OFFSITE_TARGET=none        # off by decision, and recorded as such
+#
+# Left COMMENTED on purpose: until it is set, nora-offsite-backup.service fails every hour
+# and says why. That is the intended noise — a host whose backups exist only on itself
+# should not look healthy.
+#NORA_OFFSITE_TARGET=
+NORA_OFFSITE_RETENTION_DAYS=30
+EOF
+    chmod 0640 /etc/nora/offsite.env
+    info "/etc/nora/offsite.env created — set NORA_OFFSITE_TARGET in it"
+  else
+    info "/etc/nora/offsite.env already exists (not overwriting)"
+  fi
+
+  cat > "$SYSTEMD_DIR/nora-offsite-backup.service" <<EOF
+[Unit]
+Description=NORA — copies the verified database dumps off this host
+Documentation=file://${HOST_DIR}/../../docs/operations/host-deploy.md
+After=docker.service network-online.target
+OnFailure=nora-alert@%n.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=${HOST_DIR}
+EnvironmentFile=-/etc/nora/offsite.env
+Environment=BACKUP_DIR=${BACKUP_DIR}
+Environment=NORA_STATE_DIR=${STATE_DIR}
+# Through \`bash\`, not directly — see the note on nora-alert@.service above.
+ExecStart=/bin/bash ${SCRIPT_DIR}/offsite-backup.sh
+TimeoutStartSec=3600
+Restart=no
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  cat > "$SYSTEMD_DIR/nora-offsite-backup.timer" <<'EOF'
+[Unit]
+Description=NORA — hourly off-host copy of the database dumps
+
+[Timer]
+OnCalendar=*-*-* *:30:00
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+  # -------------------------------------------------------------------------
+  # Restore drill. The script has existed and been well built since it was written, and had
+  # never run: nothing scheduled it, and the results table in host-deploy.md still reads
+  # "(pending — first drill within 30 days after go-live)". ADR 0016 Gap 3 asks for a
+  # quarterly cadence, so that is the cadence — `quarterly` is a systemd calendar alias for
+  # 1 January, April, July and October.
+  #
+  # It is SAFE to run unattended, which is why it can be a timer at all: restore-drill.sh
+  # brings up a disposable container with `--network none` and an anonymous volume, and never
+  # touches the stack or its databases. What it costs is CPU and one dump-sized restore.
+  #
+  # Its exit codes are distinct (2 restore failed, 3 validation failed, 4 RTO blown), so a
+  # failure escalates through nora-alert@ with the unit name, and `journalctl -u` has the
+  # phase timings. A drill that has never been run means the 2h RTO is a guess; a drill that
+  # runs and fails is the only thing that can turn it into a measurement.
+  # -------------------------------------------------------------------------
+  cat > "$SYSTEMD_DIR/nora-restore-drill.service" <<EOF
+[Unit]
+Description=NORA — quarterly restore drill (disposable container, measures the RTO floor)
+Documentation=file://${HOST_DIR}/../../docs/operations/host-deploy.md
+After=docker.service
+Requires=docker.service
+OnFailure=nora-alert@%n.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=${HOST_DIR}
+Environment=BACKUP_DIR=${BACKUP_DIR}
+ExecStart=${SCRIPT_DIR}/restore-drill.sh
+TimeoutStartSec=10800
+Restart=no
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  cat > "$SYSTEMD_DIR/nora-restore-drill.timer" <<'EOF'
+[Unit]
+Description=NORA — runs the restore drill every quarter
+
+[Timer]
+OnCalendar=quarterly
+# Well away from any hour a person would be deploying.
+RandomizedDelaySec=3600
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
   systemctl daemon-reload
   systemctl enable nora-deploy.timer
+  systemctl enable nora-offsite-backup.timer
+  systemctl enable nora-restore-drill.timer
   info "nora-deploy.timer enabled (interval: $PULL_INTERVAL)"
   info "  WorkingDirectory=${HOST_DIR}"
-  info "  ExecStart=${SCRIPT_DIR}/deploy.sh --if-changed"
+  info "  ExecStart=${SCRIPT_DIR}/deploy.sh --if-changed --follow-release"
+  info "nora-offsite-backup.timer enabled (hourly, :30) — needs NORA_OFFSITE_TARGET in /etc/nora/offsite.env"
+  info "nora-restore-drill.timer enabled (quarterly)"
+  info "nora-alert@.service installed — set NORA_ALERT_WEBHOOK_URL in /etc/nora/alerting.env"
 }
 
 # ---------------------------------------------------------------------------
@@ -333,8 +533,10 @@ else
   info "age already installed"
 fi
 
-# Utilities the scripts use
-run apt-get install -y -qq postgresql-client jq curl ca-certificates findutils
+# Utilities the scripts use. `rsync` is here for offsite-backup.sh's rsync mode, which is the
+# form an operator can configure with an ssh key and nothing else; the rclone mode needs
+# `apt-get install rclone` plus `rclone config` and is deliberately not installed for them.
+run apt-get install -y -qq postgresql-client jq curl ca-certificates findutils rsync
 
 # ---------------------------------------------------------------------------
 # 4. Service user
@@ -387,10 +589,13 @@ else
 
       $PUBKEY
 
-  1. Paste it into ${HOST_DIR}/.sops.yaml as a recipient.
+  1. Paste it into ${HOST_DIR}/.sops.yaml as a recipient and commit THAT (an age
+     recipient is a public key; it belongs in a public repository).
   2. Encrypt the secrets:  sops --encrypt --input-type dotenv --output-type dotenv \\
                               secrets.env > secrets.env.sops
-  3. Commit the .sops (it is safe) and DELETE the cleartext secrets.env.
+  3. DELETE the cleartext secrets.env. Do NOT commit secrets.env.sops: with a single
+     recipient it is useless off this host (ADR 0036 §4), and the supported path is
+     scripts/secrets-bootstrap.sh regenerating it here.
 
   The PRIVATE key lives only here, at $AGE_KEY_FILE (0400 root). If this host dies
   without a backup of it, the encrypted secrets in the repo turn into garbage — keep an
@@ -449,12 +654,23 @@ cat <<EOF
 
   Next steps (docs/operations/host-deploy.md):
 
-    1. Encrypt the secrets with the age key above  ->  secrets.env.sops
+    1. Encrypt the secrets with the age key above  ->  secrets.env.sops (stays on THIS host)
     2. Create the Cloudflare Tunnel and grab the TUNNEL_TOKEN
     3. (the database is born EMPTY — Flyway creates the schema; nothing to rescue from Azure)
     4. First deploy                              ->  scripts/deploy.sh
     5. Restore from a backup, if needed             ->  scripts/restore-into-host.sh
-    6. Drill the restore (never been tested)      ->  scripts/restore-drill.sh
-    7. Only then:  systemctl start nora-deploy.timer
+    6. Drill the restore                            ->  scripts/restore-drill.sh
+       (nora-restore-drill.timer runs it quarterly from now on; run it once by hand first,
+        because the results table in host-deploy.md has never been filled in)
+    7. TWO VARIABLES THAT ARE NOT SECRETS BUT MAKE THE DIFFERENCE BETWEEN QUIET AND SILENT:
+         /etc/nora/offsite.env   NORA_OFFSITE_TARGET  — where the dumps are copied OFF this
+                                 machine. Until it is set, nora-offsite-backup.service fails
+                                 hourly, on purpose: backups that exist only here are not
+                                 backups, and that should be noisy rather than invisible.
+         /etc/nora/alerting.env  NORA_ALERT_WEBHOOK_URL — where a FAILED unit reports itself.
+                                 Unset means a failure is a journal line nobody reads.
+    8. Only then:  systemctl start nora-deploy.timer
+                   systemctl start nora-offsite-backup.timer
+                   systemctl start nora-restore-drill.timer
 
 EOF

@@ -71,6 +71,11 @@ REPO_MOVED=0
 ROLLBACK_ONLY=0
 NO_ROLLBACK=0
 FORCE_PLATFORM=""
+FOLLOW_RELEASE=0
+
+# The ref `deploy-host.yml` force-pushes on every promotion. Overridable only so a second
+# environment could point at a different pointer; there is no second environment today.
+RELEASE_POINTER_REF="${NORA_RELEASE_POINTER_REF:-refs/tags/release/prod/current}"
 
 usage() {
   cat <<EOF
@@ -89,8 +94,18 @@ OPTIONS
                        on path filters, so a sha- tag exists only for the services that
                        commit touched. With --service, a missing image is an error.
   --if-changed         Only deploys if the tag's remote digest on GHCR differs from the
-                       last digest recorded in the state. This is the mode used by the
-                       systemd timer (nora-deploy.timer) — exits 0 doing nothing when unchanged.
+                       last digest recorded in the state. Combined with --follow-release this
+                       is what the systemd timer runs — it exits 0 doing nothing when the
+                       pointer has not moved and the running images are intact.
+  --follow-release     Resolves the release pointer that deploy-host.yml publishes
+                       (git tag \`$RELEASE_POINTER_REF\`) and rolls out the
+                       \`sha-<short>\` it names. IMPLIES --sync, because the pointer names a
+                       COMMIT: without pulling it, new images would run against the compose
+                       and Caddyfile of an older one. Refuses to act on a pointer whose
+                       immutable sibling tag \`release/prod/<short>\` is missing — that tag is
+                       only created after the promote workflow has checked that every
+                       announced manifest exists in GHCR and that the SHA is an ancestor of
+                       main.
   --sync               Runs \`git pull --ff-only\` on the host repo BEFORE anything else.
                        Without this the deploy only updates IMAGES: a change in the compose, in
                        the Caddyfile or in the scripts stays in git and never reaches the machine.
@@ -113,7 +128,7 @@ STATE
   and the timestamp of the last successful deploy.
 
 SECRETS
-  $SOPS_FILE  (versioned, encrypted)
+  $SOPS_FILE  (encrypted, host-only and UNTRACKED — ADR 0036 §4)
   age private key: $AGE_KEY_FILE (host only, 0400 root).
   Decrypted to a .env in /dev/shm (tmpfs), erased on the EXIT trap. Never touches disk.
 
@@ -121,7 +136,8 @@ EXAMPLES
   $SCRIPT_NAME --tag sha-a1b2c3d                 # full rollout on one tag
   $SCRIPT_NAME --service api --tag sha-a1b2c3d   # API only
   $SCRIPT_NAME --service api,web --tag sha-a1b2c3d
-  $SCRIPT_NAME --if-changed                      # what the systemd timer calls
+  $SCRIPT_NAME --if-changed --follow-release     # what the systemd timer calls
+  $SCRIPT_NAME --follow-release                  # roll forward to the promoted release, now
   $SCRIPT_NAME --service api --rollback          # reverts the API to the previous tag
 EOF
 }
@@ -144,6 +160,11 @@ while [ $# -gt 0 ]; do
     --tag|-t)        TAG="${2:?--tag requires a value}"; shift 2 ;;
     --if-changed)    IF_CHANGED=1; shift ;;
     --sync)          SYNC=1; shift ;;
+    # --follow-release turns --sync on and there is no flag to turn it back off. Applying an
+    # image built from commit X against the compose of commit Y is precisely the split-brain
+    # this option exists to remove; making it separable would leave the trap in place with a
+    # nicer name on it.
+    --follow-release) FOLLOW_RELEASE=1; SYNC=1; shift ;;
     --rollback)      ROLLBACK_ONLY=1; shift ;;
     --no-pull)       DO_PULL=0; shift ;;
     --no-rollback)   NO_ROLLBACK=1; shift ;;
@@ -162,7 +183,12 @@ umask 077
 # TAG_IS_GLOBAL: --tag was given without --service, so it applies to every application
 # service at once. That distinction decides what a missing image means -- see deploy_service.
 TAG_IS_GLOBAL=0
+# Remembered because --follow-release resolves its tag LATER (it needs git and the synced
+# repo), and the "is this tag aimed at one service or at the whole set" question has to be
+# answered the same way for a tag that arrived from the pointer as for one typed by hand.
+SELECTED_EXPLICIT=1
 if [ "${#SELECTED[@]}" -eq 0 ]; then
+  SELECTED_EXPLICIT=0
   SELECTED=("${ALL_SERVICES[@]}")
   [ -n "$TAG" ] && TAG_IS_GLOBAL=1
 else
@@ -403,7 +429,10 @@ probe_cmd() {
     loki)              printf 'wget\t-q\t--spider\thttp://localhost:3100/ready' ;;
     grafana)           printf 'wget\t-q\t--spider\thttp://localhost:3000/api/health' ;;
     cloudflared)       printf 'cloudflared\t--version' ;;
-    alloy|backup)      printf '' ;;   # no own probe: validates by container state
+    # alloy: the image is Ubuntu-based and ships no wget or curl, so there is nothing to run
+    # INSIDE it. backup serves no port at all. Both are covered by fallback_probe below —
+    # "validates by container state" was the whole defect, not the design.
+    alloy|backup)      printf '' ;;
     *)                 printf '' ;;
   esac
 }
@@ -450,9 +479,79 @@ probe_once() {
   return 2
 }
 
+# ---------------------------------------------------------------------------
+# FALLBACK PROBES — for the three services that have neither an in-image probe nor a
+# declared healthcheck, and were therefore passing the rollout's health gate on `running`.
+#
+# Three of the fourteen services fell into that hole: otel-collector (every metric the four
+# applications produce goes through it), alloy (every log line does) and backup (the only
+# thing standing between a bad day and a lost database). A collector that comes up and
+# immediately fails to export was indistinguishable here from a healthy one, and no rollback
+# could fire because nothing had said anything was wrong.
+#
+# The compose explains why two of them have no `healthcheck:` and the explanation is correct:
+# the otel-collector-contrib image is distroless — no shell, no wget, no curl — so any `test:`
+# would leave the container `unhealthy` FOREVER and abort `up -d --wait` on a collector that
+# works. It then points out that the health_check extension answers on :13133 and "can be
+# probed from outside". That sentence had no implementation. This is it.
+#
+# The probe runs INSIDE `prometheus`, which is on the same `internal` bridge and whose image
+# ships busybox wget — the same wget its own healthcheck uses. Health is still judged from
+# inside the stack, never through the public URL, which is the rule at the top of this section.
+#
+# `backup` is different in kind: it serves no port at all. What it has is a log line per
+# event, so the fallback reads its own words — preflight failed, or preflight passed and a
+# cycle started. That is strictly more than `running`, which is what it was getting.
+#
+# Every path here returns 2 ("no opinion") when the machinery it needs is missing — the peer
+# container is not up, the log is unreadable — so a partial deploy degrades to the previous
+# behaviour instead of failing a service for the wrong reason.
+#
+# One consequence worth knowing rather than discovering: ALL_SERVICES rolls `otel-collector`
+# out BEFORE `prometheus`, so on a cold first deploy the peer does not exist yet and the
+# collector is still validated by `running` alone, exactly as before. Every subsequent
+# deploy — including every timer cycle — has prometheus up and gets the real probe.
+#
+# fallback_probe <service> -> 0 healthy, 1 not healthy, 2 no fallback available
+fallback_probe() {
+  local svc="$1" peer url out rc
+  case "$svc" in
+    otel-collector) peer=prometheus; url="http://otel-collector:13133/" ;;
+    alloy)          peer=prometheus; url="http://alloy:12345/-/ready" ;;
+    backup)
+      set +e
+      out="$(dc logs --tail 200 backup 2>/dev/null)"
+      rc=$?
+      set -e
+      [ "$rc" -eq 0 ] || return 2
+      [ -n "$out" ] || return 2
+      if printf '%s' "$out" | grep -q 'event=preflight.fail'; then
+        err "  backup: preflight failed in the container — it is running and doing nothing"
+        printf '%s' "$out" | grep 'event=preflight.fail' | tail -3 | sed 's/^/      /' >&2
+        return 1
+      fi
+      printf '%s' "$out" | grep -q 'event=start\|event=cycle' && return 0
+      return 1
+      ;;
+    *) return 2 ;;
+  esac
+
+  [ "$(docker_health "$peer")" != "absent" ] || return 2
+  set +e
+  dc exec -T "$peer" wget -q --spider "$url" >/dev/null 2>&1
+  rc=$?
+  set -e
+  case "$rc" in
+    0) return 0 ;;
+    # 126/127 is wget missing from the PEER's image, not a verdict about the service.
+    126|127) return 2 ;;
+    *) return 1 ;;
+  esac
+}
+
 # healthy <service> -> 0/1, with retry
 healthy() {
-  local svc="$1" i rc hs
+  local svc="$1" i rc hs frc
   for i in $(seq 1 "$PROBE_RETRIES"); do
     hs="$(docker_health "$svc")"
     if [ "$hs" = "absent" ]; then
@@ -477,8 +576,19 @@ healthy() {
           return 0
         fi
         if [ "$hs" = "none" ]; then
-          warn "  $svc: no declared healthcheck and no probe — validated only by 'running'"
-          return 0
+          set +e
+          fallback_probe "$svc"
+          frc=$?
+          set -e
+          case "$frc" in
+            0) ok "  $svc: no in-image probe; verified from a peer container (attempt $i)"; return 0 ;;
+            # 1 means the fallback has an opinion and it is bad — keep retrying, then fail with
+            # the loop's own message. This is the case that can now roll a service back.
+            1) : ;;
+            # 2 is the old behaviour, and it is still reached on purpose: a service with no
+            # healthcheck, no probe and no fallback is validated by `running` and SAYS so.
+            *) warn "  $svc: no declared healthcheck, no probe and no peer check — validated only by 'running'"; return 0 ;;
+          esac
         fi
         ;;
     esac
@@ -729,9 +839,14 @@ ghcr_login() {
 # reached the machine — this file's header said "git pull + docker pull" and half of that
 # did not happen. `--sync` closes that half.
 #
-# It stays OPT-IN, and the timer does NOT use it: with it on, a merge to main would start
-# reconfiguring production by itself. The automatic rollback covers image tags, not a broken
-# compose — so this is an operations decision, not a default.
+# It stays OPT-IN as a flag of its own, and `--follow-release` is what turns it on for the
+# timer. The old note here said the timer does NOT use it, on the grounds that a merge to main
+# would start reconfiguring production by itself — which was true while the timer had no way
+# to know WHICH commit was supposed to be live. It does now: the pointer only moves on a green
+# build that has been promoted, and applying that commit's images against a different commit's
+# compose is a worse failure than applying both. The automatic rollback still covers image
+# tags and not a broken compose; that is what `--sync`'s `--ff-only` and the promote gate are
+# there to bound.
 #
 # Subtlety: the pull can replace THIS file mid-execution. Git writes to a temporary file
 # and renames, so bash keeps reading the old inode and the current run uses the OLD version
@@ -739,26 +854,33 @@ ghcr_login() {
 # deploy.sh itself, run it twice.
 REPO_ROOT="$(cd "$HOST_DIR/../.." && pwd)"
 
+# Running under sudo, a root `git` in a directory owned by someone else stops at "detected
+# dubious ownership". Running as the owner avoids that without having to touch a global
+# safe.directory. Every git call against the host checkout goes through here.
+repo_owner() { stat -c %U "$REPO_ROOT" 2>/dev/null || echo root; }
+repo_git() {
+  local owner
+  owner="$(repo_owner)"
+  if [ "$(id -un)" = "$owner" ]; then
+    git -C "$REPO_ROOT" "$@"
+  else
+    sudo -u "$owner" git -C "$REPO_ROOT" "$@"
+  fi
+}
+
 sync_repo() {
   [ "$SYNC" -eq 1 ] || return 0
   [ -d "$REPO_ROOT/.git" ] || { warn "--sync: $REPO_ROOT is not a git repo — skipping"; return 0; }
 
-  local owner before after
-  owner="$(stat -c %U "$REPO_ROOT")"
-  # Running under sudo, a root `git` in a directory owned by someone else stops at
-  # "detected dubious ownership". Pulling as the owner avoids that without having to touch
-  # a global safe.directory.
-  local -a git_cmd=(git -C "$REPO_ROOT")
-  [ "$(id -un)" = "$owner" ] || git_cmd=(sudo -u "$owner" git -C "$REPO_ROOT")
-
-  before="$("${git_cmd[@]}" rev-parse HEAD 2>/dev/null || echo unknown)"
-  log "--sync: git pull --ff-only on $REPO_ROOT (as $owner)"
+  local before after
+  before="$(repo_git rev-parse HEAD 2>/dev/null || echo unknown)"
+  log "--sync: git pull --ff-only on $REPO_ROOT (as $(repo_owner))"
   # --ff-only on purpose: if there is a local change, it is to STOP and let the operator see,
   # not to merge by itself on top of a production host.
-  if ! run "${git_cmd[@]}" pull --ff-only; then
+  if ! run repo_git pull --ff-only; then
     die "--sync: git pull failed. Is there a local change in $REPO_ROOT? \`git -C $REPO_ROOT status\`"
   fi
-  after="$("${git_cmd[@]}" rev-parse HEAD 2>/dev/null || echo unknown)"
+  after="$(repo_git rev-parse HEAD 2>/dev/null || echo unknown)"
 
   if [ "$before" != "$after" ]; then
     REPO_MOVED=1
@@ -769,9 +891,105 @@ sync_repo() {
 }
 
 # ---------------------------------------------------------------------------
+# THE RELEASE POINTER CONSUMER
+# ---------------------------------------------------------------------------
+# `.github/workflows/deploy-host.yml` has published a release pointer on every merge since it
+# was written, and its own header carried a banner saying so: "THE RIGHT-HAND COLUMN ABOVE
+# DOES NOT EXIST. Everything this workflow publishes is real; the consumer that was supposed
+# to read it was never written." This is that consumer. It is fifteen lines, and what it buys
+# is the difference between a timer that verifies the running release is intact and a timer
+# that discovers a new one.
+#
+# WHY IT READS THE GIT TAG AND NOT THE ARTIFACT. The tag is public (the repository is), so
+# `git ls-remote` needs no credential at all; the Actions artifact needs a PAT and expires in
+# 90 days. That was already the argument in deploy-host.yml's "WHY A GIT TAG" section, written
+# for a reader who did not exist yet.
+#
+# WHAT IT VALIDATES BEFORE ACTING, and why that is the interesting part. `release/prod/current`
+# is force-pushed, so it alone proves nothing about how it got there. The IMMUTABLE sibling
+# `release/prod/<short>` is created only after the promote job has (a) refused any SHA that is
+# not an ancestor of origin/main and (b) confirmed with `buildx imagetools inspect` that every
+# announced manifest exists in GHCR. Requiring both tags therefore inherits both checks — which
+# is exactly the validation the manual `deploy.sh --tag sha-xxxxxxx` path never had.
+release_pointer_tag() {
+  local refs sha short
+  command -v git >/dev/null 2>&1 || { err "--follow-release: git is not installed on this host."; return 1; }
+  [ -d "$REPO_ROOT/.git" ] || { err "--follow-release: $REPO_ROOT is not a git checkout, so there is no origin to ask."; return 1; }
+
+  # The whole tag list, filtered here rather than by a refspec: `ls-remote <pattern>` matches
+  # on the ref name's tail and would never match the PEELED entry (`...current^{}`), which is
+  # the one carrying the commit an annotated tag points at. Dozens of tags is a few kilobytes.
+  refs="$(repo_git ls-remote --tags origin 2>/dev/null)" || {
+    err "--follow-release: \`git ls-remote --tags origin\` failed. Network, or origin not configured."
+    return 1
+  }
+  [ -n "$refs" ] || { err "--follow-release: origin advertises no tags at all."; return 1; }
+
+  sha="$(printf '%s\n' "$refs" | awk -v r="${RELEASE_POINTER_REF}^{}" '$2 == r { print $1 }' | tail -1)"
+  [ -n "$sha" ] || sha="$(printf '%s\n' "$refs" | awk -v r="$RELEASE_POINTER_REF" '$2 == r { print $1 }' | tail -1)"
+  if [ -z "$sha" ]; then
+    err "--follow-release: origin has no $RELEASE_POINTER_REF."
+    err "  Nothing has been promoted yet, or the promote workflow has never run on this repo."
+    return 1
+  fi
+
+  short="${sha:0:7}"
+  if ! printf '%s\n' "$refs" | awk -v r="refs/tags/release/prod/$short" '$2 == r { found = 1 } END { exit !found }'; then
+    err "--follow-release: $RELEASE_POINTER_REF points at $short, but there is no"
+    err "  refs/tags/release/prod/$short on origin. The moving pointer is force-pushed and the"
+    err "  immutable one is not, so this combination means the pointer was moved by something"
+    err "  other than the promote job — which is the job that checks the SHA is on main and"
+    err "  that every image manifest exists in GHCR. Refusing to deploy it."
+    return 1
+  fi
+
+  printf 'sha-%s' "$short"
+}
+
+# The manual path keeps its escape hatch and stops being silent about it. `--tag` accepts any
+# string a person types; before this it only warned when the string did not LOOK like
+# `sha-<short>`, which is a spelling check rather than a provenance one.
+warn_if_tag_not_promoted() {
+  local tag="$1" short
+  case "$tag" in
+    sha-*) short="${tag#sha-}" ;;
+    *) return 0 ;;
+  esac
+  [ -d "$REPO_ROOT/.git" ] || return 0
+  # No origin means no promote history to compare against — a checkout in that state is not a
+  # host that skipped a check, and saying otherwise would train the reader to ignore the warn.
+  repo_git remote get-url origin >/dev/null 2>&1 || return 0
+  if ! repo_git ls-remote --exit-code --tags origin "refs/tags/release/prod/$short" >/dev/null 2>&1; then
+    warn "tag '$tag' has no release/prod/$short on origin."
+    warn "  That tag is what the promote workflow creates AFTER checking the SHA is an ancestor"
+    warn "  of main and that every image manifest exists in GHCR. Deploying anyway (this is a"
+    warn "  legitimate escape hatch for an image built but never promoted) — but nothing has"
+    warn "  verified this SHA on your behalf."
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Execution
 # ---------------------------------------------------------------------------
 sync_repo
+
+# Resolved AFTER the sync, on purpose: the pointer names a commit, and the tags it is checked
+# against are read from origin, so doing this first would validate against a stale view and
+# then deploy images built from a commit whose compose is not on disk.
+if [ "$FOLLOW_RELEASE" -eq 1 ]; then
+  hr
+  log "--follow-release: reading $RELEASE_POINTER_REF from origin"
+  _pointer_tag="$(release_pointer_tag)" || die "--follow-release: could not resolve a usable release pointer (see above). Nothing was deployed."
+  TAG="$_pointer_tag"
+  [ "$SELECTED_EXPLICIT" -eq 0 ] && TAG_IS_GLOBAL=1
+  ok "release pointer -> $TAG"
+  _apps_selected=0
+  for s in "${SELECTED[@]}"; do contains "$s" "${APP_SERVICES[@]}" && _apps_selected=1; done
+  [ "$_apps_selected" -eq 1 ] || die "--follow-release resolves a tag for ${APP_SERVICES[*]}; none of them were selected."
+elif [ -n "$TAG" ]; then
+  warn_if_tag_not_promoted "$TAG"
+fi
+
 prepare_env
 ghcr_login
 
@@ -822,15 +1040,27 @@ fi
 
 # --if-changed: compares the remote digest with the recorded one. It is what the timer uses.
 #
-# WHAT THIS DOES NOT DO, so a working gate is not mistaken for continuous deployment.
-# The timer calls this with no `--tag` (see bootstrap-host.sh's `ExecStart=` line — no line
-# number here on purpose: it has drifted twice already), so the tag probed below is the
-# tag ALREADY RUNNING (`want_tag="${TAG:-$(running_tag "$s")}"`). Rollouts use immutable
-# `sha-<short>` tags, and an immutable tag's digest never changes — so this branch is a check
-# that the running release is intact, NOT a check for a newer one. Rolling forward would mean
-# reading the release pointer that `deploy-host.yml` publishes (git tag `release/prod/current`),
-# and no script under `infra/host/` reads it: the producer exists, the consumer was never
-# written. Until it is, moving to a new release is `deploy.sh --tag sha-<short>` by hand.
+# WHAT THIS BRANCH CAN AND CANNOT SEE, so a working gate is not mistaken for something else.
+#
+# The comparison below probes `want_tag="${TAG:-$(running_tag "$s")}"`. WITHOUT a tag that is
+# the tag ALREADY RUNNING — and rollouts use immutable `sha-<short>` tags, whose digest never
+# changes — so on its own this branch checks that the running release is intact and can never
+# discover a newer one. That was the whole behaviour of the timer for as long as this file
+# existed, and the paragraph that used to sit here said so and left it there.
+#
+# `--follow-release` is what closes it, and the timer now passes both flags (see
+# bootstrap-host.sh's `ExecStart=` line — no line number here on purpose: it has drifted twice
+# already). With it, TAG is the tag named by the release pointer, so:
+#   - pointer moved      -> want_tag is the NEW tag, its digest differs from the recorded one,
+#                           and the services that actually have an image at that SHA deploy;
+#   - pointer unchanged  -> want_tag is what is running, digest matches, exit 0 doing nothing;
+#   - config changed     -> `--follow-release` implies `--sync`, HEAD moves, REPO_MOVED is set
+#                           and the branch above deploys everything without comparing digests
+#                           at all, because a compose or Caddyfile change has no digest.
+#
+# Still NOT continuous deployment, and the distinction is worth keeping: a promotion has to
+# happen first (deploy-host.yml, on a green build), and the pointer is only followed if its
+# immutable sibling tag exists — see release_pointer_tag.
 if [ "$IF_CHANGED" -eq 1 ] && [ "$REPO_MOVED" -eq 1 ]; then
   hr
   log "--if-changed: the repo moved (--sync), so the config may have changed — deploying everything"

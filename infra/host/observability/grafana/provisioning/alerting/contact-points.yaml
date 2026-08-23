@@ -1,0 +1,53 @@
+# NORA — Grafana unified alerting: where an alert goes
+# =============================================================================
+# Three files in this directory say the same thing prometheus.yml, loki.yaml and
+# datasources.yaml already claimed and none of them backed: "alerting today is Grafana's
+# unified alerting". Until this directory existed the claim was true only in the sense that
+# nothing else did it either — `provisioning/` held `dashboards/` and `datasources/`, there
+# was no rule anywhere in `infra/host`, no contact point and no SMTP in the Grafana container.
+# A rule created through the UI would also have lived only in the `grafana_data` volume,
+# outside git, and would have had nowhere to notify.
+#
+# THE ONE VARIABLE YOU HAVE TO FILL IN
+# -----------------------------------------------------------------------------
+#   NORA_ALERT_WEBHOOK_URL   the endpoint that receives the alert JSON.
+#
+# It is injected into the Grafana container by docker-compose.yml (the `grafana` service's
+# environment block) and comes from the host's secrets file — `secrets.env.example` carries
+# the entry and the reasoning. Anything speaking the generic webhook shape works: a Slack or
+# Discord incoming webhook, an ntfy topic, a Telegram bridge, a self-hosted receiver.
+#
+# WITH THE VARIABLE EMPTY the rules in `rules.yaml` still evaluate and still fire — they are
+# visible in Grafana under Alerting -> Alert rules, and the state history is kept. What does
+# not happen is the notification. That is a deliberate ordering: a rule with no recipient is
+# worth strictly more than no rule, because the rule is the part that encodes what "broken"
+# means, and it is the part that cannot be added in a hurry during an incident.
+#
+# WHY A WEBHOOK AND NOT EMAIL. Email would need SMTP credentials in the Grafana container
+# (GF_SMTP_ENABLED / GF_SMTP_HOST / GF_SMTP_USER / GF_SMTP_PASSWORD / GF_SMTP_FROM_ADDRESS,
+# all of them env vars this compose does not set) plus a provider that will accept mail from
+# a residential IP — two dependencies to acquire before the first alert can be delivered.
+# A webhook URL is one string, and every chat product the operator already has hands one out.
+# If email is preferred later, set those five GF_SMTP_* variables in the compose and change
+# `type: webhook` below to `type: email` with an `addresses:` setting.
+#
+# `$NORA_ALERT_WEBHOOK_URL` is expanded by Grafana's provisioning reader from the container
+# environment. If your Grafana build does not expand it, the symptom is loud rather than
+# silent: the contact point is created with a literal `$NORA_ALERT_WEBHOOK_URL` as its URL
+# and every delivery attempt logs a failure in `docker compose logs grafana`. Check there
+# after the first alert rather than assuming silence means health.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: nora-operator
+    receivers:
+      - uid: nora-operator-webhook
+        type: webhook
+        # `disableResolveMessage: false` on purpose: the message saying an alert stopped
+        # firing is the one that tells an operator to stop working on it. Suppressing it is
+        # how a fixed incident stays open for a day.
+        disableResolveMessage: false
+        settings:
+          url: $NORA_ALERT_WEBHOOK_URL
+          httpMethod: POST

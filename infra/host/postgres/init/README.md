@@ -46,21 +46,26 @@ docker compose exec -T postgres \
 ```
 
 Running it on an already-migrated database is in fact **better** than during initdb: the tables
-exist, so the `GRANT ... ON ALL TABLES` and the `GRANT SELECT ON meeting_analyses`
-(the `nora_telemetry` one) stop being no-ops.
+exist, so the `GRANT ... ON ALL TABLES` and the three `GRANT SELECT` of `nora_telemetry`
+stop being no-ops.
 
-### The grant that stays pending on the first boot
+### The grants that stay pending on the first boot
 
-`meeting_analyses` is created in migration `V005`, after initdb. The script warns with a
-`WARNING` and carries on. Close the grant **after the first `flyway migrate`**:
+The three tables `nora_telemetry` reads are created by migrations that run after initdb:
+`meetings` (`V004`), `meeting_analyses` (`V005`) and `meeting_embeddings` (`V021`). The script
+raises a `WARNING` per missing table and carries on. Close the grants **after the first
+`flyway migrate`**:
 
 ```bash
 docker compose exec -T postgres psql -U nora_admin -d nora \
-  -c "GRANT SELECT ON meeting_analyses TO nora_telemetry"
+  -c "GRANT SELECT ON meetings, meeting_analyses, meeting_embeddings TO nora_telemetry"
 ```
 
-Without that grant the operator's business panel returns **zero** — no error, no log,
-no alert. It is the most expensive silent failure in this stack.
+Neither failure points back at the missing grant. Without `meeting_analyses` the operator's
+business panel returns **zero** — no error, no log, no alert. Without `meetings` or
+`meeting_embeddings` the RAG backfill preview answers **503** naming the *primary* database,
+because under enforce the telemetry datasource is mandatory and the `permission denied for
+table meetings` surfaces from there. They are the most expensive silent failures in this stack.
 
 ### Role passwords
 

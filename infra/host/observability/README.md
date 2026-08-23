@@ -10,7 +10,9 @@ truth about ports, networks and images.
 | `prometheus.yml` | `prometheus` | Metrics Explorer / Live Metrics + the Query REST API (KQL) |
 | `loki.yaml` | `loki` | the Log Analytics Workspace (`ContainerAppConsoleLogs_CL` table) |
 | `config.alloy` | `alloy` | the `appLogsConfiguration` of the Container Apps Environment |
-| `grafana/provisioning/**` | `grafana` | the chart blades and the portal's saved queries |
+| `grafana/provisioning/dashboards/**` | `grafana` | the chart blades and the portal's saved queries |
+| `grafana/provisioning/datasources/**` | `grafana` | the Metrics Explorer / Log Analytics connection |
+| `grafana/provisioning/alerting/**` | `grafana` | the metric alerts and action groups |
 
 ## The two legs (one does not replace the other)
 
@@ -91,15 +93,58 @@ None of these raises an error. All of them produce an empty panel or data loss w
    `caddy:2021`. If the edge panels are still empty after a deploy, check the two conditions
    separately — target `up`, then presence of `caddy_http_request_duration_seconds` — because they
    fail in different ways and one of them looks like success. Detail in the `caddy` job's comment.
-2. **The cloudflared scrape does not work.** `cloudflared` is only on the `edge` network and
-   `prometheus` only on `internal`; there is no route. A one-line fix in the compose
-   (`networks: [edge, internal]`). Without it, `cloudflared_tunnel_ha_connections` — the signal
-   that detects exactly the 522 that took `nora.systems` down — is never collected.
+2. ~~**The cloudflared scrape does not work.**~~ **Resolved.** `cloudflared` is on
+   `networks: [edge, internal]` in the compose, which is the one-line fix this item asked for;
+   `internal` is `internal: true`, so it adds an interface on the inside without widening the
+   connector's exposure. `cloudflared_tunnel_ha_connections` — the signal that detects exactly
+   the 522 that took `nora.systems` down — is collected, and the
+   `nora-tunnel-connections-zero` rule now alerts on it. If the tunnel panel is empty after a
+   deploy, check that this service still has both networks: putting it back on `edge` alone
+   fails silently in the worst place, because the tunnel keeps working and only the metric
+   proving it works disappears.
 3. **Alloy's WAL is volatile.** The compose passes `--storage.path=/var/lib/alloy/data` but
    does not mount a volume at that path. The argument "Alloy has a WAL, so backpressure becomes
    delay and not loss" holds for **Loki going down**, but **not** for recreating the Alloy
    container: `--force-recreate` erases the WAL and the read positions. See the header of
    `config.alloy`.
+
+## Alerting: the rules, and the one variable that makes them arrive
+
+Until `grafana/provisioning/alerting/` existed, three files in this directory named "Grafana
+unified alerting" as the mechanism (`prometheus.yml`, `loki.yaml`, `datasources.yaml`) and
+there was no rule, no contact point and no SMTP anywhere. Everything below detects things this
+stack could already see and never said.
+
+| rule | fires on | datasource |
+|---|---|---|
+| `nora-upstream-unhealthy` | Caddy reports `api`/`web`/`admin`/`grafana` as an unhealthy upstream for 5 min | Prometheus |
+| `nora-tunnel-connections-zero` | `cloudflared_tunnel_ha_connections` at 0 for 5 min — the 522 | Prometheus |
+| `nora-postgres-unreachable` | no successful Postgres scrape in 5 min | Prometheus |
+| `nora-scrape-target-down` | any scrape job `up == 0` for 10 min | Prometheus |
+| `nora-edge-5xx-rate` | over 5% of edge responses are 5xx for 10 min | Prometheus |
+| `nora-root-disk-low` | under 5 GiB free on the host root filesystem | Prometheus |
+| `nora-loki-compactor-stalled` | no successful compaction in 24 h — retention has stopped | Prometheus |
+| `nora-backup-not-succeeding` | no `event=dump.ok` line in 3 h | Loki |
+
+**The one variable:** `NORA_ALERT_WEBHOOK_URL`, in the host's secrets file (see
+`../secrets.env.example`), injected into the Grafana container by the compose. Any endpoint
+that accepts a JSON POST works. **With it empty the rules still evaluate and still fire** —
+they are visible under *Alerting → Alert rules* with their state history — and only the
+delivery is missing. That ordering is deliberate: the rule is the part that encodes what
+"broken" means, and it is the part nobody can write during an incident.
+
+Two of these rules needed a series that did not exist, and both were added to
+`otel-collector.yaml` rather than by adding containers: the `hostmetrics` receiver, restricted
+to the container's own root mount (**no** host filesystem is mounted into the collector —
+read the note there before "improving" it), and the `postgresql` receiver, which is why the
+collector is now also on the `data` network. Removing either receiver leaves its rule
+evaluating against nothing.
+
+**Host-level failures are a separate path on purpose.** A failed systemd unit —
+`nora-deploy`, `nora-offsite-backup`, `nora-restore-drill` — is reported by
+`../scripts/notify-failure.sh` reading `NORA_ALERT_WEBHOOK_URL` from `/etc/nora/alerting.env`,
+not by Grafana. Grafana is part of the stack, and a deploy failing is a plausible reason for
+it not to be running.
 
 ## Retention: three numbers that have to move together
 

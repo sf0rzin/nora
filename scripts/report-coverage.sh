@@ -17,15 +17,17 @@
 # nobody can defend. The fix is not a better one-off measurement, it is a measurement that
 # happens on every run.
 #
-# NOT A GATE, on purpose. It exits 0 whatever the numbers say. The two coverage gates this
+# NOT A GATE, on purpose. It exits 0 whatever the numbers say. The coverage gates this
 # repository actually enforces are elsewhere and are untouched by this script:
-#   - `services/api/pom.xml`      — JaCoCo CLASS rule on PolicyEvaluator (instruction >= 0.90,
-#                                   branch >= 0.75), haltOnFailure, bound to `verify`
+#   - `services/api/pom.xml`      — three JaCoCo rules under one `check-iam-coverage` execution,
+#                                   haltOnFailure, bound to `verify`: CLASS on PolicyEvaluator,
+#                                   PACKAGE on `domain.iam`, and a whole-BUNDLE floor
 #   - `.github/workflows/ci.yml`  — `pytest --cov=nora_nlp.services.pii_shield
 #                                   --cov-fail-under=90` over that one module
-#   - `apps/web/vitest.config.mts` — per-module `coverage.thresholds` over redact.ts,
-#                                   markdown.ts, tasks-export.ts, usage-report.ts and
-#                                   password-policy.ts (ADR 0042)
+#   - `apps/web/vitest.config.mts` — per-module `coverage.thresholds`, applied by the test run
+#                                   itself (ADR 0042). The modules are NOT listed here: this
+#                                   script reads them out of that file, and a second copy of
+#                                   the list is the thing that went stale last time.
 # Turning THIS into a gate would mean picking a global threshold, and ADR 0018 already
 # considered and rejected exactly that (Alternatives Considered, item 1).
 #
@@ -103,7 +105,7 @@ report_backend() {
         labels["all"]        = "overall (all main sources)"
         labels["iam"]        = "IAM packages (*.iam)"
         labels["auth"]       = "Auth packages (*.identity, *.security)"
-        labels["policyeval"] = "PolicyEvaluator (the one gated class)"
+        labels["policyeval"] = "PolicyEvaluator (the gated CLASS rule)"
         for (i = 1; i <= n; i++) {
           k = order[i]
           if (ic[k] + im[k] == 0) continue
@@ -122,6 +124,10 @@ report_backend() {
     [ -n "$label" ] || continue
     printf '%-40s %-24s %-22s %-22s\n' "$label" "$instruction" "$branch" "$line"
   done
+  echo
+  echo "Three of these scopes are gated by services/api/pom.xml (haltOnFailure, phase verify):"
+  echo "the whole BUNDLE, the domain.iam PACKAGE and the PolicyEvaluator CLASS. The Auth row is"
+  echo "a report. The thresholds live in that pom and are not repeated here."
 
   {
     echo "### Backend coverage, measured by this run"
@@ -202,10 +208,15 @@ report_worker() {
 # Reads the `coverage/coverage-summary.json` that `npm run test:coverage` left behind. Keys are
 # ABSOLUTE paths plus a `total` entry, so everything below is a lookup, never a re-derivation.
 #
-# Two scopes, printed together for the same reason as the worker's: `apps/web` overall is a low
-# single-digit percentage — the screens have no unit tests — while the modules the gate scopes to
-# are in the nineties. Publishing only the second number would describe an application that does
-# not exist. The whole-app row is the honest denominator; the per-module rows are the gate.
+# Two scopes, printed together for the same reason as the worker's: the modules the gate scopes
+# to sit far above the application around them, because the screens have no unit tests.
+# Publishing only the second number would describe an application that does not exist. The
+# whole-app row is the honest denominator; the per-module rows are the gate.
+#
+# No figure is quoted in this comment on purpose. An earlier version said "a low single-digit
+# percentage", which was true when it was written and stopped being true without anything
+# noticing — in the header of the script this repository added SO THAT nobody would have to
+# trust a number written down somewhere.
 #
 # `node`, not `jq`: the `web` job already has Node and does not have jq.
 # ---------------------------------------------------------------------------
@@ -222,16 +233,59 @@ report_web() {
       const fs = require("node:fs");
       const path = require("node:path");
       const summary = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-      // The modules `apps/web/vitest.config.mts` sets a threshold on, in the order that file
-      // declares them. Anything added there should be added here; the row is a report either way.
+
+      // DERIVED from `apps/web/vitest.config.mts`, not copied out of it. This was a
+      // hand-maintained array under a comment reading "anything added there should be added
+      // here", and it carried five of the six thresholds — the missing one being
+      // `src/lib/iam/policy-document.ts`, whose whole job is to REFUSE a policy document the
+      // form cannot represent exactly. A gated module with no reported row is the one nobody
+      // notices sliding, and an instruction to keep two lists in step is not a mechanism.
+      //
+      // Text extraction rather than an import, because this runs from the repository root and
+      // that file is TypeScript importing `vitest/config`: evaluating it would make a coverage
+      // REPORT depend on node_modules being installed under apps/web. Inside the thresholds
+      // object the module paths are the only QUOTED keys — the nested `statements`/`branches`
+      // ones are bare identifiers — so the match below is exact rather than approximate.
+      // \x27 and \x60 are the quote and the backtick, spelled in hex because this whole program
+      // is a single-quoted shell argument.
+      const readGatedModules = (webRoot) => {
+        // Every failure here returns an empty list and is reported by the caller. A REPORT that
+        // dies because it could not find a config would take the test job down with it, on a
+        // run where the tests themselves passed.
+        let source;
+        try {
+          source = fs.readFileSync(path.join(webRoot, "vitest.config.mts"), "utf8");
+        } catch {
+          return [];
+        }
+        const start = source.indexOf("thresholds:");
+        if (start === -1) return [];
+        let depth = 0;
+        let end = -1;
+        for (let i = source.indexOf("{", start); i !== -1 && i < source.length; i++) {
+          if (source[i] === "{") depth++;
+          else if (source[i] === "}" && --depth === 0) { end = i; break; }
+        }
+        if (end === -1) return [];
+        const keys = /[\"\x27\x60]([^\"\x27\x60]+)[\"\x27\x60]\s*:/g;
+        return [...source.slice(start, end).matchAll(keys)].map((m) => m[1]);
+      };
+
+      const thresholded = readGatedModules(process.argv[2]);
+      // Loud rather than silent, and still not a gate: this script exits 0 whatever it finds.
+      // An empty list means it stopped being able to read the file it derives from, and
+      // printing the whole-app row alone while saying nothing is how that goes unnoticed.
+      if (thresholded.length === 0) {
+        process.stderr.write(
+          "WARNING: no coverage.thresholds could be read from apps/web/vitest.config.mts — " +
+            "the per-module rows below are MISSING, not empty.\n",
+        );
+      }
       const gated = [
-        "src/lib/pii/redact.ts",
-        "src/lib/report/markdown.ts",
-        "src/lib/report/tasks-export.ts",
-        "src/lib/report/usage-report.ts",
-        "src/lib/password-policy.ts",
-        // Reported, deliberately NOT gated: 74 one-line wrappers make a file-level percentage a
+        ...thresholded,
+        // Reported, deliberately NOT gated: 78 one-line wrappers make a file-level percentage a
         // count of wrappers rather than a statement about the shared request() they all call.
+        // It carries no threshold, so the derivation above cannot find it and it is named here.
         "src/lib/api/client.ts",
       ];
       const pct = (m) => (m ? `${m.pct.toFixed(1)}% (${m.covered}/${m.total})` : "n/a");

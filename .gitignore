@@ -21,8 +21,16 @@ Thumbs.db
 # git status — and a trackable .env.* is how a secret gets committed by accident.
 .env.ci
 !.env.example
-# The SOPS-ENCRYPTED file is versioned on purpose (the age key lives only on the host,
-# at /etc/nora/age.key). The `!` guards against any future .env* rule.
+# `infra/host/secrets.env.sops` is NOT in this repository and is not supposed to be.
+# ADR 0036 §4 turned the accident into the decision: the encrypted file is generated ON THE
+# HOST by infra/host/scripts/secrets-bootstrap.sh and stays there, untracked. With a single
+# age recipient, a versioned ciphertext helps in exactly one scenario — the host is gone —
+# and in that scenario the private key needed to read it is gone with it.
+#
+# The negation below is kept ON PURPOSE even though nothing matches it. It costs nothing and
+# it documents that if the file ever DOES get committed (a second offline recipient would
+# make that worth doing), no future `.env*` rule silently swallows it. Do not read it as a
+# claim that the file is versioned today — it is not.
 !infra/host/secrets.env.sops
 
 # --- Logs / temporary ---
