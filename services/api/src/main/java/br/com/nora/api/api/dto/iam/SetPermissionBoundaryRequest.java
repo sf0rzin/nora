@@ -1,5 +1,6 @@
 package br.com.nora.api.api.dto.iam;
 
+import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 /**
@@ -12,4 +13,5 @@ import java.util.UUID;
  *
  * @param policyId policy to use as the cap; must belong to the caller's tenant
  */
-public record SetPermissionBoundaryRequest(UUID policyId) {}
+public record SetPermissionBoundaryRequest(
+        @NotNull(message = "policyId is required") UUID policyId) {}

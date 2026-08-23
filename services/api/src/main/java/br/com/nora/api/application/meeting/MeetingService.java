@@ -49,6 +49,12 @@ public class MeetingService {
     /** Batch size when scanning all of a tenant's meetings for the in-memory IAM filter. */
     private static final int LIST_SCAN_BATCH = 200;
 
+    /**
+     * Rows scanned above which the full-scan listing path says so in the log. Not a cap — see
+     * {@link #listAllForAuthFilter} for why capping is the wrong answer here.
+     */
+    private static final int SCAN_WARNING_THRESHOLD = 2_000;
+
     private final MeetingRepository meetings;
     private final TranscriptRepository transcripts;
     private final ObjectProvider<AnalysisService> analysisServiceProvider;
@@ -205,6 +211,12 @@ public class MeetingService {
      * meetings he would have permission to see (tenant with &gt;500 meetings). Future optimisation
      * (performance, not correctness): push the attributes predicate into SQL via {@code
      * meeting_attributes @>} + GIN index (V008) when some tenant reaches scale.
+     *
+     * <p>Because there is no cap, nothing else would say when that moment arrived: the scan gets
+     * slower and heavier request by request and the only symptom is a listing that feels sluggish.
+     * The warning below is not a limit — it does not drop a row and does not change an answer — it
+     * is the trigger the paragraph above leaves unspecified, saying out loud that the trade made
+     * here is no longer the trade being paid for.
      */
     @Transactional(readOnly = true)
     public List<Meeting> listAllForAuthFilter(UUID tenantId, MeetingFilter filter) {
@@ -219,6 +231,16 @@ public class MeetingService {
             }
             page++;
         }
+        if (all.size() > SCAN_WARNING_THRESHOLD) {
+            LOG.warn(
+                    "IAM-filtered listing scanned {} meetings for tenant={} — past the {} this"
+                            + " full-scan path was accepted for. Every request on this path now"
+                            + " materialises the whole tenant before paginating; this is the signal to"
+                            + " push the attribute predicate into SQL (V008 GIN index).",
+                    all.size(),
+                    tenantId,
+                    SCAN_WARNING_THRESHOLD);
+        }
         return all;
     }
 
@@ -226,6 +248,48 @@ public class MeetingService {
     public Meeting getById(UUID meetingId, UUID tenantId) {
         return meetings.findByIdAndTenant(meetingId, tenantId)
                 .orElseThrow(MeetingException.NotFound::new);
+    }
+
+    /**
+     * Removes a meeting from the product REVERSIBLY (ADR 0021): the row keeps every byte and stops
+     * being visible, because {@code deleted_at} is what the entity's {@code @SQLRestriction} and
+     * the {@code deleted_at IS NULL} predicates of the native queries read.
+     *
+     * <p>This is the counterpart of {@code PrivacyService.eraseMeeting}, not a synonym for it. The
+     * erase is a physical CASCADE meant for an LGPD request and there is no way back from it; this
+     * is "I uploaded the wrong file", whose correct answer must not be destroying the transcript of
+     * everyone who was in that meeting. They carry different IAM actions — {@code meeting:delete}
+     * against {@code meeting:erase} — precisely so a tenant can grant one without the other.
+     *
+     * <p>Authorization runs through the callback inside this transaction, after the meeting is
+     * resolved, so the decision sees the attributes and cannot be raced by an edit between the
+     * check and the write — the same shape {@link #reprocess} and the erase already use.
+     *
+     * @param authorize receives the loaded meeting and must throw when authorization fails
+     * @throws MeetingException.NotFound when the meeting is not in the tenant, or was already
+     *     removed — the two are indistinguishable from outside on purpose, because a meeting that
+     *     is deleted is a meeting that does not exist as far as the product is concerned
+     */
+    @Transactional
+    public void delete(
+            UUID meetingId,
+            UUID tenantId,
+            UUID actorUserId,
+            java.util.function.Consumer<Meeting> authorize) {
+        Meeting meeting =
+                meetings.findByIdAndTenant(meetingId, tenantId)
+                        .orElseThrow(MeetingException.NotFound::new);
+        authorize.accept(meeting);
+        if (meetings.softDelete(meetingId, tenantId) == 0) {
+            // Lost a race with a concurrent delete. Nothing was written twice and the caller's
+            // intent is already satisfied, but reporting 204 would claim this call did it.
+            throw new MeetingException.NotFound();
+        }
+        Map<String, Object> auditPayload = new HashMap<>();
+        auditPayload.put("title", meeting.title());
+        auditPayload.put("previousStatus", meeting.processingStatus().name());
+        audit.record(tenantId, actorUserId, "meeting.deleted", "MEETING", meetingId, auditPayload);
+        LOG.info("Meeting soft-deleted: meeting={} tenant={}", meetingId, tenantId);
     }
 
     @Transactional

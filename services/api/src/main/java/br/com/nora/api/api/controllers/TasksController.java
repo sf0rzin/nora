@@ -8,6 +8,7 @@ import br.com.nora.api.api.security.RequiresPermission;
 import br.com.nora.api.api.security.RequiresPermission.ResourceType;
 import br.com.nora.api.api.security.ResourceArns;
 import br.com.nora.api.application.iam.AuthorizationService;
+import br.com.nora.api.application.ports.TaskRepository;
 import br.com.nora.api.application.ports.TaskRepository.TaskRow;
 import br.com.nora.api.application.task.TaskException;
 import br.com.nora.api.application.task.TaskService;
@@ -17,6 +18,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -43,29 +45,90 @@ public class TasksController {
 
     /**
      * Listing: the annotation is only the pre-gate ({@code requireAnyAllow} reasons about sets) and
-     * the visible set is decided per item below.
+     * the visible set is decided either in SQL or per item below, depending on whether any of the
+     * caller's statements can tell two tasks of the tenant apart.
      *
      * <p>The strict check used to run here against the literal ARN {@code ...:task/*}. The {@code
      * *} goes into the evaluator as a value, matched as plain text on the resource side, so a Deny
      * written against one specific task id never fired — and the handler then returned every action
      * item of the tenant with no filtering at all. Same shape {@code GET /meetings} already uses.
+     *
+     * <p><b>It is also paginated, which it was not.</b> This is the second-hottest endpoint of the
+     * product and it loaded every action item of the tenant on every call — each row joined to
+     * {@code meeting_analyses} and {@code meetings} — and then filtered in Java. The backlog even
+     * justified having no export endpoint with "the volume is already limited by the paginated
+     * response", which was true of {@code GET /meetings} and false here.
      */
     @GetMapping
     @RequiresPermission(action = "task:read", resource = ResourceType.TASK, anyAllow = true)
-    public TaskListResponse list(@RequestParam(name = "status", required = false) String status) {
+    public TaskListResponse list(
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            // The default is the ceiling, not GET /meetings' 20, and the difference is deliberate.
+            // This endpoint was unpaginated, so every existing client asks for no page at all and
+            // expects the whole list; defaulting to 20 would silently hide the 21st task from
+            // screens that never knew there was a page. At the ceiling, a caller that has not
+            // learned about pagination yet sees exactly what it saw before unless the tenant is
+            // past 100 tasks — and past that, a truncated list is what the cap exists to produce.
+            @RequestParam(name = "size", defaultValue = "100") int size) {
         AuthenticatedPrincipal principal = CurrentUser.require();
         ActionItemStatus parsed = parseStatus(status);
-        List<TaskRow> rows = tasks.list(principal.tenantId(), parsed);
-        List<TaskRow> visible =
-                authz.filterAllowed(
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(TaskService.MAX_PAGE_SIZE, Math.max(1, size));
+
+        // Same two-path shape as GET /meetings, and for the same reason. When no statement of the
+        // caller can tell one task of the tenant from another, the per-item filter would keep the
+        // whole set and the page can be cut in SQL — which is what makes the cost proportional to
+        // the PAGE. When it can, the visible set is only knowable after evaluating every row, so
+        // the scan stays and the page is cut in memory. This endpoint loaded every action item of
+        // the tenant on BOTH paths until 2026-08-23.
+        Optional<Boolean> uniform =
+                authz.uniformDecision(
                         principal.userId(),
                         principal.tenantId(),
                         "task:read",
-                        rows,
-                        r -> ResourceArns.task(principal.tenantId(), r.id()),
-                        r -> Map.of());
-        List<TaskListItem> items = visible.stream().map(TasksController::toDto).toList();
-        return new TaskListResponse(items);
+                        ResourceArns.task(principal.tenantId(), null));
+
+        // `page` arrives from the query string with no cap and `safePage * safeSize` overflows in
+        // int; the offset is a long on both paths, as GET /meetings already does.
+        long offset = (long) safePage * safeSize;
+
+        List<TaskRow> pageRows;
+        long totalItems;
+        if (uniform.isPresent()) {
+            if (Boolean.FALSE.equals(uniform.get())) {
+                // requireAnyAllow already refused; spelled out so a Deny is never paginated.
+                pageRows = List.of();
+                totalItems = 0;
+            } else if (offset > Integer.MAX_VALUE) {
+                // A page far beyond the end answers empty with the real total instead of a 500.
+                pageRows = List.of();
+                totalItems = tasks.list(principal.tenantId(), parsed, 0, 1).totalItems();
+            } else {
+                TaskRepository.PagedTasks paged =
+                        tasks.list(principal.tenantId(), parsed, safePage, safeSize);
+                pageRows = paged.items();
+                totalItems = paged.totalItems();
+            }
+        } else {
+            List<TaskRow> rows = tasks.list(principal.tenantId(), parsed);
+            List<TaskRow> visible =
+                    authz.filterAllowed(
+                            principal.userId(),
+                            principal.tenantId(),
+                            "task:read",
+                            rows,
+                            r -> ResourceArns.task(principal.tenantId(), r.id()),
+                            r -> Map.of());
+            totalItems = visible.size();
+            int fromIdx = (int) Math.min(offset, visible.size());
+            int toIdx = Math.min(fromIdx + safeSize, visible.size());
+            pageRows = visible.subList(fromIdx, toIdx);
+        }
+
+        List<TaskListItem> items = pageRows.stream().map(TasksController::toDto).toList();
+        int totalPages = (int) Math.ceil((double) totalItems / (double) safeSize);
+        return new TaskListResponse(items, safePage, safeSize, totalItems, totalPages);
     }
 
     /**

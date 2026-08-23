@@ -163,8 +163,25 @@ public class IntegrationService {
         };
     }
 
-    /** Completes the provider's OAuth callback (same routing as {@link #start}). */
-    @Transactional
+    /**
+     * Completes the provider's OAuth callback (same routing as {@link #start}).
+     *
+     * <p><b>Deliberately not {@code @Transactional}, and that is a correction.</b> It used to be,
+     * which meant the provider round trips inside — an authorization-code exchange plus, for
+     * Google, a userinfo call — ran holding a connection from a pool of ten for as long as the
+     * provider took to answer (up to the clients' 15s timeout each). The write these methods
+     * perform is a single upsert at the end; the rest is network. {@code WorkflowService.test}
+     * already states the rule for this codebase: a method that calls external services is not
+     * transactional.
+     *
+     * <p>The RLS context is still set here and cleared in the finally, and that is what keeps the
+     * behaviour identical. {@code integration_connections} is an enforced table that V020's
+     * exemption list never covered, and this endpoint is public — it arrives by provider redirect
+     * with no JWT, so nothing else populated the tenant. Setting the holder before the write is
+     * enough because {@code connections.upsert} is itself {@code @Transactional}: the aspect fires
+     * on ITS transaction and applies the {@code SET LOCAL} there. The outer transaction was never
+     * what carried the GUC — it was only what held the connection open across the network.
+     */
     public OAuthStateCodec.DecodedState handleCallback(
             IntegrationProvider provider, String code, String state) {
         // `/integrations/*/oauth/callback` is public (SecurityConfig.PUBLIC_ENDPOINTS): it arrives
@@ -178,7 +195,8 @@ public class IntegrationService {
         // comes from the signed state (HMAC, 10min exp), which is this endpoint's credential.
         //
         // Setting it here is enough: `connections.upsert` is @Transactional, so the aspect fires
-        // on it and applies the SET LOCAL on the transaction this method already opened.
+        // on ITS transaction and applies the SET LOCAL there. That is why this method no longer
+        // needs to be transactional itself — see the javadoc.
         //
         // The configuration check comes BEFORE the decode so the error the operator sees does not
         // change: on a provider without credentials, decoding first returned "invalid state"
@@ -226,8 +244,11 @@ public class IntegrationService {
      * Google callback: validates the state, exchanges the code for tokens and upserts the
      * connection. Returns the tenant/user from the state (the controller redirects to the front
      * end).
+     *
+     * <p>Not transactional: the two network calls below (code exchange, then userinfo) would
+     * otherwise hold a pool connection for their whole duration. The upsert at the end opens its
+     * own, with the GUC applied by the aspect — see {@link #handleCallback}.
      */
-    @Transactional
     public OAuthStateCodec.DecodedState handleGoogleCallback(String code, String state) {
         requireGoogleConfigured();
         OAuthStateCodec.DecodedState decoded = stateCodec.decode(state, clock.now());
@@ -263,8 +284,20 @@ public class IntegrationService {
      * VALID Google access token for immediate use by the Flows actions. Renews (and persists the
      * rotation) when expired/about to expire. Throws {@code NotConnected} when there is no
      * connection.
+     *
+     * <p><b>Not transactional, and this is the one that mattered most.</b> This method is called by
+     * the Flows actions, and a single flow can chain up to fourteen HTTP actions (application.yml).
+     * With {@code @Transactional} on it, the refresh round trip to Google held a connection from a
+     * pool of ten for its whole duration — so a handful of flows renewing tokens while the provider
+     * was slow starved the pool, and the symptom was timeouts on unrelated requests, which points
+     * nowhere near here. The read and the rotation write are each transactional in the adapter,
+     * which is where the transaction belongs.
+     *
+     * <p>The cost of the split, stated: the read and the write are no longer one atomic unit, so
+     * two concurrent callers finding the same token expired can both refresh, and the second
+     * rotation wins. That is already the behaviour across two JVM restarts and the providers here
+     * accept a re-refresh; a starved pool is not similarly recoverable.
      */
-    @Transactional
     public String validGoogleAccessToken(UUID tenantId) {
         IntegrationConnection conn =
                 connections
@@ -313,8 +346,10 @@ public class IntegrationService {
      * Slack callback: validates the state, exchanges the code for the bot token and upserts the
      * connection. The bot token does not expire — refreshToken/expiresAt stay null by contract; the
      * connected workspace (team name) becomes the external account shown in the hub.
+     *
+     * <p>Not transactional, for the same reason as {@link #handleGoogleCallback}: the code exchange
+     * is a provider round trip and the write is one upsert after it.
      */
-    @Transactional
     public OAuthStateCodec.DecodedState handleSlackCallback(String code, String state) {
         requireSlackConfigured();
         OAuthStateCodec.DecodedState decoded = stateCodec.decode(state, clock.now());
@@ -384,8 +419,9 @@ public class IntegrationService {
      * connection. {@code refreshToken} only comes from providers with {@code supportsRefresh}
      * (Microsoft); {@code expiresAt} is only persisted when the provider reports {@code expires_in}
      * (e.g. Linear ~10 years, Microsoft ~1h).
+     *
+     * <p>Not transactional, for the same reason as {@link #handleGoogleCallback}.
      */
-    @Transactional
     public OAuthStateCodec.DecodedState handleGenericCallback(
             IntegrationProvider provider, String code, String state) {
         OAuthProviderConfig config = requireGenericConfigured(provider);
@@ -418,8 +454,10 @@ public class IntegrationService {
      * within validity (60s skew) is returned directly. Expired: providers with {@code
      * supportsRefresh} (Microsoft) renew here — same semantics as {@link #validGoogleAccessToken}
      * (rotation persisted); the rest tell the user to reconnect.
+     *
+     * <p>Not transactional, for the same reason and with the same trade-off as {@link
+     * #validGoogleAccessToken}.
      */
-    @Transactional
     public String validAccessToken(UUID tenantId, IntegrationProvider provider) {
         IntegrationConnection conn =
                 connections
@@ -472,8 +510,11 @@ public class IntegrationService {
      * Validates the token the user pasted from Trello ({@code GET /1/members/me}) and persists the
      * connection (encrypted like the others; token with {@code expiration=never} — no
      * refresh/expiry). An invalid token = a clear {@code ProviderError}, nothing is saved.
+     *
+     * <p>Not transactional: {@code trello.validateToken} is a call to Trello, and the guarantee it
+     * gives — nothing is saved when the token is invalid — comes from it throwing BEFORE the
+     * upsert, not from a rollback.
      */
-    @Transactional
     public ProviderStatus saveTrelloToken(UUID tenantId, UUID userId, String token) {
         requireTrelloConfigured();
         if (token == null || token.isBlank()) {

@@ -2,6 +2,8 @@ package br.com.nora.api.api.controllers;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import br.com.nora.api.api.security.AuthorizationNotRequired;
+import br.com.nora.api.api.security.RequiresPermission;
 import br.com.nora.api.application.analysis.AnalysisService;
 import br.com.nora.api.application.ports.NlpWorkerClient;
 import br.com.nora.api.domain.analysis.ActionItem;
@@ -23,6 +25,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -37,6 +40,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.http.server.PathContainer;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
@@ -46,7 +50,13 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
+import org.springframework.web.util.pattern.PathPattern;
+import org.springframework.web.util.pattern.PathPatternParser;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -84,6 +94,15 @@ class AuthorizationCoverageIntegrationTest {
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired AnalysisService analysisService;
 
+    /**
+     * The registry Spring dispatches on — the source the coverage check derives its set from. Named
+     * explicitly: the actuator contributes handler mappings of its own, and picking the wrong one
+     * would make the check pass by looking at nothing.
+     */
+    @Autowired
+    @Qualifier("requestMappingHandlerMapping")
+    RequestMappingHandlerMapping handlerMapping;
+
     @BeforeEach
     void useJdkHttpClient() {
         rest.getRestTemplate().setRequestFactory(new JdkClientHttpRequestFactory());
@@ -118,17 +137,154 @@ class AuthorizationCoverageIntegrationTest {
         String meeting = uploadMeeting(rootToken, "Discovery", Map.of(), TRANSCRIPT);
         String member = memberWithoutPolicies(tenantId, "coverage-member@nora.dev");
 
+        Calls calls = gatedCalls(meeting);
+
+        for (Call c : calls.items) {
+            assertThat(status(c, member))
+                    .as("%s %s must be forbidden without policies", c.method(), c.path())
+                    .isEqualTo(HttpStatus.FORBIDDEN);
+        }
+
+        // The two multipart endpoints, which do not fit the JSON call shape above.
+        assertThat(multipartStatus(member, "/meetings")).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(multipartStatus(member, "/meetings/split-preview"))
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    /**
+     * The sweep above is a hand-written list, and a hand-written list rots. This test derives the
+     * set of routes that OUGHT to be in it from {@code RequestMappingHandlerMapping} — the same
+     * registry Spring dispatches on — and fails when one is missing.
+     *
+     * <p>It is what the documentation already claimed. The backlog says {@code
+     * AuthorizationCoverageIntegrationTest} "asserts every endpoint is gated"; what it asserted was
+     * that the endpoints somebody remembered to type are gated. {@code GET /meetings/participants}
+     * shipped in US13 and was never added, which is not a hole in the gate — the interceptor denies
+     * undeclared handlers, and the probe test above proves it — but it is a hole in the evidence,
+     * and it grows by one every delivery.
+     *
+     * <p><b>Which routes are in scope, derived rather than listed.</b> A handler belongs to this
+     * set when it carries {@link RequiresPermission}, or when it carries {@link
+     * AuthorizationNotRequired} with a reason beginning "Body" — the vocabulary {@code
+     * AuthorizationNotRequired} defines for "the Allow/Deny depends on the resource, so the check
+     * is in the method body". Reasons beginning "Public", "Self" and "Control plane" are out by
+     * construction: there is no principal, the principal is the resource, or the caller is not an
+     * IAM principal at all. Reading the category out of the annotation is what keeps this rule from
+     * becoming a second hand-written list.
+     *
+     * <p>What it still cannot catch, stated so nobody reads more into a green run than is there: a
+     * handler declaring the WRONG action passes both this check and the sweep. Verifying that would
+     * mean asserting the intended action per route, which is the manual list again in another
+     * shape.
+     */
+    @Test
+    void everyGatedRoute_isCoveredByTheDenySweep() throws Exception {
+        Calls calls = gatedCalls(UUID.randomUUID().toString());
+        List<Call> covered = new ArrayList<>(calls.items);
+        covered.addAll(calls.declaredElsewhere);
+
+        List<String> missing = new ArrayList<>();
+        for (Map.Entry<RequestMappingInfo, HandlerMethod> entry :
+                handlerMapping.getHandlerMethods().entrySet()) {
+            HandlerMethod handler = entry.getValue();
+            if (!isGatedNonSelf(handler)) {
+                continue;
+            }
+            for (PathPattern pattern :
+                    entry.getKey().getPatternValues().stream().map(PATH_PARSER::parse).toList()) {
+                for (RequestMethod method : entry.getKey().getMethodsCondition().getMethods()) {
+                    String route = method + " " + pattern.getPatternString();
+                    if (!OUT_OF_SWEEP.contains(route) && !isCovered(covered, method, pattern)) {
+                        missing.add(route);
+                    }
+                }
+            }
+        }
+
+        assertThat(missing)
+                .as(
+                        "every gated, non-self route must appear in gatedCalls(): add a line there"
+                                + " for each route listed here")
+                .isEmpty();
+    }
+
+    /** Parser for the patterns read off the handler mapping, so a concrete path can be matched. */
+    private static final PathPatternParser PATH_PARSER = new PathPatternParser();
+
+    /**
+     * The one route the derived rule selects and the sweep must not exercise, with the reason it is
+     * not simply an oversight.
+     *
+     * <p>{@code POST /mcp} declares "Body: each tool authorizes the action of the resource it
+     * reads", which is true — but it is a JSON-RPC envelope on its own security chain, reached with
+     * an {@code nora_mcp_} bearer credential rather than a session JWT, and a refused tool answers
+     * 200 with an error result because that is what the transport requires. Both halves of the
+     * sweep's shape are wrong for it: the credential and the status code. The authorization it does
+     * perform is covered by {@code McpIsolationIntegrationTest}, which speaks its protocol.
+     *
+     * <p>Keeping this as a named exception with an argument attached is the point. The list is one
+     * line long and each line has to earn itself; that is a different thing from the sweep, where
+     * an omission was invisible.
+     */
+    private static final List<String> OUT_OF_SWEEP = List.of("POST /mcp");
+
+    /**
+     * The two ways a handler declares that an IAM decision applies to it. Anything else — public,
+     * self-scoped, or the internal control plane — is out of the sweep's declared scope.
+     */
+    private static boolean isGatedNonSelf(HandlerMethod handler) {
+        if (handler.getMethodAnnotation(RequiresPermission.class) != null) {
+            return true;
+        }
+        AuthorizationNotRequired optOut =
+                handler.getMethodAnnotation(AuthorizationNotRequired.class);
+        return optOut != null && optOut.reason().startsWith("Body");
+    }
+
+    private static boolean isCovered(
+            List<Call> covered, RequestMethod method, PathPattern pattern) {
+        for (Call c : covered) {
+            if (!c.method().name().equals(method.name())) {
+                continue;
+            }
+            // The declared paths carry concrete ids and sometimes a query string; the pattern is
+            // matched against the path only, which is what Spring routes on.
+            String path = c.path();
+            int query = path.indexOf('?');
+            String withoutQuery = query < 0 ? path : path.substring(0, query);
+            if (pattern.matches(PathContainer.parsePath(withoutQuery))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The routes the deny sweep exercises, one line each.
+     *
+     * <p>Extracted from the test above so a second test can check the list against the handler
+     * mapping — see {@link #everyGatedRoute_isCoveredByTheDenySweep}. A hand-written list is what
+     * this file has always been; what it was missing is anything that notices when a route is added
+     * and the line is not.
+     */
+    private Calls gatedCalls(String meeting) throws Exception {
         String id = UUID.randomUUID().toString();
         Calls calls = new Calls();
 
         // meetings
         calls.get("/meetings");
         calls.get("/meetings/search?q=proposta");
+        calls.get("/meetings/participants");
         calls.get("/meetings/" + meeting);
         calls.put("/meetings/" + meeting + "/goal", goalBody());
         calls.delete("/meetings/" + meeting + "/goal");
         calls.post("/meetings/" + meeting + "/reprocess", null);
         calls.post("/meetings/live-analyze", json(Map.of("transcriptChunk", "Ana: ok.")));
+        // The reversible removal. Listed apart from the erase below because they are different
+        // powers with different actions, and a sweep that covered only one would not notice a
+        // handler wired to the wrong one. It comes last among the meeting calls so the meeting
+        // stays readable for the ones above.
+        calls.delete("/meetings/" + meeting);
 
         // tasks
         calls.get("/tasks");
@@ -166,6 +322,7 @@ class AuthorizationCoverageIntegrationTest {
         calls.get("/tenant/context/versions/1");
 
         // iam
+        calls.get("/iam/users");
         calls.get("/iam/groups");
         calls.post("/iam/groups", json(Map.of("name", "G")));
         calls.delete("/iam/groups/" + id);
@@ -174,6 +331,7 @@ class AuthorizationCoverageIntegrationTest {
         calls.delete("/iam/groups/" + id + "/members/" + id);
         calls.get("/iam/policies");
         calls.get("/iam/policies/" + id);
+        calls.get("/iam/policies/" + id + "/versions");
         calls.post("/iam/policies", json(Map.of("name", "P", "document", Map.of())));
         calls.put("/iam/policies/" + id, json(Map.of("document", Map.of())));
         calls.delete("/iam/policies/" + id);
@@ -207,16 +365,12 @@ class AuthorizationCoverageIntegrationTest {
         // it is gated like a tenant capability and not like a "self" endpoint (ADR 0045)
         calls.post("/stt/sessions", json(Map.of("language", "pt-BR")));
 
-        for (Call c : calls.items) {
-            assertThat(status(c, member))
-                    .as("%s %s must be forbidden without policies", c.method(), c.path())
-                    .isEqualTo(HttpStatus.FORBIDDEN);
-        }
+        // The two multipart uploads are asserted separately by the caller (they do not fit the
+        // JSON call shape), and are declared here so the derived check below sees them covered.
+        calls.multipart("/meetings");
+        calls.multipart("/meetings/split-preview");
 
-        // The two multipart endpoints, which do not fit the JSON call shape above.
-        assertThat(multipartStatus(member, "/meetings")).isEqualTo(HttpStatus.FORBIDDEN);
-        assertThat(multipartStatus(member, "/meetings/split-preview"))
-                .isEqualTo(HttpStatus.FORBIDDEN);
+        return calls;
     }
 
     /* ===================== positive: workflows ====================== */
@@ -550,6 +704,17 @@ class AuthorizationCoverageIntegrationTest {
     /** Small accumulator so each endpoint under test is one short, readable line. */
     private static final class Calls {
         final List<Call> items = new ArrayList<>();
+
+        /**
+         * Routes covered by an assertion that does not fit the JSON call shape — today the two
+         * multipart uploads. They are declared so the derived coverage check counts them, and kept
+         * out of {@link #items} because sending them as JSON would answer 415, not 403.
+         */
+        final List<Call> declaredElsewhere = new ArrayList<>();
+
+        void multipart(String path) {
+            declaredElsewhere.add(new Call(HttpMethod.POST, path, null));
+        }
 
         void get(String path) {
             items.add(new Call(HttpMethod.GET, path, null));

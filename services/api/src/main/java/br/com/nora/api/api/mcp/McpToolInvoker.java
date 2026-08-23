@@ -5,6 +5,7 @@ import br.com.nora.api.application.analysis.AnalysisService;
 import br.com.nora.api.application.customer.CustomerConfidenceService;
 import br.com.nora.api.application.embedding.EmbeddingService;
 import br.com.nora.api.application.iam.AuthorizationService;
+import br.com.nora.api.application.meeting.MeetingException;
 import br.com.nora.api.application.meeting.MeetingService;
 import br.com.nora.api.application.ports.MeetingRepository.MeetingFilter;
 import br.com.nora.api.application.ports.TaskRepository.TaskRow;
@@ -21,6 +22,7 @@ import br.com.nora.api.domain.customer.Objection;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.Participant;
 import br.com.nora.api.domain.meeting.ProcessingStatus;
+import br.com.nora.api.infrastructure.security.AiSpendRateLimiter;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -94,6 +96,7 @@ public class McpToolInvoker {
     private final CustomerConfidenceService customerConfidence;
     private final TaskService tasks;
     private final EmbeddingService embeddings;
+    private final AiSpendRateLimiter spendLimiter;
 
     public McpToolInvoker(
             AuthorizationService authz,
@@ -101,13 +104,15 @@ public class McpToolInvoker {
             AnalysisService analyses,
             CustomerConfidenceService customerConfidence,
             TaskService tasks,
-            EmbeddingService embeddings) {
+            EmbeddingService embeddings,
+            AiSpendRateLimiter spendLimiter) {
         this.authz = authz;
         this.meetings = meetings;
         this.analyses = analyses;
         this.customerConfidence = customerConfidence;
         this.tasks = tasks;
         this.embeddings = embeddings;
+        this.spendLimiter = spendLimiter;
     }
 
     /** Raised for a bad argument. Reported as a tool result, never as a JSON-RPC error. */
@@ -202,6 +207,14 @@ public class McpToolInvoker {
             throw new ToolArgumentException("'query' is required and must not be empty.");
         }
         int limit = intArg(args, "limit", 5, 1, 10);
+
+        // Same bucket the REST search consumes, keyed by the same user id, and that sharing is
+        // the point: an MCP credential is a long-lived bearer token held by an autonomous client,
+        // which is exactly the caller most likely to search in a loop. Giving the agent surface a
+        // budget of its own would double what one principal can spend by switching transport.
+        if (!spendLimiter.allowSearch(principal.userId())) {
+            throw new MeetingException.RateLimited("search");
+        }
 
         List<Meeting> candidates = new ArrayList<>();
         for (UUID id : embeddings.search(tenantId, query, limit)) {

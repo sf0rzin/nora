@@ -8,6 +8,7 @@ public sealed class MeetingException extends RuntimeException
                 MeetingException.SplitUnsupportedFormat,
                 MeetingException.FileTooLarge,
                 MeetingException.EmptyTranscript,
+                MeetingException.RateLimited,
                 MeetingException.CannotReprocess {
 
     private final String code;
@@ -63,6 +64,23 @@ public sealed class MeetingException extends RuntimeException
     public static final class EmptyTranscript extends MeetingException {
         public EmptyTranscript() {
             super("EMPTY_TRANSCRIPT", "Transcript file is empty.");
+        }
+    }
+
+    /**
+     * The caller's per-user budget for a path that spends money with an external AI provider is
+     * exhausted ({@code AiSpendRateLimiter}).
+     *
+     * <p>Its own code rather than the auth path's {@code RATE_LIMITED}, on the same argument that
+     * gave STT {@code STT_RATE_LIMITED}: a client retrying a login is doing something different
+     * from a client searching in a loop, and a UI that wants to say "you are searching too fast"
+     * must be able to tell them apart. The message names the operation for the same reason.
+     */
+    public static final class RateLimited extends MeetingException {
+        public RateLimited(String operation) {
+            super(
+                    "MEETING_RATE_LIMITED",
+                    "Too many " + operation + " requests. Try again in a minute.");
         }
     }
 

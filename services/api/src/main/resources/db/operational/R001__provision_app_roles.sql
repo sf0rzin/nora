@@ -82,11 +82,24 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO nora_app;
 
 -- ============================================================
 -- 4. GRANTs to nora_telemetry — read only, restricted to what is needed.
---    Today the telemetry only touches meeting_analyses; keep it minimal (least privilege).
---    If the telemetry starts reading other tables, add explicit grants here.
+--    Least privilege: one line per table an operator-only cross-tenant read actually opens.
+--    If the telemetry starts reading another table, add the explicit grant here.
+--
+--    The list is derived from the code, not from memory. Every implementation of an
+--    operator-console source that resolves `telemetryJdbcTemplate` is on it:
+--      - PrimaryDbBusinessMetricsSource  -> meeting_analyses
+--      - PrimaryDbEmbeddingIndexStatus   -> meetings LEFT JOIN meeting_embeddings
+--
+--    The two embedding tables were missing and the failure was invisible from here: under
+--    enforce the telemetry datasource is REQUIRED (RlsEnforceTelemetryGuard), so it is always
+--    the template that answers, and `permission denied for table meetings` (SQLSTATE 42501)
+--    surfaced to the operator as a 503 naming the PRIMARY database. A missing grant on this
+--    role never fails where it is caused.
 -- ============================================================
 GRANT USAGE ON SCHEMA public TO nora_telemetry;
 GRANT SELECT ON meeting_analyses TO nora_telemetry;
+GRANT SELECT ON meetings TO nora_telemetry;
+GRANT SELECT ON meeting_embeddings TO nora_telemetry;
 
 -- ============================================================
 -- 5. DEFAULT PRIVILEGES — FUTURE tables/sequences created by the owner (the admin that

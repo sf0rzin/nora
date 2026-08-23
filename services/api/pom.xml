@@ -243,19 +243,43 @@
                     </execution>
                     <!--
                       Coverage gate on the critical IAM areas (ADR 0018: >85% sustained on
-                      IAM/Auth/PII). Today the rule is scoped to ONE class — PolicyEvaluator,
+                      IAM/Auth/PII). The first rule is scoped to ONE class — PolicyEvaluator,
                       the IAM authorization decision point (ADR 0007), covered by
                       PolicyEvaluatorTest (~22 unit tests, no Docker). Measured locally:
                       INSTRUCTION 0.945 / BRANCH 0.806 — the limits below (0.90 / 0.75) pass
                       with headroom and are meaningful.
 
-                      FOLLOWUP (raise the gate to 0.85 package-wide): covering
-                      application/identity and infrastructure/security requires Testcontainers
-                      (Docker), which only runs in CI. The package-wide rule on domain.iam
-                      currently sits at ~0.83 instruction because the data-carrier records
-                      (IamPolicy, IamGroup, PolicyDocument, IamAuditEvent) are only exercised
-                      via integration tests. Widening this check to PACKAGE/application must be
-                      calibrated by measuring in CI with Docker, not locally.
+                      The second and third rules exist because one class was the WHOLE gate.
+                      A drop in AuthService, AuthorizationService, IamService, the security
+                      filters or the persistence adapters passed `mvn verify` in silence, and
+                      the 77% figure the documentation quotes was a measurement nobody
+                      re-checked. standards.md is honest that it is a report rather than a
+                      gate — but "declared as unguarded" and "guarded" are different states,
+                      and this moves two of them.
+
+                      The thresholds are floors with deliberate headroom, not targets. Measured
+                      2026-08-17 across the whole bundle: 77.1-77.3% instruction and
+                      61.5-61.6% branch, over three runs. The BUNDLE rule sits at 0.70 / 0.55,
+                      roughly seven and six points below, so ordinary variance between runs
+                      never reddens the build while a real regression does. The domain.iam
+                      PACKAGE rule sits at 0.80 against a measured ~0.83 for the same reason.
+                      Raising either one is a separate decision that needs a fresh measurement
+                      in CI with Docker, because Testcontainers is what covers
+                      application/identity and infrastructure/security and it does not run
+                      locally.
+
+                      RE-CHECKED 2026-08-23, after the audit round added roughly two thousand
+                      lines of Java. The measurement above predates that code, so the question
+                      was whether the new denominator could push the bundle under its floor. It
+                      cannot: the same command on the same machine reports 53,500 total
+                      instructions at origin/main and 55,058 here, a growth of 2.9%. Even if
+                      every new instruction were uncovered, 77.1% x (53500/55058) = 74.9%, which
+                      still clears 0.70 — and the new code arrived with tests. What did NOT
+                      reproduce is the absolute: CI reported a total of 41,596 instructions for
+                      the same tree where this machine reports 53,500, and neither the plugin
+                      config nor report-coverage.sh filters any row, so the difference is
+                      unexplained rather than accounted for. The DELTA is what this note rests
+                      on, because the delta is what the floor is exposed to.
                     -->
                     <execution>
                         <id>check-iam-coverage</id>
@@ -280,6 +304,34 @@
                                             <counter>BRANCH</counter>
                                             <value>COVEREDRATIO</value>
                                             <minimum>0.75</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                                <rule>
+                                    <element>PACKAGE</element>
+                                    <includes>
+                                        <include>br.com.nora.api.domain.iam</include>
+                                    </includes>
+                                    <limits>
+                                        <limit>
+                                            <counter>INSTRUCTION</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.80</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>INSTRUCTION</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.70</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>BRANCH</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.55</minimum>
                                         </limit>
                                     </limits>
                                 </rule>

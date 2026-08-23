@@ -114,6 +114,20 @@ class PolicyTemplateCatalogTest {
                 .isFalse();
     }
 
+    /**
+     * The reversible removal is part of the working set; the permanent erasure is not. The pair is
+     * asserted together because the value of separating the two actions is exactly that a template
+     * can carry one and refuse the other — a regression that folded them back would show up here as
+     * the second assertion flipping, not as a missing feature.
+     */
+    @Test
+    void meetingAnalystRemovesButDoesNotErase() {
+        List<PolicyStatement> stmts = statementsOf("meeting-analyst");
+
+        assertThat(allowed(stmts, "meeting:delete", ResourceArns.meeting(TENANT, null))).isTrue();
+        assertThat(allowed(stmts, "meeting:erase", ResourceArns.meeting(TENANT, null))).isFalse();
+    }
+
     @Test
     void iamAdministratorCoversTheWholeIamVocabulary() {
         List<PolicyStatement> stmts = statementsOf("iam-administrator");

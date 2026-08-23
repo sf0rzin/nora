@@ -5,8 +5,10 @@ import br.com.nora.api.domain.identity.Email;
 import br.com.nora.api.domain.identity.User;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +31,14 @@ public class UserRepositoryAdapter implements UserRepository {
     @Override
     public Optional<User> findByEmail(Email email) {
         return jpa.findByEmail(email.value()).map(this::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<User> listByTenant(UUID tenantId, int limit) {
+        return jpa.findByTenantIdOrderByDisplayNameAsc(tenantId, PageRequest.of(0, limit)).stream()
+                .map(this::toDomain)
+                .toList();
     }
 
     @Override

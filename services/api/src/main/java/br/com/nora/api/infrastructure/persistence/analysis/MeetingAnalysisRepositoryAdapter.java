@@ -71,7 +71,8 @@ public class MeetingAnalysisRepositoryAdapter implements MeetingAnalysisReposito
                                         (UUID) r[0],
                                         ((Number) r[1]).intValue(),
                                         ((Number) r[2]).intValue(),
-                                        ((Number) r[3]).intValue()))
+                                        ((Number) r[3]).intValue(),
+                                        ((Number) r[4]).intValue()))
                 .toList();
     }
 

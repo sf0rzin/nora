@@ -5,6 +5,7 @@ import br.com.nora.api.application.ports.UserRepository;
 import br.com.nora.api.domain.iam.IamAuditEvent;
 import br.com.nora.api.domain.iam.IamGroup;
 import br.com.nora.api.domain.iam.IamPolicy;
+import br.com.nora.api.domain.iam.IamPolicyVersion;
 import br.com.nora.api.domain.iam.PermissionBoundary;
 import br.com.nora.api.domain.iam.PolicyTemplate;
 import br.com.nora.api.domain.iam.PolicyTemplateCatalog;
@@ -27,6 +28,23 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class IamService {
+
+    /**
+     * Ceiling on the rows an unparameterised IAM listing may return, in the shape {@code
+     * WorkflowService.EXECUTIONS_LIMIT} already uses and for the same reason: a listing with no
+     * ceiling has one only by accident, and the accident is the tenant being small. Groups and
+     * policies are administrative sets — a tenant with 500 of either has a different problem than a
+     * missing page 2 — so the limit is a guard rail rather than pagination, and the endpoints keep
+     * their flat list shape. {@code listAudit} already clamps at 200 the same way.
+     */
+    public static final int LIST_LIMIT = 500;
+
+    /**
+     * Ceiling on the revisions {@link #listPolicyVersions} returns, newest first. A policy edited
+     * more than this many times still has every revision in the table — the history is immutable
+     * and nothing here deletes it; what is bounded is one response.
+     */
+    public static final int POLICY_VERSIONS_LIMIT = 100;
 
     private final IamRepository iam;
     private final UserRepository users;
@@ -54,8 +72,38 @@ public class IamService {
 
     @Transactional(readOnly = true)
     public List<IamGroup> listGroups(UUID tenantId) {
-        return iam.listGroups(tenantId);
+        return iam.listGroups(tenantId, LIST_LIMIT);
     }
+
+    // ========== directory ==========
+
+    /**
+     * The tenant's users, so every other IAM operation stops asking for a UUID nothing shows.
+     *
+     * <p>It lives on this service rather than on an identity one because of who reads it: adding a
+     * member to a group, attaching a policy, capping a user and simulating a decision all take a
+     * user id, and this is the list they pick from. {@code UsersController} deliberately exposes
+     * only the caller's own row and should keep doing so.
+     *
+     * <p>What it returns is deliberately narrow — id, display name, e-mail, root flag. No status,
+     * no timestamps, nothing about credentials. A directory is for choosing a subject, and every
+     * field beyond that is a field a delegated admin can read about a colleague for no reason.
+     */
+    @Transactional(readOnly = true)
+    public List<DirectoryUser> listUsers(UUID tenantId) {
+        return users.listByTenant(tenantId, LIST_LIMIT).stream()
+                .map(
+                        u ->
+                                new DirectoryUser(
+                                        u.id(),
+                                        u.displayName(),
+                                        u.email().value(),
+                                        users.isRoot(u.id(), tenantId)))
+                .toList();
+    }
+
+    /** One entry of the tenant directory. See {@link #listUsers}. */
+    public record DirectoryUser(UUID id, String displayName, String email, boolean root) {}
 
     @Transactional
     public void deleteGroup(UUID tenantId, UUID actor, UUID groupId) {
@@ -147,7 +195,20 @@ public class IamService {
 
     @Transactional(readOnly = true)
     public List<IamPolicy> listPolicies(UUID tenantId) {
-        return iam.listPolicies(tenantId);
+        return iam.listPolicies(tenantId, LIST_LIMIT);
+    }
+
+    /**
+     * The immutable history of one policy, newest version first (US36).
+     *
+     * <p>The policy is resolved first so that a policy of another tenant answers 404 instead of an
+     * empty history — an empty list would be indistinguishable from "exists but never edited", and
+     * that difference is cross-tenant existence.
+     */
+    @Transactional(readOnly = true)
+    public List<IamPolicyVersion> listPolicyVersions(UUID tenantId, UUID policyId) {
+        iam.findPolicy(policyId, tenantId).orElseThrow(IamException::policyNotFound);
+        return iam.listPolicyVersions(policyId, tenantId, POLICY_VERSIONS_LIMIT);
     }
 
     @Transactional(readOnly = true)

@@ -8,7 +8,17 @@ public class NlpWorkerProperties {
 
     private String baseUrl = "http://localhost:8001";
 
-    /** Total timeout for the /analyze call, in milliseconds. */
+    /**
+     * Total timeout for the /analyze call, in milliseconds.
+     *
+     * <p>The worker gives up before this on purpose. Its {@code LLM_REQUEST_BUDGET_SECONDS} (90s by
+     * default) is a wall-clock budget across every retry and every window of {@code /split},
+     * deliberately under this deadline: without it a single call could spend 360s — three SDK
+     * attempts, then the whole prompt again in JSON mode — and go on burning paid tokens for four
+     * minutes after this client had already stopped waiting for the answer. Raising this number
+     * without raising the worker's budget only lengthens the wait; lowering it below 90s makes the
+     * worker's own ceiling unreachable and puts the abandoned-call behaviour back.
+     */
     private long timeoutMillis = 120_000L;
 
     /**

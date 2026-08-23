@@ -25,6 +25,14 @@ import org.springframework.stereotype.Component;
  * nora_telemetry} datasource (BYPASSRLS, read-only) is configured it answers instead; otherwise the
  * primary template does, where in dev and CI the owner bypasses RLS anyway. {@link #source()} names
  * whichever answered, so a real zero is distinguishable from a fail-closed one.
+ *
+ * <p><b>The role has to be granted the tables this query reads.</b> {@code nora_telemetry} is
+ * least-privilege, so it sees only what {@code db/operational/R001__provision_app_roles.sql} names
+ * one table at a time. Adding a table to the query below without adding its GRANT to R001 does not
+ * fail here: Postgres answers {@code permission denied} (42501), the JdbcTemplate turns it into a
+ * {@code DataAccessException} and the backfill preview reports the PRIMARY database as unavailable
+ * — a 503 pointing at the wrong half of the system. That is exactly what happened to {@code
+ * meetings} and {@code meeting_embeddings} until 2026-08-23.
  */
 @Component
 public class PrimaryDbEmbeddingIndexStatus implements EmbeddingIndexStatusSource {
@@ -42,7 +50,8 @@ public class PrimaryDbEmbeddingIndexStatus implements EmbeddingIndexStatusSource
      */
     private static final String FROM_ANALYSED_MEETINGS =
             " FROM meetings m LEFT JOIN meeting_embeddings e ON e.meeting_id = m.id"
-                    + " WHERE m.summary_snippet IS NOT NULL AND btrim(m.summary_snippet) <> ''";
+                    + " WHERE m.deleted_at IS NULL"
+                    + " AND m.summary_snippet IS NOT NULL AND btrim(m.summary_snippet) <> ''";
 
     private static final RowMapper<Totals> TOTALS_ROW = PrimaryDbEmbeddingIndexStatus::totalsRow;
 

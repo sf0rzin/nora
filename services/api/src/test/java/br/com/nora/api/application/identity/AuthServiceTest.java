@@ -721,6 +721,14 @@ class AuthServiceTest {
         }
 
         @Override
+        public java.util.List<User> listByTenant(UUID tenantId, int limit) {
+            return byId.values().stream()
+                    .filter(u -> u.tenantId().equals(tenantId))
+                    .limit(limit)
+                    .toList();
+        }
+
+        @Override
         public User save(User u) {
             byId.put(u.id(), u);
             return u;

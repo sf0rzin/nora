@@ -3,10 +3,12 @@ package br.com.nora.api.api.controllers;
 import br.com.nora.api.api.dto.iam.AuditEventDto;
 import br.com.nora.api.api.dto.iam.CreateGroupRequest;
 import br.com.nora.api.api.dto.iam.CreatePolicyRequest;
+import br.com.nora.api.api.dto.iam.DirectoryUserDto;
 import br.com.nora.api.api.dto.iam.GroupDto;
 import br.com.nora.api.api.dto.iam.PermissionBoundaryDto;
 import br.com.nora.api.api.dto.iam.PolicyDto;
 import br.com.nora.api.api.dto.iam.PolicyTemplateDto;
+import br.com.nora.api.api.dto.iam.PolicyVersionDto;
 import br.com.nora.api.api.dto.iam.SetPermissionBoundaryRequest;
 import br.com.nora.api.api.dto.iam.SimulatePolicyRequest;
 import br.com.nora.api.api.dto.iam.SimulatePolicyResponse;
@@ -21,6 +23,7 @@ import br.com.nora.api.domain.iam.Effect;
 import br.com.nora.api.domain.iam.IamAuditEvent;
 import br.com.nora.api.domain.iam.IamGroup;
 import br.com.nora.api.domain.iam.IamPolicy;
+import br.com.nora.api.domain.iam.IamPolicyVersion;
 import br.com.nora.api.domain.iam.PermissionBoundary;
 import br.com.nora.api.domain.iam.PolicyDecision;
 import br.com.nora.api.domain.iam.PolicyDocument;
@@ -31,6 +34,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import jakarta.validation.Valid;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -82,10 +86,7 @@ public class IamController {
     @PostMapping("/groups")
     @ResponseStatus(HttpStatus.CREATED)
     @RequiresPermission(action = "iam:group:create", resource = ResourceType.IAM)
-    public GroupDto createGroup(@RequestBody CreateGroupRequest body) {
-        if (body.name() == null || body.name().isBlank()) {
-            throw new IllegalArgumentException("name is required");
-        }
+    public GroupDto createGroup(@Valid @RequestBody CreateGroupRequest body) {
         AuthenticatedPrincipal p = CurrentUser.require();
         IamGroup g = iam.createGroup(p.tenantId(), p.userId(), body.name(), body.description());
         return toGroupDto(g);
@@ -122,6 +123,32 @@ public class IamController {
         iam.removeUserFromGroup(p.tenantId(), p.userId(), id, userId);
     }
 
+    // ---------- directory ----------
+
+    /**
+     * The tenant's users, so the rest of this controller stops demanding a UUID nothing displays.
+     *
+     * <p>Four capabilities shipped as done take a {@code userId} as free text — group membership,
+     * policy attachment, the permission boundary (US44) and the simulator (US43) — and no endpoint
+     * of this API ever returned one. {@code /users/me} is the caller's own row and {@code
+     * /iam/groups/{id}/members} only lists ids of people already in a group, which is no help when
+     * the task is putting someone in it. The documented workaround was to read the database.
+     *
+     * <p>Gated by {@code iam:group:read} rather than an action of its own. That is the same
+     * argument as the policy templates and the opposite of {@code iam:policy:simulate}: whoever can
+     * already list the members of a group can already learn which user ids exist, so a directory
+     * adds no knowledge to that grant — while a new action would silently break every admin policy
+     * written before today unless it used the {@code iam:*} shape.
+     */
+    @GetMapping("/users")
+    @RequiresPermission(action = "iam:group:read", resource = ResourceType.IAM)
+    public List<DirectoryUserDto> listUsers() {
+        AuthenticatedPrincipal p = CurrentUser.require();
+        return iam.listUsers(p.tenantId()).stream()
+                .map(u -> new DirectoryUserDto(u.id(), u.displayName(), u.email(), u.root()))
+                .toList();
+    }
+
     // ---------- policies ----------
 
     @GetMapping("/policies")
@@ -141,10 +168,7 @@ public class IamController {
     @PostMapping("/policies")
     @ResponseStatus(HttpStatus.CREATED)
     @RequiresPermission(action = "iam:policy:create", resource = ResourceType.IAM)
-    public PolicyDto createPolicy(@RequestBody CreatePolicyRequest body) {
-        if (body.name() == null || body.name().isBlank()) {
-            throw new IllegalArgumentException("name is required");
-        }
+    public PolicyDto createPolicy(@Valid @RequestBody CreatePolicyRequest body) {
         if (body.document() == null) {
             throw IamException.invalidDocument("document required");
         }
@@ -162,13 +186,35 @@ public class IamController {
     @PutMapping("/policies/{id}")
     @RequiresPermission(action = "iam:policy:update", resource = ResourceType.IAM)
     public PolicyDto updatePolicy(
-            @PathVariable("id") UUID id, @RequestBody UpdatePolicyRequest body) {
+            @PathVariable("id") UUID id, @Valid @RequestBody UpdatePolicyRequest body) {
         if (body.document() == null) {
             throw IamException.invalidDocument("document required");
         }
         AuthenticatedPrincipal p = CurrentUser.require();
         return toPolicyDto(
                 iam.updatePolicyDocument(p.tenantId(), p.userId(), id, body.document().toString()));
+    }
+
+    /**
+     * US36 — the policy's immutable history, newest version first.
+     *
+     * <p>The table behind it ({@code iam_policy_versions}, V006) had been written on every create
+     * and every edit and read by nothing at all, which made the "immutable history" of US36 a
+     * backup: {@code iam_audit_events} records that a policy changed and never what it said before,
+     * so reconstructing what a policy allowed last quarter required database access. This is the
+     * read that closes it.
+     *
+     * <p>Gated by {@code iam:policy:read} rather than by an action of its own, and that is the
+     * argument running the other way from {@code iam:policy:simulate}: a revision is the same
+     * object this grant already returns, at an earlier point in time. It reveals nothing about the
+     * attachment graph and nothing about any other tenant, so a separate action would gate no
+     * additional knowledge and would only make existing admin policies stop working.
+     */
+    @GetMapping("/policies/{id}/versions")
+    @RequiresPermission(action = "iam:policy:read", resource = ResourceType.IAM)
+    public List<PolicyVersionDto> listPolicyVersions(@PathVariable("id") UUID id) {
+        AuthenticatedPrincipal p = CurrentUser.require();
+        return iam.listPolicyVersions(p.tenantId(), id).stream().map(this::toVersionDto).toList();
     }
 
     @DeleteMapping("/policies/{id}")
@@ -272,10 +318,8 @@ public class IamController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @RequiresPermission(action = "iam:boundary:set", resource = ResourceType.IAM)
     public void setBoundary(
-            @PathVariable("userId") UUID userId, @RequestBody SetPermissionBoundaryRequest body) {
-        if (body == null || body.policyId() == null) {
-            throw new IllegalArgumentException("policyId is required");
-        }
+            @PathVariable("userId") UUID userId,
+            @Valid @RequestBody SetPermissionBoundaryRequest body) {
         AuthenticatedPrincipal p = CurrentUser.require();
         iam.setBoundary(p.tenantId(), p.userId(), userId, body.policyId());
     }
@@ -323,16 +367,7 @@ public class IamController {
      */
     @PostMapping("/simulate")
     @RequiresPermission(action = "iam:policy:simulate", resource = ResourceType.IAM)
-    public SimulatePolicyResponse simulate(@RequestBody SimulatePolicyRequest body) {
-        if (body.userId() == null) {
-            throw new IllegalArgumentException("userId is required");
-        }
-        if (body.action() == null || body.action().isBlank()) {
-            throw new IllegalArgumentException("action is required");
-        }
-        if (body.resource() == null || body.resource().isBlank()) {
-            throw new IllegalArgumentException("resource is required");
-        }
+    public SimulatePolicyResponse simulate(@Valid @RequestBody SimulatePolicyRequest body) {
         AuthenticatedPrincipal p = CurrentUser.require();
         PolicyExplanation explained =
                 iam.simulate(
@@ -420,6 +455,11 @@ public class IamController {
             }
         }
         return root;
+    }
+
+    private PolicyVersionDto toVersionDto(IamPolicyVersion v) {
+        return new PolicyVersionDto(
+                v.version(), documentToJson(v.document()), v.createdBy(), v.createdAt());
     }
 
     private PolicyDto toPolicyDto(IamPolicy p) {

@@ -19,8 +19,12 @@ public interface ChatSessionRepository {
      */
     record ChatSessionSummaryRow(ChatSession session, int messageCount, String lastSnippet) {}
 
-    /** The user's sessions in the tenant, most recent first (by updated_at desc). */
-    List<ChatSessionSummaryRow> listByUser(UUID tenantId, UUID userId);
+    /**
+     * The user's sessions in the tenant, most recent first (by updated_at desc), capped at {@code
+     * limit} rows — see {@code ChatSessionService.LIST_LIMIT} for why this listing needs a ceiling
+     * more than the administrative ones do.
+     */
+    List<ChatSessionSummaryRow> listByUser(UUID tenantId, UUID userId, int limit);
 
     /** Creates a new session (id already generated in the domain/service). */
     void create(ChatSession session);

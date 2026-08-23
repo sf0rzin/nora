@@ -60,6 +60,17 @@ public class InvitationService {
     public static final int MAX_EXPIRES_IN_DAYS = 30;
     public static final int MIN_EXPIRES_IN_DAYS = 1;
 
+    /**
+     * Ceiling on the invitations one listing returns, newest first.
+     *
+     * <p>{@code listInvites} is not a plain read: it WRITES, marking every overdue PENDING as
+     * EXPIRED as it goes. Without a ceiling, one call over a tenant that invited widely is an
+     * unbounded read plus an unbounded number of single-row updates inside one transaction — and
+     * this is the endpoint whose response envelope already claims to be a page. The cap and the
+     * envelope now agree: what comes back is one page, and it is the newest one.
+     */
+    public static final int LIST_LIMIT = 500;
+
     private final InvitationRepository invitations;
     private final TenantRepository tenants;
     private final UserRepository users;
@@ -302,7 +313,7 @@ public class InvitationService {
     @Transactional
     public List<IamInvitation> listInvites(UUID tenantId, InvitationStatus statusFilter) {
         Instant now = clock.now();
-        List<IamInvitation> all = invitations.listByTenant(tenantId, null);
+        List<IamInvitation> all = invitations.listByTenant(tenantId, null, LIST_LIMIT);
         List<IamInvitation> result = new ArrayList<>(all.size());
         for (IamInvitation inv : all) {
             IamInvitation current = inv;

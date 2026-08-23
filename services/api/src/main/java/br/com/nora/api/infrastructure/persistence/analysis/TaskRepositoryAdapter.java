@@ -21,27 +21,42 @@ import org.springframework.transaction.annotation.Transactional;
  * Adapter for the meeting_action_items table seen as a "tenant task" (US22-US24). Uses native SQL
  * to project a flattened row (with meeting_id and meeting title) without having to load the whole
  * MeetingAnalysis aggregate.
+ *
+ * <p>Every join onto {@code meetings} carries {@code m.deleted_at IS NULL}, the same predicate
+ * {@code TrendsRepositoryAdapter} and {@code ParticipantRepositoryAdapter} spell out: native SQL
+ * does not see the entity's {@code @SQLRestriction}, so the soft-delete has to be repeated by hand
+ * in each query or it simply does not apply. It was missing here while nothing wrote {@code
+ * deleted_at}, which made the omission invisible rather than harmless — {@code DELETE
+ * /meetings/{id}} now writes it, and without the predicate the tasks of a removed meeting would
+ * keep being listed by {@code GET /tasks} and edited by {@code PATCH /tasks/{id}}.
  */
 @Repository
 public class TaskRepositoryAdapter implements TaskRepository {
 
     @PersistenceContext private EntityManager em;
 
+    /** The projection and the joins, shared by every read below so they cannot drift apart. */
+    private static final String SELECT_TASK_ROW =
+            "SELECT ai.id, ai.title, ai.assignee, ai.due_date, ai.priority, ai.status, "
+                    + "       a.meeting_id, m.title AS meeting_title, ai.updated_at "
+                    + "FROM meeting_action_items ai "
+                    + "JOIN meeting_analyses a ON a.id = ai.analysis_id "
+                    + "JOIN meetings m ON m.id = a.meeting_id AND m.deleted_at IS NULL ";
+
+    /** OPEN first, then IN_PROGRESS, then the rest; newest touched first inside each group. */
+    private static final String TASK_ORDER =
+            "ORDER BY CASE ai.status WHEN 'OPEN' THEN 0 WHEN 'IN_PROGRESS' THEN 1 ELSE 2 END, "
+                    + "         ai.updated_at DESC, ai.id ";
+
+    private static final String TENANT_AND_STATUS =
+            "WHERE ai.tenant_id = :tenantId "
+                    + "  AND (CAST(:status AS text) IS NULL OR ai.status = CAST(:status AS text)) ";
+
     @Override
     @Transactional(readOnly = true)
     @SuppressWarnings("unchecked")
     public List<TaskRow> listByTenant(UUID tenantId, ActionItemStatus statusFilter) {
-        String sql =
-                "SELECT ai.id, ai.title, ai.assignee, ai.due_date, ai.priority, ai.status, "
-                        + "       a.meeting_id, m.title AS meeting_title, ai.updated_at "
-                        + "FROM meeting_action_items ai "
-                        + "JOIN meeting_analyses a ON a.id = ai.analysis_id "
-                        + "JOIN meetings m ON m.id = a.meeting_id "
-                        + "WHERE ai.tenant_id = :tenantId "
-                        + "  AND (CAST(:status AS text) IS NULL OR ai.status = CAST(:status AS text)) "
-                        + "ORDER BY CASE ai.status WHEN 'OPEN' THEN 0 WHEN 'IN_PROGRESS' THEN 1 ELSE 2 END, "
-                        + "         ai.updated_at DESC";
-        var query = em.createNativeQuery(sql);
+        var query = em.createNativeQuery(SELECT_TASK_ROW + TENANT_AND_STATUS + TASK_ORDER);
         query.setParameter("tenantId", tenantId);
         query.setParameter("status", statusFilter == null ? null : statusFilter.name());
         List<Object[]> rows = (List<Object[]>) query.getResultList();
@@ -52,18 +67,52 @@ public class TaskRepositoryAdapter implements TaskRepository {
         return result;
     }
 
+    /**
+     * Paginated variant, used when the IAM decision is uniform over the tenant's tasks and the page
+     * can therefore be cut in SQL instead of in the heap.
+     *
+     * <p>The total is a second statement rather than a window function: the ordering above is not
+     * stable enough to reuse the same plan, and a count over the two joins is the cheap half of the
+     * pair. {@code ai.id} is appended to the ORDER BY so that two rows sharing a status and an
+     * {@code updated_at} do not swap between pages.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    @SuppressWarnings("unchecked")
+    public PagedTasks listByTenant(
+            UUID tenantId, ActionItemStatus statusFilter, int page, int size) {
+        String status = statusFilter == null ? null : statusFilter.name();
+        String sql = SELECT_TASK_ROW + TENANT_AND_STATUS + TASK_ORDER + "LIMIT :size OFFSET :off";
+        var query = em.createNativeQuery(sql);
+        query.setParameter("tenantId", tenantId);
+        query.setParameter("status", status);
+        query.setParameter("size", size);
+        query.setParameter("off", (long) page * size);
+        List<Object[]> rows = (List<Object[]>) query.getResultList();
+        List<TaskRow> items = new ArrayList<>(rows.size());
+        for (Object[] r : rows) {
+            items.add(toRow(r));
+        }
+
+        var countQuery =
+                em.createNativeQuery(
+                        "SELECT COUNT(*) FROM meeting_action_items ai "
+                                + "JOIN meeting_analyses a ON a.id = ai.analysis_id "
+                                + "JOIN meetings m ON m.id = a.meeting_id AND m.deleted_at IS NULL "
+                                + TENANT_AND_STATUS);
+        countQuery.setParameter("tenantId", tenantId);
+        countQuery.setParameter("status", status);
+        long total = ((Number) countQuery.getSingleResult()).longValue();
+        return new PagedTasks(items, total, page, size);
+    }
+
     @Override
     @Transactional(readOnly = true)
     @SuppressWarnings("unchecked")
     public Optional<TaskRow> findByIdAndTenant(UUID id, UUID tenantId) {
-        String sql =
-                "SELECT ai.id, ai.title, ai.assignee, ai.due_date, ai.priority, ai.status, "
-                        + "       a.meeting_id, m.title AS meeting_title, ai.updated_at "
-                        + "FROM meeting_action_items ai "
-                        + "JOIN meeting_analyses a ON a.id = ai.analysis_id "
-                        + "JOIN meetings m ON m.id = a.meeting_id "
-                        + "WHERE ai.id = :id AND ai.tenant_id = :tenantId";
-        var query = em.createNativeQuery(sql);
+        var query =
+                em.createNativeQuery(
+                        SELECT_TASK_ROW + "WHERE ai.id = :id AND ai.tenant_id = :tenantId");
         query.setParameter("id", id);
         query.setParameter("tenantId", tenantId);
         List<Object[]> rows = (List<Object[]>) query.getResultList();

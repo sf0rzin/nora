@@ -247,7 +247,7 @@ class TenantServiceTest {
         }
 
         @Override
-        public List<IamGroup> listGroups(UUID tenantId) {
+        public List<IamGroup> listGroups(UUID tenantId, int limit) {
             throw new UnsupportedOperationException();
         }
 
@@ -298,7 +298,13 @@ class TenantServiceTest {
         }
 
         @Override
-        public List<IamPolicy> listPolicies(UUID tenantId) {
+        public List<IamPolicy> listPolicies(UUID tenantId, int limit) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<br.com.nora.api.domain.iam.IamPolicyVersion> listPolicyVersions(
+                UUID policyId, UUID tenantId, int limit) {
             throw new UnsupportedOperationException();
         }
 

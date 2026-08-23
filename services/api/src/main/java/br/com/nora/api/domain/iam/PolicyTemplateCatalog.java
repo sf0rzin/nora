@@ -80,11 +80,19 @@ public final class PolicyTemplateCatalog {
     /**
      * The working set for someone who runs meetings: everything on a meeting except starting a live
      * capture, which spends money with an external provider and is left to an explicit grant.
+     *
+     * <p>{@code meeting:delete} is in, {@code meeting:erase} is out, and the difference is the
+     * whole reason the two actions exist separately. Removing a meeting that was uploaded by
+     * mistake is ordinary work and is reversible — the row keeps every byte behind {@code
+     * deleted_at}. The LGPD erasure destroys the transcript, the participants and the analyses of
+     * everyone who was in that meeting, permanently. A template is a starting point handed to
+     * someone who has not yet thought about what it grants, so the irreversible half has to be
+     * granted deliberately and never arrives by default.
      */
     private static PolicyTemplate meetingAnalyst(UUID tenantId) {
         return new PolicyTemplate(
                 "meeting-analyst",
-                "Upload, read, update and reprocess meetings, and write their tasks.",
+                "Upload, read, update, reprocess and remove meetings, and write their tasks.",
                 document(
                         allow(
                                 List.of(
@@ -92,6 +100,7 @@ public final class PolicyTemplateCatalog {
                                         "meeting:read",
                                         "meeting:update",
                                         "meeting:reprocess",
+                                        "meeting:delete",
                                         "task:read",
                                         "task:write"),
                                 List.of(meetings(tenantId), tasks(tenantId)))));

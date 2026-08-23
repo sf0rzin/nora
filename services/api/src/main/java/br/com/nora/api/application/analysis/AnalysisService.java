@@ -289,12 +289,19 @@ public class AnalysisService {
     }
 
     /** Listing row enrichment: counts + productivity band/score. */
+    /**
+     * @param actionItems every extracted action item, DONE included
+     * @param openActionItems the ones not yet DONE — the number a "how much is still pending"
+     *     surface has to use. See {@code MeetingAnalysisJpaRepository.aggregateCountsByMeetingIds}
+     *     for why the two are reported side by side instead of one replacing the other
+     */
     public record ListEnrichment(
             int actionItems,
             int risks,
             int opportunities,
             String productivityBand,
-            Integer productivityScore) {}
+            Integer productivityScore,
+            int openActionItems) {}
 
     /**
      * Enriches the meeting listing items in BATCH: counts (action items/risks/opportunities) and
@@ -330,7 +337,8 @@ public class AnalysisService {
                             c == null ? 0 : c.risks(),
                             c == null ? 0 : c.opportunities(),
                             b == null ? null : b.band(),
-                            b == null ? null : b.score()));
+                            b == null ? null : b.score(),
+                            c == null ? 0 : c.openActionItems()));
         }
         return out;
     }

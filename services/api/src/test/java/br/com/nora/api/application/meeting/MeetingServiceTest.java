@@ -417,6 +417,14 @@ class MeetingServiceTest {
         int claimCalls;
 
         @Override
+        public int softDelete(UUID meetingId, UUID tenantId) {
+            // No deleted_at column in the fake, so dropping the entry is the closest
+            // observable equivalent: the meeting stops being findable, which is what
+            // the entity restriction does against Postgres.
+            return store.remove(meetingId) == null ? 0 : 1;
+        }
+
+        @Override
         public int hardErase(UUID meetingId, UUID tenantId) {
             return store.remove(meetingId) == null ? 0 : 1;
         }

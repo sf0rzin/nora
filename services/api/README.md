@@ -35,7 +35,10 @@ src/main/java/br/com/nora/api/
   infrastructure/      # persistencia, seguranca, clients externos
 ```
 
-Detailed rules in `docs/engineering/standards.md`.
+Detailed rules in `docs/engineering/standards.md`. The backend's build tooling and the coverage
+rules that actually gate `mvn verify` are in [QUALITY.md](QUALITY.md) — linked from here because
+until 2026-08-23 no file in the repository referenced it, which is how it kept telling readers to
+run a Maven wrapper this repository does not have.
 
 ## Endpoints available in the skeleton
 

@@ -23,6 +23,15 @@ nora:
       login-per-minute-per-email: 99999
       signup-per-minute: 100000
       reset-per-10-minutes: 100000
+      # Same reasoning for the AI-spend caps: dozens of integration tests search, reprocess and
+      # split-preview as the same user inside one JVM, and the production defaults would start
+      # answering 429 partway through a suite — a failure that reads as a broken endpoint. The
+      # limiter's own behaviour is exercised by AiSpendRateLimiterTest, where the caps are set
+      # low on purpose, and by the one integration test that overrides them for a single case.
+      search-per-minute: 100000
+      live-analyze-per-minute: 100000
+      reprocess-per-minute: 100000
+      split-preview-per-minute: 100000
     # Tests use MockMvc/RestAssured directly on the loopback, without the Cloudflare edge. Empty forces
     # the clientKey to fall back to the connection IP instead of looking for a header that never arrives.
     trusted-client-ip-header: ""

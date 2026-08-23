@@ -53,6 +53,12 @@ public class UsersController {
      * LGPD — PERMANENT deletion of the account and of ALL personal workspace data (danger zone).
      * Requires the current password in the body; a shared tenant returns 409. Clears the cookies in
      * the response.
+     *
+     * <p>"All personal workspace data" means the TENANT is physically deleted, with the CASCADE
+     * reaching meetings, transcripts, analyses, chat and flows — see {@link
+     * AuthService#deleteAccount} for why that is the least surprising behaviour and what bounds it.
+     * It is deliberately not a user-scoped soft-delete, and it is not general tenant deletion
+     * either: it only fires on a workspace with exactly one member.
      */
     @DeleteMapping("/me")
     @AuthorizationNotRequired(reason = "Self: deletes only the caller's own account.")

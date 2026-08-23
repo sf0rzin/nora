@@ -25,7 +25,25 @@ public interface TaskRepository {
             String meetingTitle,
             OffsetDateTime updatedAt) {}
 
+    /** One page of the tenant's tasks plus the real total, for the SQL-paginated path. */
+    record PagedTasks(List<TaskRow> items, long totalItems, int page, int size) {
+        public int totalPages() {
+            if (size <= 0) {
+                return 0;
+            }
+            return (int) Math.ceil((double) totalItems / (double) size);
+        }
+    }
+
+    /**
+     * Every task of the tenant, unpaginated. Kept for the callers that have to evaluate the IAM
+     * decision item by item before they can know how many rows are left to paginate — the same
+     * shape {@code MeetingService.listAllForAuthFilter} exists for.
+     */
     List<TaskRow> listByTenant(UUID tenantId, ActionItemStatus statusFilter);
+
+    /** One page, cut in SQL. Only correct when the IAM decision is uniform over the set. */
+    PagedTasks listByTenant(UUID tenantId, ActionItemStatus statusFilter, int page, int size);
 
     Optional<TaskRow> findByIdAndTenant(UUID id, UUID tenantId);
 

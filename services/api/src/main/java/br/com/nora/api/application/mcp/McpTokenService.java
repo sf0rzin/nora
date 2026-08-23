@@ -11,7 +11,13 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Lifecycle of the MCP bearer credentials of ADR 0041 §3: mint, list, revoke, and the edge exchange
@@ -31,6 +37,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class McpTokenService {
 
+    private static final Logger LOG = LoggerFactory.getLogger(McpTokenService.class);
+
     /** Recognisable, greppable prefix. Part of the credential, not a decoration around it. */
     public static final String TOKEN_PREFIX = "nora_mcp_";
 
@@ -44,15 +52,28 @@ public class McpTokenService {
     private final SecureTokenGenerator generator;
     private final Clock clock;
 
+    /**
+     * PROPAGATION_REQUIRES_NEW, used only by {@link #stampLastUsed}. A stamp written inside the
+     * authentication transaction would, on failure, mark that transaction rollback-only — and the
+     * commit at the end of {@link #authenticate} would then throw, turning a bookkeeping failure
+     * back into the refused-valid-token this is written to prevent. Its own transaction fails
+     * alone.
+     */
+    private final TransactionTemplate stampTransaction;
+
     public McpTokenService(
             McpTokenRepository tokens,
             UserRepository users,
             SecureTokenGenerator generator,
-            Clock clock) {
+            Clock clock,
+            PlatformTransactionManager transactionManager) {
         this.tokens = tokens;
         this.users = users;
         this.generator = generator;
         this.clock = clock;
+        this.stampTransaction = new TransactionTemplate(transactionManager);
+        this.stampTransaction.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     /**
@@ -67,8 +88,17 @@ public class McpTokenService {
     /**
      * Mints a credential for {@code userId} inside {@code tenantId}.
      *
+     * <p><b>Transactional because the cap is a check-then-act.</b> The count and the insert are two
+     * statements, and without one transaction around them each ran in the adapter's own — so N
+     * concurrent mints all read the same count, all passed, and all wrote, which is exactly the
+     * unbounded minting {@link #MAX_ACTIVE_TOKENS} promises to prevent. There is no database
+     * constraint expressing "at most 20 live rows per owner" (it is a predicate over a computed
+     * {@code isActive}, not over a column), so the transaction is the only thing that can hold the
+     * pair together.
+     *
      * @param ttl optional hard expiry; {@code null} means the token lives until it is revoked
      */
+    @Transactional
     public MintedToken mint(UUID tenantId, UUID userId, String rawName, Duration ttl) {
         String name = rawName == null ? "" : rawName.trim();
         if (name.isEmpty() || name.length() > MAX_NAME_LENGTH) {
@@ -96,6 +126,7 @@ public class McpTokenService {
     }
 
     /** The caller's own tokens, newest first. Revoked ones stay in the list, marked as such. */
+    @Transactional(readOnly = true)
     public List<McpToken> list(UUID tenantId, UUID userId) {
         return tokens.findByOwner(tenantId, userId);
     }
@@ -103,7 +134,12 @@ public class McpTokenService {
     /**
      * Revokes one of the caller's own tokens. Idempotent: revoking an already revoked token is a
      * no-op rather than an error, so a retried request cannot fail for having succeeded.
+     *
+     * <p>Transactional for the same reason {@link #mint} is: the read, the state change and the
+     * write are three steps over one row, and two concurrent revocations must not interleave into a
+     * row that says revoked with no {@code revokedAt}.
      */
+    @Transactional
     public void revoke(UUID tokenId, UUID tenantId, UUID userId) {
         McpToken token =
                 tokens.findByIdAndOwner(tokenId, tenantId, userId)
@@ -127,7 +163,20 @@ public class McpTokenService {
      * <p>The user is re-read on every call rather than trusted from the token row. That is what
      * makes disabling an account, or deleting it, take effect on the MCP surface immediately
      * instead of at the next revocation.
+     *
+     * <p><b>The last-used stamp cannot refuse a valid credential.</b> This method runs in the
+     * filter of every MCP request, and it writes: {@code markUsed} is the only mutation on the
+     * authentication path. It used to propagate, so a write that failed for any reason — a full
+     * disk, a lock timeout, a pool exhausted by something else entirely — answered 401 on a token
+     * that was live, which reads to the client as a revoked credential. The stamp is operational
+     * information about a credential; the answer to "is this credential valid" is the contract.
+     * When they disagree the contract wins, and the failure is logged rather than returned.
+     *
+     * <p>{@code readOnly} describes THIS method: the two lookups — the token and its owner — are
+     * the decision, and they now read one consistent snapshot instead of two independent ones. The
+     * stamp is not part of the decision and is written outside it.
      */
+    @Transactional(readOnly = true)
     public Optional<ResolvedToken> authenticate(String presented) {
         if (presented == null || !presented.startsWith(TOKEN_PREFIX)) {
             return Optional.empty();
@@ -145,8 +194,28 @@ public class McpTokenService {
             return Optional.empty();
         }
         String email = owner.get().email().value();
-        token.markUsed(now);
-        tokens.save(token);
+        stampLastUsed(token, now);
         return Optional.of(new ResolvedToken(token.tenantId(), token.userId(), email));
+    }
+
+    /**
+     * Records that the credential was presented. Best-effort by design — see {@link #authenticate}.
+     * The write runs in its own transaction so that a failure here cannot mark the caller's
+     * transaction rollback-only and take the authentication down with it.
+     */
+    private void stampLastUsed(McpToken token, Instant now) {
+        try {
+            stampTransaction.executeWithoutResult(
+                    status -> {
+                        token.markUsed(now);
+                        tokens.save(token);
+                    });
+        } catch (RuntimeException ex) {
+            LOG.warn(
+                    "Could not stamp last-used on MCP token id={} tenant={} cause={}",
+                    token.id(),
+                    token.tenantId(),
+                    ex.getMessage());
+        }
     }
 }

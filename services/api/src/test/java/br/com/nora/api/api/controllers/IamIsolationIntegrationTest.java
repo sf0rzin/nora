@@ -245,6 +245,94 @@ class IamIsolationIntegrationTest {
         assertThat(countUserPolicy(rootB, policyB)).isEqualTo(1);
     }
 
+    /* ========================= policy versions ======================== */
+
+    /**
+     * {@code GET /iam/policies/{id}/versions} — the read path {@code iam_policy_versions} never
+     * had.
+     *
+     * <p>The table has been written on every create and every edit since V006 and had no SELECT, no
+     * endpoint and nothing in the UI, which made the "immutable history" of US36 a backup: the
+     * audit trail records THAT a policy changed and never what it said before, so reconstructing
+     * what a policy allowed last quarter meant opening the database. The assertion that carries the
+     * value is the second one — the older revision still holds the OLD document, not a copy of the
+     * current one.
+     */
+    @Test
+    void policyVersions_areReadableAndKeepEachDocumentAsItWas() throws Exception {
+        String token = signupAndLogin("iam-versions@nora.dev", "Versao");
+        UUID tenantId = readClaim(token, "tenantId");
+        String policyId = createPolicy(token, "Politica versionada", readMeetings(tenantId));
+
+        String updated =
+                """
+                {"version":"2026-05-07","statements":[{"effect":"Deny","action":["meeting:read"],\
+                "resource":["nora:tenant/%s:meeting/*"]}]}"""
+                        .formatted(tenantId);
+        read(
+                exchange(
+                        HttpMethod.PUT,
+                        "/iam/policies/" + policyId,
+                        json(Map.of("document", mapper.readTree(updated))),
+                        token),
+                HttpStatus.OK);
+
+        JsonNode versions =
+                read(authGet("/iam/policies/" + policyId + "/versions", token), HttpStatus.OK);
+
+        // Newest first, so the history reads the way an operator scrolls it.
+        assertThat(versions.size()).isEqualTo(2);
+        assertThat(versions.get(0).get("version").asInt()).isEqualTo(2);
+        assertThat(versions.get(1).get("version").asInt()).isEqualTo(1);
+
+        // Each revision holds the document as it was written, not the current one.
+        assertThat(versions.get(0).get("document").get("statements").get(0).get("effect").asText())
+                .isEqualTo("Deny");
+        assertThat(versions.get(1).get("document").get("statements").get(0).get("effect").asText())
+                .isEqualTo("Allow");
+    }
+
+    /**
+     * A policy of another tenant answers 404 rather than an empty history: an empty list would be
+     * indistinguishable from "exists but never edited", and that difference is cross-tenant
+     * existence.
+     */
+    @Test
+    void policyVersions_ofAnotherTenant_areNotReadable() throws Exception {
+        String tokenA = signupAndLogin("iam-ver-a@nora.dev", "Alfa");
+        UUID tenantA = readClaim(tokenA, "tenantId");
+        String policyA = createPolicy(tokenA, "Politica do Alfa", readMeetings(tenantA));
+
+        String tokenB = signupAndLogin("iam-ver-b@nora.dev", "Beta");
+
+        assertThat(getStatus("/iam/policies/" + policyA + "/versions", tokenB))
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /* ============================= directory ========================== */
+
+    /**
+     * {@code GET /iam/users} — the directory that makes the rest of the IAM screens usable.
+     *
+     * <p>Four capabilities shipped as done take a user id as free text and nothing in the product
+     * ever showed one. The isolation assertion is the load-bearing half: a directory that leaked
+     * across tenants would be a worse problem than the one it solves.
+     */
+    @Test
+    void userDirectory_listsOnlyTheCallersOwnTenant() throws Exception {
+        String tokenA = signupAndLogin("iam-dir-a@nora.dev", "Alfa Dir");
+        UUID tenantA = readClaim(tokenA, "tenantId");
+        UUID memberA = insertActiveMember(tenantA, "iam-dir-a-member@nora.dev", "Membro do Alfa");
+
+        String tokenB = signupAndLogin("iam-dir-b@nora.dev", "Beta Dir");
+
+        List<String> idsOfA = idsOf(read(authGet("/iam/users", tokenA), HttpStatus.OK), "id");
+        assertThat(idsOfA).contains(memberA.toString());
+
+        List<String> idsOfB = idsOf(read(authGet("/iam/users", tokenB), HttpStatus.OK), "id");
+        assertThat(idsOfB).doesNotContain(memberA.toString());
+    }
+
     /* ============================== audit ============================= */
 
     @Test

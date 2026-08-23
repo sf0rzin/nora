@@ -692,6 +692,14 @@ class InvitationServiceTest {
         }
 
         @Override
+        public java.util.List<User> listByTenant(UUID tenantId, int limit) {
+            return byId.values().stream()
+                    .filter(u -> u.tenantId().equals(tenantId))
+                    .limit(limit)
+                    .toList();
+        }
+
+        @Override
         public User save(User u) {
             byId.put(u.id(), u);
             return u;
@@ -744,7 +752,7 @@ class InvitationServiceTest {
         }
 
         @Override
-        public List<IamInvitation> listByTenant(UUID tenantId, InvitationStatus status) {
+        public List<IamInvitation> listByTenant(UUID tenantId, InvitationStatus status, int limit) {
             return store.values().stream()
                     .filter(i -> i.tenantId().equals(tenantId))
                     .filter(i -> status == null || i.status() == status)
@@ -806,7 +814,7 @@ class InvitationServiceTest {
         }
 
         @Override
-        public List<IamGroup> listGroups(UUID tenantId) {
+        public List<IamGroup> listGroups(UUID tenantId, int limit) {
             throw new UnsupportedOperationException();
         }
 
@@ -852,7 +860,13 @@ class InvitationServiceTest {
         }
 
         @Override
-        public List<IamPolicy> listPolicies(UUID tenantId) {
+        public List<IamPolicy> listPolicies(UUID tenantId, int limit) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<br.com.nora.api.domain.iam.IamPolicyVersion> listPolicyVersions(
+                UUID policyId, UUID tenantId, int limit) {
             throw new UnsupportedOperationException();
         }
 

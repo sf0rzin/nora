@@ -22,6 +22,17 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ChatSessionService {
 
+    /**
+     * Ceiling on the sessions one listing returns, most recently touched first.
+     *
+     * <p>Unlike groups or policies, {@code chat_session} grows with USE and nothing prunes it: a
+     * user who talks to the assistant every day accumulates rows forever, and each summary row
+     * carries two correlated subqueries (message count and last snippet). An unbounded listing here
+     * gets slower for exactly the users who use the product most. The sidebar shows a recent-first
+     * history, so a ceiling on the recent end is the shape the screen already wants.
+     */
+    public static final int LIST_LIMIT = 200;
+
     private final ChatSessionRepository sessions;
     private final Clock clock;
 
@@ -39,7 +50,7 @@ public class ChatSessionService {
 
     @Transactional(readOnly = true)
     public List<ChatSessionSummaryRow> list(UUID tenantId, UUID userId) {
-        return sessions.listByUser(tenantId, userId);
+        return sessions.listByUser(tenantId, userId, LIST_LIMIT);
     }
 
     @Transactional

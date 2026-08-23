@@ -36,6 +36,16 @@ public interface MeetingAnalysisRepository {
     List<UUID> meetingIdsAnalysedBetween(
             UUID tenantId, OffsetDateTime from, OffsetDateTime toExclusive, int limit);
 
-    /** Counts of an analysis for the listing row. */
-    record AnalysisCounts(UUID meetingId, int actionItems, int risks, int opportunities) {}
+    /**
+     * Counts of an analysis for the listing row.
+     *
+     * @param actionItems every extracted action item, DONE included — the total the meeting detail
+     *     shows
+     * @param openActionItems the ones not yet DONE. Separate from {@code actionItems} because a
+     *     panel asking "how much is left" and a detail asking "what came out of this meeting" are
+     *     different questions, and answering both with the collection size made the first one say
+     *     twelve for a workstream whose twelve items were all finished
+     */
+    record AnalysisCounts(
+            UUID meetingId, int actionItems, int risks, int opportunities, int openActionItems) {}
 }

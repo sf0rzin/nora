@@ -30,7 +30,8 @@ public interface InvitationRepository {
 
     /**
      * Lists the tenant's invitations. When {@code status == null} returns all of them. Results are
-     * ordered by {@code invited_at} desc.
+     * ordered by {@code invited_at} desc and capped at {@code limit} rows — see {@code
+     * InvitationService.LIST_LIMIT}.
      */
-    List<IamInvitation> listByTenant(UUID tenantId, InvitationStatus status);
+    List<IamInvitation> listByTenant(UUID tenantId, InvitationStatus status, int limit);
 }

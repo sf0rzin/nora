@@ -106,6 +106,35 @@ nora:
     password-reset:
       expires-seconds: ${PASSWORD_RESET_EXPIRES_SECONDS:3600}
     expose-dev-tokens: ${EXPOSE_DEV_TOKENS:false}
+    # Ceiling on a NON-multipart request body, enforced by RequestBodySizeLimitFilter.
+    # No Spring property bounds a JSON body in a servlet application — spring.servlet.multipart
+    # covers only multipart, server.tomcat.max-http-form-post-size only form-urlencoded, and
+    # spring.codec.max-in-memory-size is WebFlux — so this key drives code, not configuration.
+    # 1 MiB is roughly two orders of magnitude above the largest legitimate body the API accepts
+    # (an IAM policy document); transcripts arrive as multipart and keep their own 10MB limit.
+    max-request-body-bytes: ${NORA_MAX_REQUEST_BODY_BYTES:1048576}
+    # POST /meetings/live-analyze is the one route whose own validation declares more than the cap
+    # above: LiveAnalyzeDtos accepts 500,000 characters of transcript plus ~45KB of highlights, and
+    # pt-BR spends two UTF-8 bytes on every accented character. Left at the default, the filter
+    # would refuse a body @Size says is valid. It is a separate key rather than a bigger default
+    # because the default is what stands in front of the unauthenticated auth routes.
+    max-live-analyze-body-bytes: ${NORA_MAX_LIVE_ANALYZE_BODY_BYTES:2097152}
+    rate-limit:
+      # Two families live under this key. The four *auth* caps (login/signup/reset) are read by
+      # AuthRateLimiter and defend credentials; the four below are read by AiSpendRateLimiter and
+      # defend the BILL — every one of those requests reaches a paid provider, and until they were
+      # added nothing but STT had a ceiling. They are per user, per minute.
+      #
+      # The numbers are set where a person cannot reach them and a loop can: 30 searches a minute
+      # is far past deliberate typing in the command palette and far below a component firing on
+      # every keystroke; 30 live-analyze calls covers a capture posting a chunk every two seconds;
+      # 10 reprocesses and 10 split-previews a minute are already more full-transcript LLM runs
+      # than any human workflow produces. Raising one is a decision about money, not about
+      # throughput.
+      search-per-minute: ${NORA_RATE_LIMIT_SEARCH_PER_MINUTE:30}
+      live-analyze-per-minute: ${NORA_RATE_LIMIT_LIVE_ANALYZE_PER_MINUTE:30}
+      reprocess-per-minute: ${NORA_RATE_LIMIT_REPROCESS_PER_MINUTE:10}
+      split-preview-per-minute: ${NORA_RATE_LIMIT_SPLIT_PREVIEW_PER_MINUTE:10}
   auth:
     # Secure flag of the httpOnly cookies. Default false in dev (cookies on http://localhost),
     # true in prod via env. Round 2 / Subphase 1.3 A.

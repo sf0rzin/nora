@@ -44,6 +44,7 @@ import br.com.nora.api.domain.meeting.ParticipantMatcher;
 import br.com.nora.api.domain.meeting.ProcessingStatus;
 import br.com.nora.api.infrastructure.nlp.SplitDtos;
 import br.com.nora.api.infrastructure.nlp.WorkerDtos;
+import br.com.nora.api.infrastructure.security.AiSpendRateLimiter;
 import br.com.nora.api.infrastructure.security.JjwtJwtIssuer.AuthenticatedPrincipal;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
@@ -95,6 +96,15 @@ public class MeetingsController {
     private final EmbeddingService embeddings;
     private final ParticipantIdentityService participantIdentities;
 
+    /**
+     * Guards the four handlers on this controller that reach a paid provider. It sits here rather
+     * than inside {@code EmbeddingService} / {@code LiveAnalysisService} because those services are
+     * documented as best-effort and never throw — a budget refusal has to be a 429 the client can
+     * back off from, not an empty result indistinguishable from "nothing matched". The MCP surface
+     * consumes the same buckets from {@code McpToolInvoker}, keyed by the same user id.
+     */
+    private final AiSpendRateLimiter spendLimiter;
+
     public MeetingsController(
             MeetingService meetings,
             AnalysisService analyses,
@@ -106,7 +116,8 @@ public class MeetingsController {
             Validator validator,
             AuthorizationService authz,
             EmbeddingService embeddings,
-            ParticipantIdentityService participantIdentities) {
+            ParticipantIdentityService participantIdentities,
+            AiSpendRateLimiter spendLimiter) {
         this.meetings = meetings;
         this.analyses = analyses;
         this.meetingGoals = meetingGoals;
@@ -118,6 +129,7 @@ public class MeetingsController {
         this.authz = authz;
         this.embeddings = embeddings;
         this.participantIdentities = participantIdentities;
+        this.spendLimiter = spendLimiter;
     }
 
     private static String meetingResource(UUID tenantId, UUID meetingId) {
@@ -141,6 +153,14 @@ public class MeetingsController {
         // provider and scans the tenant's vectors to build a result the caller was never going to
         // be allowed to see.
         int limit = Math.min(Math.max(k, 1), 10);
+
+        // Budget check in the same position as the pre-gate above and for the same reason: BEFORE
+        // the embedding call. This endpoint is driven by a command palette that fires on typing,
+        // so the natural client behaviour is many requests per minute per user, each one a billed
+        // provider round trip. Authorization says the caller MAY search; nothing said how often.
+        if (!spendLimiter.allowSearch(principal.userId())) {
+            throw new MeetingException.RateLimited("search");
+        }
 
         // Loads the candidates and ONLY THEN authorizes, item by item, with the meeting's
         // attributes in hand. The `authz.require` over the wildcard ARN that used to be here
@@ -294,6 +314,11 @@ public class MeetingsController {
             @RequestPart("file") MultipartFile file,
             @RequestParam(name = "language", required = false) String language) {
         AuthenticatedPrincipal principal = CurrentUser.require();
+        // Before reading the file: a split-preview sends the whole transcript through the LLM in
+        // up to five windows, so it is the most expensive single call the product makes.
+        if (!spendLimiter.allowSplitPreview(principal.userId())) {
+            throw new MeetingException.RateLimited("split-preview");
+        }
         requireTxtFile(file);
         // Pre-checks the size BEFORE readFile: readFile throws
         // IllegalArgumentException (masked as "Invalid request." in English),
@@ -453,6 +478,8 @@ public class MeetingsController {
                                             m.title(),
                                             m.startedAt(),
                                             m.durationSeconds(),
+                                            // ownerName: the listing does not join users, so
+                                            // there is no name to send. See MeetingListItem.
                                             null,
                                             m.processingStatus().name(),
                                             m.summarySnippet(),
@@ -462,7 +489,8 @@ public class MeetingsController {
                                             m.tags(),
                                             e == null ? null : e.productivityBand(),
                                             e == null ? null : e.productivityScore(),
-                                            participantNames(m));
+                                            participantNames(m),
+                                            e == null ? 0 : e.openActionItems());
                                 })
                         .toList();
         int totalPages =
@@ -550,6 +578,46 @@ public class MeetingsController {
     }
 
     /**
+     * Removes the meeting from the product, REVERSIBLY (ADR 0021, US54). 204 on success; 404 when
+     * it is not in the tenant or has already been removed.
+     *
+     * <p><b>This is not the LGPD erasure and must never be confused with it.</b> {@code DELETE
+     * /privacy/meetings/{id}} physically destroys the transcript, the participants, the tags and
+     * the analyses with no way back; this stamps {@code deleted_at} and the row keeps everything.
+     * Until this endpoint existed the product offered only the destructive one, so a user who
+     * uploaded the wrong file had to choose between living with it and erasing PII belonging to
+     * everyone who was in the meeting — and the whole soft-delete machinery (V013's column and
+     * partial indexes, the entity's {@code @SQLDelete}/{@code @SQLRestriction}, the {@code
+     * deleted_at IS NULL} predicates in Trends, Participants and Tasks) defended a state nothing
+     * could produce.
+     *
+     * <p>The action is {@code meeting:delete}, separate from {@code meeting:erase}. Reversible
+     * removal is part of the ordinary working set of someone who runs meetings; permanent
+     * destruction is not, and one grant must not imply the other.
+     *
+     * <p>Authorization runs on the loaded meeting's attributes inside the service transaction, for
+     * the reason spelled out on the erase: with an empty context an attribute-scoped Deny never
+     * matches, and losing a Deny on a removal is losing it where it was written to apply.
+     */
+    @DeleteMapping("/{id}")
+    @AuthorizationNotRequired(reason = "Body: authorizes in-transaction on the attributes.")
+    public ResponseEntity<Void> delete(@PathVariable("id") UUID id) {
+        AuthenticatedPrincipal principal = CurrentUser.require();
+        meetings.delete(
+                id,
+                principal.tenantId(),
+                principal.userId(),
+                m ->
+                        authz.require(
+                                principal.userId(),
+                                principal.tenantId(),
+                                "meeting:delete",
+                                meetingResource(principal.tenantId(), m.id()),
+                                m.attributes()));
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
      * Sets or updates the declared goal of the meeting (ADR 0005). When the meeting has already
      * been analyzed, the status changes to PENDING for later reprocessing.
      */
@@ -595,6 +663,12 @@ public class MeetingsController {
     @AuthorizationNotRequired(reason = "Body: authorizes in-transaction on the attributes.")
     public ResponseEntity<MeetingUploadResponse> reprocess(@PathVariable("id") UUID id) {
         AuthenticatedPrincipal principal = CurrentUser.require();
+        // A reprocess re-runs the whole analysis of a meeting through the LLM. The atomic claim
+        // below already stops two pipelines over the SAME meeting; nothing stopped one caller
+        // from queueing every meeting of the tenant in a loop, which is a different bill.
+        if (!spendLimiter.allowReprocess(principal.userId())) {
+            throw new MeetingException.RateLimited("reprocess");
+        }
         // Reprocess authorizes with an authz callback inside the service's own transaction to
         // avoid TOCTOU (attributes do not change between check and execution).
         Meeting updated =
@@ -626,13 +700,22 @@ public class MeetingsController {
     @RequiresPermission(action = "meeting:analyze:live", resource = ResourceType.MEETING)
     public LiveAnalyzeDtos.LiveAnalyzeResponse liveAnalyze(
             @Valid @RequestBody LiveAnalyzeDtos.LiveAnalyzeRequest req) {
+        AuthenticatedPrincipal principal = CurrentUser.require();
+        // The caller here is the desktop, which posts a chunk every few seconds for the length of
+        // a meeting; a client that loses its backoff turns one recording into an unbounded stream
+        // of LLM calls. The budget is generous enough for a legitimate capture (see the defaults
+        // in AiSpendRateLimiter) and finite, which is the property that was missing.
+        if (!spendLimiter.allowLiveAnalyze(principal.userId())) {
+            throw new MeetingException.RateLimited("live-analyze");
+        }
         WorkerDtos.LiveHighlights previous = toWorkerHighlights(req.previousHighlights());
         String language =
                 req.language() == null || req.language().isBlank() ? "pt-BR" : req.language();
 
         try {
             WorkerDtos.LiveAnalyzeResponse response =
-                    liveAnalysis.analyze(req.transcriptChunk(), language, previous);
+                    liveAnalysis.analyze(
+                            principal.tenantId(), req.transcriptChunk(), language, previous);
             return toApiLiveResponse(response);
         } catch (AnalysisException.WorkerUnavailable ex) {
             throw ex;

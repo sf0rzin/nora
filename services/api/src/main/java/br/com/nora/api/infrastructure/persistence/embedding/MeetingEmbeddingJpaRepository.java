@@ -38,11 +38,16 @@ public interface MeetingEmbeddingJpaRepository
      * summary_snippet) and either has no vector or has one from another model, which the search
      * ignores just as completely. Newest first — the recent meetings are the ones a user searches
      * for. Under RLS enforce both tables are filtered by the GUC the caller set.
+     *
+     * <p>{@code m.deleted_at IS NULL} because native SQL does not see the entity's
+     * {@code @SQLRestriction}: a soft-deleted meeting is invisible to the product, so paying an
+     * external embedding call to index it would spend money on a row nothing can ever search.
      */
     @Query(
             value =
                     "SELECT m.id, m.summary_snippet FROM meetings m LEFT JOIN meeting_embeddings e"
                             + " ON e.meeting_id = m.id WHERE m.tenant_id = :tenantId AND"
+                            + " m.deleted_at IS NULL AND"
                             + " m.summary_snippet IS NOT NULL AND btrim(m.summary_snippet) <> ''"
                             + " AND (e.meeting_id IS NULL OR e.model <> :model) ORDER BY"
                             + " m.created_at DESC LIMIT :limit",
@@ -56,7 +61,8 @@ public interface MeetingEmbeddingJpaRepository
     @Query(
             value =
                     "SELECT COUNT(*) FROM meetings m LEFT JOIN meeting_embeddings e ON e.meeting_id"
-                            + " = m.id WHERE m.tenant_id = :tenantId AND m.summary_snippet IS NOT"
+                            + " = m.id WHERE m.tenant_id = :tenantId AND m.deleted_at IS NULL AND"
+                            + " m.summary_snippet IS NOT"
                             + " NULL AND btrim(m.summary_snippet) <> '' AND (e.meeting_id IS NULL"
                             + " OR e.model <> :model)",
             nativeQuery = true)

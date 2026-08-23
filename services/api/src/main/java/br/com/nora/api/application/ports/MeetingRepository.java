@@ -54,6 +54,21 @@ public interface MeetingRepository {
     PagedMeetings listByTenant(UUID tenantId, MeetingFilter filter, int page, int size);
 
     /**
+     * LOGICAL delete of a meeting (ADR 0021): stamps {@code deleted_at} and leaves every row in
+     * place. Returns affected rows — 0 when the meeting does not exist in the tenant OR is already
+     * deleted, which makes the operation idempotent for the caller.
+     *
+     * <p>This is the removal the product lacked. The column, the partial unique indexes (V013), the
+     * entity's {@code @SQLDelete}/{@code @SQLRestriction} and the {@code deleted_at IS NULL}
+     * predicates scattered through the native queries all existed and no code path ever wrote the
+     * column, so the only way to remove a meeting was {@code DELETE /privacy/meetings/{id}} — an
+     * irreversible physical erase meant for an LGPD request, offered to a user whose real problem
+     * was uploading the wrong file. The two are now different operations with different IAM
+     * actions: {@code meeting:delete} removes, {@code meeting:erase} destroys.
+     */
+    int softDelete(UUID meetingId, UUID tenantId);
+
+    /**
      * PHYSICAL hard-delete of a meeting (LGPD: right to be forgotten, ADR 0029). Ignores the
      * soft-delete; the FK CASCADE purges transcript (raw_text = PII), participants, tags and
      * analyses. Returns affected rows (0 = it did not exist in the tenant).

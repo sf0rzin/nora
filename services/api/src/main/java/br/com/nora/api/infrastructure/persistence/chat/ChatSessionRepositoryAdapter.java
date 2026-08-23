@@ -32,7 +32,7 @@ public class ChatSessionRepositoryAdapter implements ChatSessionRepository {
     @Override
     @Transactional(readOnly = true)
     @SuppressWarnings("unchecked")
-    public List<ChatSessionSummaryRow> listByUser(UUID tenantId, UUID userId) {
+    public List<ChatSessionSummaryRow> listByUser(UUID tenantId, UUID userId, int limit) {
         String sql =
                 "SELECT s.id, s.tenant_id, s.user_id, s.title, s.created_at, s.updated_at,       "
                         + " (SELECT COUNT(*) FROM chat_message m           WHERE m.session_id = s.id"
@@ -40,10 +40,12 @@ public class ChatSessionRepositoryAdapter implements ChatSessionRepository {
                         + " chat_message m2           WHERE m2.session_id = s.id AND m2.tenant_id ="
                         + " s.tenant_id           ORDER BY m2.created_at DESC, m2.id DESC LIMIT 1) AS"
                         + " last_snippet FROM chat_session s WHERE s.tenant_id = :tenantId AND"
-                        + " s.user_id = :userId ORDER BY s.updated_at DESC, s.created_at DESC";
+                        + " s.user_id = :userId ORDER BY s.updated_at DESC, s.created_at DESC"
+                        + " LIMIT :limit";
         var query = em.createNativeQuery(sql);
         query.setParameter("tenantId", tenantId);
         query.setParameter("userId", userId);
+        query.setParameter("limit", limit);
         List<Object[]> rows = (List<Object[]>) query.getResultList();
         List<ChatSessionSummaryRow> result = new ArrayList<>(rows.size());
         for (Object[] r : rows) {

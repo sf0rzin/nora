@@ -129,6 +129,27 @@ public interface MeetingJpaRepository extends JpaRepository<MeetingJpaEntity, UU
             @Param("toTs") OffsetDateTime toTs,
             Pageable pageable);
 
+    /**
+     * Soft-delete (ADR 0021): stamps {@code deleted_at} on a meeting of the tenant.
+     *
+     * <p>Written as a native statement rather than through the entity's {@code @SQLDelete} on
+     * purpose. The entity path would require loading the aggregate with its LAZY collections just
+     * to issue one UPDATE, and — more importantly — {@code @SQLDelete} keys on the id alone, so the
+     * tenant scope would live only in the read that preceded it. Here the tenant is part of the
+     * write.
+     *
+     * <p>{@code AND deleted_at IS NULL} makes it idempotent AND truthful: a second call returns 0
+     * instead of moving the timestamp forward, so the recorded instant is when the meeting was
+     * removed and not when someone last pressed the button.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+            value =
+                    "UPDATE meetings SET deleted_at = now(), updated_at = now() "
+                            + "WHERE id = :id AND tenant_id = :tenantId AND deleted_at IS NULL",
+            nativeQuery = true)
+    int softDeleteByIdAndTenant(@Param("id") UUID id, @Param("tenantId") UUID tenantId);
+
     // ---- Hard-delete (LGPD: right to be forgotten + retention, ADR 0021/0029) ----
     // Native query = raw SQL: IGNORES the entity's @SQLDelete (soft) and @SQLRestriction
     // (deleted_at IS NULL) — it is a real PHYSICAL DELETE. The FK ON DELETE CASCADE (V004)

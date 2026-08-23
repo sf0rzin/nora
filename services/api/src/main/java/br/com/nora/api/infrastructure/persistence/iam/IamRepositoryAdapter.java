@@ -6,6 +6,7 @@ import br.com.nora.api.domain.iam.Effect;
 import br.com.nora.api.domain.iam.IamAuditEvent;
 import br.com.nora.api.domain.iam.IamGroup;
 import br.com.nora.api.domain.iam.IamPolicy;
+import br.com.nora.api.domain.iam.IamPolicyVersion;
 import br.com.nora.api.domain.iam.PermissionBoundary;
 import br.com.nora.api.domain.iam.PolicyDocument;
 import br.com.nora.api.domain.iam.PolicyStatement;
@@ -81,12 +82,14 @@ public class IamRepositoryAdapter implements IamRepository {
     @Override
     @Transactional(readOnly = true)
     @SuppressWarnings("unchecked")
-    public List<IamGroup> listGroups(UUID tenantId) {
+    public List<IamGroup> listGroups(UUID tenantId, int limit) {
         List<Object[]> rows =
                 em.createNativeQuery(
                                 "SELECT id, tenant_id, name, description, created_by, created_at, updated_at "
-                                        + "FROM iam_groups WHERE tenant_id = :tenantId ORDER BY name")
+                                        + "FROM iam_groups WHERE tenant_id = :tenantId ORDER BY name "
+                                        + "LIMIT :limit")
                         .setParameter("tenantId", tenantId)
+                        .setParameter("limit", limit)
                         .getResultList();
         List<IamGroup> out = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
@@ -243,18 +246,53 @@ public class IamRepositoryAdapter implements IamRepository {
     @Override
     @Transactional(readOnly = true)
     @SuppressWarnings("unchecked")
-    public List<IamPolicy> listPolicies(UUID tenantId) {
+    public List<IamPolicy> listPolicies(UUID tenantId, int limit) {
         var query =
                 (NativeQuery<Object[]>)
                         em.createNativeQuery(
                                 "SELECT id, tenant_id, name, description, document::text, "
                                         + "current_version, created_by, created_at, updated_at "
-                                        + "FROM iam_policies WHERE tenant_id = :t ORDER BY name");
-        query.setParameter("t", tenantId);
+                                        + "FROM iam_policies WHERE tenant_id = :t ORDER BY name "
+                                        + "LIMIT :limit");
+        query.setParameter("t", tenantId).setParameter("limit", limit);
         List<Object[]> rows = query.getResultList();
         List<IamPolicy> out = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             out.add(toPolicy(r));
+        }
+        return out;
+    }
+
+    /**
+     * The read path {@code iam_policy_versions} never had. The two INSERTs above have written this
+     * table on every create and every edit since V006; nothing ever selected from it.
+     *
+     * <p>{@code tenant_id} is in the predicate even though {@code policy_id} is already unique:
+     * every other read in this adapter is tenant-scoped, and a history is exactly the kind of
+     * lookup where taking the id on trust would return another tenant's document.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    @SuppressWarnings("unchecked")
+    public List<IamPolicyVersion> listPolicyVersions(UUID policyId, UUID tenantId, int limit) {
+        var query =
+                (NativeQuery<Object[]>)
+                        em.createNativeQuery(
+                                "SELECT policy_id, version, document::text, created_by, created_at "
+                                        + "FROM iam_policy_versions "
+                                        + "WHERE policy_id = :id AND tenant_id = :t "
+                                        + "ORDER BY version DESC LIMIT :limit");
+        query.setParameter("id", policyId).setParameter("t", tenantId).setParameter("limit", limit);
+        List<Object[]> rows = query.getResultList();
+        List<IamPolicyVersion> out = new ArrayList<>(rows.size());
+        for (Object[] r : rows) {
+            out.add(
+                    new IamPolicyVersion(
+                            (UUID) r[0],
+                            ((Number) r[1]).intValue(),
+                            parseDocument((String) r[2]),
+                            (UUID) r[3],
+                            toOdt(r[4])));
         }
         return out;
     }
@@ -401,6 +439,16 @@ public class IamRepositoryAdapter implements IamRepository {
     /**
      * Upsert on the primary key: replacing a boundary is one statement, so there is no instant at
      * which the user is momentarily uncapped.
+     *
+     * <p>The {@code DO UPDATE} carries {@code WHERE ... tenant_id = :t}, like every other write in
+     * this adapter — compare the {@code DELETE} just below. The conflict key is the global {@code
+     * PRIMARY KEY (user_id)} (V033), so a row for the same user under a DIFFERENT tenant would be
+     * updated by a bare {@code DO UPDATE}. Nothing can reach that today ({@code
+     * IamService.setBoundary} calls {@code requireUserOfTenant} first, and the composite FK to
+     * {@code users(tenant_id, id)} would refuse it after that) — which is precisely why the
+     * predicate belongs here rather than in a comment: the last line of defence should be the
+     * explicit condition this file uses everywhere else, not an integrity error from a constraint
+     * two tables away. With it, a cross-tenant attempt is a no-op instead of a 500.
      */
     @Override
     @Transactional
@@ -410,7 +458,8 @@ public class IamRepositoryAdapter implements IamRepository {
                                 + " (user_id, tenant_id, policy_id, attached_by) VALUES (:u, :t,"
                                 + " :p, :by) ON CONFLICT (user_id) DO UPDATE SET policy_id ="
                                 + " EXCLUDED.policy_id, attached_by = EXCLUDED.attached_by,"
-                                + " updated_at = NOW()")
+                                + " updated_at = NOW() WHERE iam_permission_boundaries.tenant_id ="
+                                + " :t")
                 .setParameter("u", userId)
                 .setParameter("t", tenantId)
                 .setParameter("p", policyId)

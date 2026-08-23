@@ -157,14 +157,15 @@ public class InvitationRepositoryAdapter implements InvitationRepository {
     @Override
     @Transactional(readOnly = true)
     @SuppressWarnings("unchecked")
-    public List<IamInvitation> listByTenant(UUID tenantId, InvitationStatus status) {
+    public List<IamInvitation> listByTenant(UUID tenantId, InvitationStatus status, int limit) {
         String sql =
                 "SELECT id, tenant_id, email, token_hash, status, invited_by, invited_at,"
                         + " expires_at, accepted_at, accepted_user_id FROM iam_user_invitations "
                         + "WHERE tenant_id = :t "
                         + (status == null ? "" : "AND status = :status ")
-                        + "ORDER BY invited_at DESC";
-        var query = em.createNativeQuery(sql).setParameter("t", tenantId);
+                        + "ORDER BY invited_at DESC LIMIT :limit";
+        var query =
+                em.createNativeQuery(sql).setParameter("t", tenantId).setParameter("limit", limit);
         if (status != null) {
             query.setParameter("status", status.name());
         }

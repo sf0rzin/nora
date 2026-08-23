@@ -751,6 +751,26 @@ public class AuthService {
      * LGPD — DEFINITIVE account deletion (danger zone). Requires the current password and that the
      * tenant be personal (1 user): the tenant hard-delete CASCADE purges user, meetings,
      * transcripts (PII), analyses, chat, workflows and tokens. Irreversible by design.
+     *
+     * <p><b>This deletes the TENANT, and that is the declared behaviour — not a leak from a
+     * user-scoped operation.</b> The point deserves stating in code because the backlog described
+     * it the other way round twice (US54 called it "the soft-delete of ADR 0021", US80 said tenant
+     * deletion did not exist), and a reader who trusted either would conclude this method is a bug.
+     * It is not. The alternative — deleting the user row and orphaning a tenant that nobody can
+     * ever log into again, holding every transcript and every piece of PII in it — is the option
+     * that would surprise the person who just typed their password to be forgotten. LGPD asks for
+     * erasure of the personal data, and in a personal workspace the workspace IS the personal data.
+     *
+     * <p>What bounds it is the personal-tenant check below: the moment a second user exists, the
+     * request is refused with {@code AccountNotPersonal} rather than taking their data with it. So
+     * this is not general tenant deletion — that really does not exist, and building it would mean
+     * deciding what happens to the other members' work, which is a different question from this
+     * one.
+     *
+     * <p>Three things make the destruction consented rather than merely permitted, and all three
+     * have to stay: the current password is required here, {@code docs/api/openapi.yaml} documents
+     * the endpoint as PERMANENT deletion, and the UI asks for a typed confirmation. Weakening any
+     * of them turns a declared capability back into a surprise.
      */
     @Transactional
     public void deleteAccount(UUID userId, UUID tenantId, String password) {

@@ -21,9 +21,29 @@ public class TaskService {
         this.tasks = tasks;
     }
 
+    /**
+     * Hard ceiling on {@code size}, mirroring {@code GET /meetings}. A caller asking for more gets
+     * this many rather than an error: the parameter is a hint about a page, not an assertion the
+     * request depends on.
+     */
+    public static final int MAX_PAGE_SIZE = 100;
+
     @Transactional(readOnly = true)
     public List<TaskRow> list(UUID tenantId, ActionItemStatus statusFilter) {
         return tasks.listByTenant(tenantId, statusFilter);
+    }
+
+    /**
+     * One page, cut in SQL. The caller is responsible for having established that the IAM decision
+     * is the same for every task of the tenant — otherwise the page is a slice of rows the caller
+     * may not be allowed to see, and only {@link #list} plus a per-item filter can answer.
+     */
+    @Transactional(readOnly = true)
+    public TaskRepository.PagedTasks list(
+            UUID tenantId, ActionItemStatus statusFilter, int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.min(MAX_PAGE_SIZE, Math.max(1, size));
+        return tasks.listByTenant(tenantId, statusFilter, safePage, safeSize);
     }
 
     @Transactional

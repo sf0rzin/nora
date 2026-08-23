@@ -147,6 +147,15 @@ class TaskServiceTest {
         }
 
         @Override
+        public PagedTasks listByTenant(
+                UUID tenantId, ActionItemStatus statusFilter, int page, int size) {
+            List<TaskRow> all = listByTenant(tenantId, statusFilter);
+            int from = Math.min(page * size, all.size());
+            int to = Math.min(from + size, all.size());
+            return new PagedTasks(all.subList(from, to), all.size(), page, size);
+        }
+
+        @Override
         public Optional<TaskRow> findByIdAndTenant(UUID id, UUID tenantId) {
             TaskRow r = store.get(id);
             return r != null && belongsToTenant(r, tenantId) ? Optional.of(r) : Optional.empty();

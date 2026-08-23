@@ -204,7 +204,16 @@ public class McpController {
             // message says no more than the REST 403 does.
             return resultEnvelope(id, toolFailure("Not allowed: this principal lacks permission."));
         } catch (MeetingException ex) {
-            return resultEnvelope(id, toolFailure("Meeting not found in this workspace."));
+            // The code is read instead of collapsing every MeetingException into "not found":
+            // search_meetings consumes the same per-user AI budget the REST search does, and
+            // telling an agent its meeting does not exist when it was actually throttled is the
+            // one answer that makes it retry harder. Both stay in the tool-result channel — they
+            // are conditions the caller can act on, not protocol errors.
+            String failure =
+                    "MEETING_RATE_LIMITED".equals(ex.code())
+                            ? "Rate limited: too many searches. Retry in a minute."
+                            : "Meeting not found in this workspace.";
+            return resultEnvelope(id, toolFailure(failure));
         }
     }
 

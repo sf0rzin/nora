@@ -4,6 +4,7 @@ import br.com.nora.api.domain.iam.AttachedPolicy;
 import br.com.nora.api.domain.iam.IamAuditEvent;
 import br.com.nora.api.domain.iam.IamGroup;
 import br.com.nora.api.domain.iam.IamPolicy;
+import br.com.nora.api.domain.iam.IamPolicyVersion;
 import br.com.nora.api.domain.iam.PermissionBoundary;
 import br.com.nora.api.domain.iam.PolicyStatement;
 import java.time.OffsetDateTime;
@@ -25,7 +26,8 @@ public interface IamRepository {
 
     Optional<IamGroup> findGroup(UUID groupId, UUID tenantId);
 
-    List<IamGroup> listGroups(UUID tenantId);
+    /** The tenant's groups by name, capped at {@code limit} rows (IamService.LIST_LIMIT). */
+    List<IamGroup> listGroups(UUID tenantId, int limit);
 
     void deleteGroup(UUID groupId, UUID tenantId);
 
@@ -47,7 +49,15 @@ public interface IamRepository {
 
     Optional<IamPolicy> findPolicy(UUID policyId, UUID tenantId);
 
-    List<IamPolicy> listPolicies(UUID tenantId);
+    /** The tenant's policies by name, capped at {@code limit} rows. */
+    List<IamPolicy> listPolicies(UUID tenantId, int limit);
+
+    /**
+     * The immutable revisions of one policy, newest version first, capped at {@code limit} rows.
+     * Empty when the policy does not exist in the tenant — the caller decides whether that is a
+     * 404, because this port does not distinguish "no such policy" from "no versions".
+     */
+    List<IamPolicyVersion> listPolicyVersions(UUID policyId, UUID tenantId, int limit);
 
     void deletePolicy(UUID policyId, UUID tenantId);
 

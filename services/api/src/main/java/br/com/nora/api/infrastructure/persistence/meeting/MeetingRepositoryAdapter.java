@@ -82,6 +82,12 @@ public class MeetingRepositoryAdapter implements MeetingRepository {
 
     @Override
     @Transactional
+    public int softDelete(UUID meetingId, UUID tenantId) {
+        return jpa.softDeleteByIdAndTenant(meetingId, tenantId);
+    }
+
+    @Override
+    @Transactional
     public int hardErase(UUID meetingId, UUID tenantId) {
         return jpa.hardDeleteByIdAndTenant(meetingId, tenantId);
     }

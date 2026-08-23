@@ -112,6 +112,7 @@ public class GlobalExceptionHandler {
                 switch (ex.code()) {
                     case "MEETING_NOT_FOUND" -> HttpStatus.NOT_FOUND;
                     case "TRANSCRIPT_TOO_LARGE", "FILE_TOO_LARGE" -> HttpStatus.PAYLOAD_TOO_LARGE;
+                    case "MEETING_RATE_LIMITED" -> HttpStatus.TOO_MANY_REQUESTS;
                     default -> HttpStatus.BAD_REQUEST;
                 };
         return ResponseEntity.status(status)
