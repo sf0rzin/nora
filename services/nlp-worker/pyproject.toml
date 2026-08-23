@@ -3,7 +3,9 @@ name = "nora-nlp-worker"
 version = "0.1.0"
 description = "NORA NLP worker (FastAPI + Pydantic) responsible for analyzing transcripts."
 requires-python = ">=3.12"
-# ADDITIONAL dependency not declared in `dependencies`:
+# TWO things this service needs that `dependencies` below cannot express, because neither
+# comes from PyPI:
+#
 #   - nlp-baseline (local path: ../../packages/nlp-baseline) --- ADR 0010.
 #     It is imported by `nora_nlp.services.baseline`. Since it is not on PyPI,
 #     install it before the worker:
@@ -11,6 +13,15 @@ requires-python = ">=3.12"
 #       pip install -e ".[dev]"
 #     The root Makefile does this automatically in `make worker-setup`.
 #     uv users have the source declared in [tool.uv.sources] below.
+#
+#   - pt_core_news_sm, the pt-BR pipeline the PERSON_NAME backstop loads. It ships as a GitHub
+#     release asset rather than on PyPI, so it is pinned by URL in `requirements-ner.txt` and
+#     installed next to this project:
+#       pip install -r requirements-ner.txt
+#     The Dockerfile, the `worker` CI job and `make worker-setup` install from that file rather
+#     than repeating the URL. It restates the `spacy` pin below, on purpose and not by accident
+#     --- the reason is written there. Install `spacy` without the model and the backstop is
+#     off, quietly; see the note on the pin.
 dependencies = [
   "fastapi>=0.115",
   "uvicorn[standard]>=0.32",
@@ -18,6 +29,28 @@ dependencies = [
   "pydantic-settings>=2.5",
   "httpx>=0.27",
   "openai>=1.50",
+  # REQUIRED on purpose, against what the module's own design would suggest.
+  #
+  # `services/pii_ner.py` is a statistical backstop for PERSON_NAME behind the deterministic
+  # shield, and it is written to vanish quietly when spaCy or the model is missing. Measured
+  # over the 5,664-case corpus: 120 leaks (2.12%) without the layer, 23 (0.41%) with it.
+  #
+  # The case for an optional extra is real --- the graceful degradation already exists, and
+  # spaCy costs ~140 MB installed and ~98 MB of RSS per process. The case for requiring it is
+  # that the degraded mode is a five-times-worse leak rate that announces itself nowhere: the
+  # module logs at info, /readyz stays green and every response is a 200. Nobody finds that by
+  # operating the service; they find it by re-running the corpus.
+  #
+  # So: a control that fails silently must not also be easy to leave out. The default install
+  # carries it, and the degradation goes back to being what it was written as --- a net for the
+  # process that lost its model, not the shape of a supported deployment.
+  #
+  # Bounded at the minor because a spaCy model wheel only loads on the minor it was built for.
+  # `spacy>=4` resolved against `pt_core_news_sm-3.8.0` is a worker whose backstop is off, and
+  # off is the one state this service does not report. `requirements-ner.txt` carries the same
+  # bound so the Docker layer that installs the model can install spaCy with it; the two lines
+  # must move together, and the image's build-time `spacy.load()` is what fails if they do not.
+  "spacy>=3.8,<3.9",
 ]
 
 # uv (https://docs.astral.sh/uv) resolves `nlp-baseline` from the local path.

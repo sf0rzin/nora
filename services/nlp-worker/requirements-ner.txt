@@ -1,0 +1,36 @@
+# The runtime of the PERSON_NAME backstop (`src/nora_nlp/services/pii_ner.py`): the statistical
+# second layer behind the deterministic PII Shield. With it the corpus leaks 23/5664 (0.41%);
+# without it, 120/5664 (2.12%).
+#
+# WHY A PINNED URL AND NOT `python -m spacy download pt_core_news_sm`.
+# That command is a network call that resolves a version at the moment it runs. In a container it
+# has to happen either at build time --- where it is a URL with the pin hidden inside spaCy's
+# compatibility table --- or at boot, which puts github.com in the startup path of a service whose
+# job is to redact PII. The second one fails at 03:00, on a host nobody can reach, from an image
+# that passed CI, and it fails into the silent mode: the model does not arrive, the layer reports
+# nothing, and the worker serves transcripts at the higher leak rate. Pinning the exact artefact
+# turns that into a build that either produces a working image or produces none.
+#
+# WHY spaCy IS PINNED HERE TOO, when pyproject.toml already declares it.
+# Not for the resolver --- for the image. This file is the only thing the Dockerfile copies into
+# the model layer, so whatever is listed here is what stays cached across a source change; leave
+# spaCy out and its ~140 MB is reinstalled on every commit, in the layer below. It is a second
+# copy of one pin, and the two must agree: a model wheel only loads on the minor it was built for,
+# and spaCy declares no dependency on its models, so nothing but this comment and the build-time
+# `spacy.load()` in the Dockerfile connects the two lines below.
+#
+# HOW TO BUMP IT: all three at once --- the URL here, the spaCy line here, and the pin in
+# pyproject.toml. Get one wrong and the image fails to build, which is the intended outcome and
+# the reason the assertion exists.
+#
+# No `--hash` yet: pip's `--require-hashes` is all-or-nothing per invocation and the digests would
+# be re-pinned by hand on every bump. Worth doing once the model version starts moving.
+#
+# Cost: ~13 MB downloaded for the model, ~155 MB on disk for the pair, ~98 MB of RSS per process.
+#
+# Every environment that builds or sets up this worker installs FROM THIS FILE rather than
+# repeating a URL: the worker Dockerfile, the `worker` job in .github/workflows/ci.yml, and the
+# root Makefile's `worker-setup`. A setup that skips it runs, and measures, a pipeline the product
+# does not ship.
+spacy>=3.8,<3.9
+https://github.com/explosion/spacy-models/releases/download/pt_core_news_sm-3.8.0/pt_core_news_sm-3.8.0-py3-none-any.whl

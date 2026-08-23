@@ -5,7 +5,7 @@ import unicodedata
 import pytest
 
 from nora_nlp.models import PiiType
-from nora_nlp.services import pii_shield
+from nora_nlp.services import pii_ner, pii_shield
 
 
 def test_redacts_email_and_phone():
@@ -329,6 +329,13 @@ def test_the_surname_list_is_what_carries_that_test(monkeypatch):
     All eight pairs, not one: the counter-proof is only worth as much as its coverage of the
     test it counter-proves.
     """
+    # The NER backstop is switched off for the duration, and that is not the test dodging an
+    # inconvenience -- it is the isolation the counter-proof needs. This test asserts that the
+    # DETERMINISTIC path stops working when its list is emptied. The backstop reads the sentence
+    # and needs no list at all, so with it running these names are still redacted, the assertion
+    # fails, and it fails for a reason that says nothing about `_BR_TOP_SURNAMES`. A
+    # counter-proof that a second layer can satisfy is not a counter-proof.
+    monkeypatch.setattr(pii_ner, "person_spans", lambda text, is_negative: [])
     monkeypatch.setattr(pii_shield, "_BR_TOP_SURNAMES", frozenset())
     for given, surname in _IBGE_TOP_SURNAME_PAIRS:
         text = f"Contrato de {given} {surname}"
@@ -1815,14 +1822,21 @@ def test_a_product_between_the_halves_of_a_name_does_not_free_the_other_half(tex
         "O Servidor Postgres Homologacao entrou na pauta de ontem.",
     ],
 )
-def test_an_unrecognisable_pair_around_a_product_is_not_vouched_for(text):
-    """The cost side, and the honest limit of the rule.
+def test_an_unrecognisable_pair_around_a_product_is_not_vouched_for(text, monkeypatch):
+    """The cost side, and the honest limit of the DETERMINISTIC rule.
 
     The first string leaks a full name and the other four are servers, and no lexical signal
     separates them: two Title Case tokens with a product name between them, none of the four on
-    any list. The rule declines all five rather than claim all five, and the first one stays a
+    any list. The rule declines all five rather than claim all five, and the first one stayed a
     documented gap in `tests/pii_corpus` rather than being closed at the others' expense.
+
+    THE BACKSTOP IS OFF HERE, and the reason is the whole argument for adding it. "No lexical
+    signal separates them" was true and is still true — what changed is that the separation
+    stopped having to be lexical. A model reading the sentence gets `Wanderleia Protheus Kranz`
+    right and the four servers right, which is precisely the gap a list cannot close. That
+    behaviour is asserted in `test_the_backstop_closes_what_no_list_could`, with its cost.
     """
+    monkeypatch.setattr(pii_ner, "person_spans", lambda text, is_negative: [])
     assert "PERSON_NAME" not in pii_shield.redact(text).redacted_text
 
 
@@ -1976,3 +1990,113 @@ def test_the_all_caps_pair_rule_needs_the_whole_run():
     """
     tokens = list(pii_shield._WORD_RE.finditer("ALFA BRAVO CHARLIE"))
     assert pii_shield._caps_pair_in_running_prose(tokens, 0, "ALFA BRAVO CHARLIE aprovou.") is None
+
+
+# --------------------------------------------------------------------------- #
+# The NER backstop (services/pii_ner.py)
+# --------------------------------------------------------------------------- #
+
+
+needs_backstop = pytest.mark.skipif(
+    not pii_ner.available(),
+    reason="spaCy or pt_core_news_sm is not installed; the backstop is off by design",
+)
+
+
+@needs_backstop
+@pytest.mark.parametrize(
+    "text,leaked",
+    [
+        # The three shapes the deterministic rules cannot reach, each for the same underlying
+        # reason: the run is split or shortened until one off-list token is left, and a lone
+        # off-list token is refused. A list cannot fix a failure whose premise is "not on a list".
+        ("Wanderleia Protheus Kranz assumiu a entrega.", ("Wanderleia", "Kranz")),
+        ("Neusa Datasul Nardelli assumiu a entrega.", ("Neusa", "Nardelli")),
+    ],
+)
+def test_the_backstop_closes_what_no_list_could(text, leaked):
+    """These went to the provider in the clear before this layer existed.
+
+    Both are multi-token, which is the whole of what this layer will claim. `A proposta da Costa
+    foi aceita.` is the same class of leak and is NOT here, because `Costa` is one word and the
+    two-token floor refuses it — see `_MIN_TOKENS`. That is a deliberate limit and it is written
+    down in `test_the_single_token_leak_stays_open` rather than left as an absence.
+    """
+    out = pii_shield.redact(text).redacted_text
+    stripped = re.sub(r"\[\[[A-Z_]+_\d+\]\]", " ", out)
+    for token in leaked:
+        assert token not in stripped, out
+
+
+@needs_backstop
+def test_the_backstop_pays_for_that_with_a_server_name():
+    """The cost, asserted rather than described, so it cannot quietly grow.
+
+    `Servidor` and `Homologacao` are on none of the vocabularies the trim consults, so the span
+    survives edge-trimming and a machine is redacted as a person. It is the one case of the five
+    in `test_an_unrecognisable_pair_around_a_product_is_not_vouched_for` that the backstop gets
+    wrong, and it is a false redaction rather than a leak — the direction this layer is allowed
+    to fail in. Measured across the whole corpus the trade is 2.12% -> 0.41% leak against
+    9.30% -> 11.06% false redaction.
+
+    If a future change fixes this, the assertion flips and the change is deliberate. That is the
+    point of pinning a known cost instead of leaving it in a comment.
+    """
+    out = pii_shield.redact("O Servidor Postgres Homologacao entrou na pauta de ontem.")
+    assert "PERSON_NAME" in out.redacted_text, out.redacted_text
+
+
+@needs_backstop
+def test_the_single_token_leak_stays_open():
+    """The limit of the two-token floor, pinned so it is a decision and not an oversight.
+
+    `Costa` behind a genitive is a real leak in the corpus and the model does tag it PER. It is
+    refused anyway, because letting the model claim lone capitalised words is what pushed false
+    redaction from 11.06% to 15.87% over the corpus — it is right about `Costa` and wrong about
+    `Solutions`, `Sexta` and two hundred others, and there is no signal available here that
+    separates them. Closing this needs a better separator, not a looser floor.
+    """
+    assert pii_ner.person_spans("A proposta da Costa foi aceita.", lambda tok: False) == []
+
+
+@needs_backstop
+def test_the_backstop_leaves_a_toponym_alone():
+    """`Sao Paulo` is a Title Case pair of tokens that are also given names.
+
+    Without the LOC/GPE veto a person-detector eats every Brazilian place name in the
+    transcript, which is the failure mode that makes a naive NER layer worse than none.
+
+    Asserted on the layer's own output rather than on the shield's, and the distinction is not
+    pedantry: the deterministic pass redacts `Paulo` in this sentence and did so long before
+    this layer existed. Asserting on the final text would make this test pass or fail for that
+    pre-existing behaviour instead of for the veto it is named after.
+    """
+    spans = pii_ner.person_spans("A reuniao aconteceu em Sao Paulo na sexta.", lambda tok: False)
+    assert spans == [], spans
+
+
+@needs_backstop
+def test_the_backstop_never_claims_all_caps():
+    """All-caps is ceded to the deterministic side, which has three patterns for it.
+
+    The model is trained on normally-cased Portuguese and reads a verb as a surname once the
+    casing signal is gone.
+    """
+    for text in ("CARLOS ASSUMIU a frente.", "PRAZO FINAL mudou para sexta."):
+        spans = pii_ner.person_spans(text, lambda tok: False)
+        assert spans == [], (text, spans)
+
+
+def test_the_backstop_is_a_no_op_when_it_cannot_load(monkeypatch):
+    """Graceful degradation, asserted on the path that matters: no model, no crash, no change.
+
+    Runs whether or not spaCy is installed — it forces the failed-load state rather than
+    depending on the environment, because "the shield still works without the model" is a
+    promise that has to hold on the machine that HAS the model too.
+    """
+    monkeypatch.setattr(pii_ner, "_nlp", None)
+    monkeypatch.setattr(pii_ner, "_load_failed", True)
+    assert pii_ner.person_spans("Neusa Datasul Nardelli assumiu a entrega.", lambda t: False) == []
+    # And the deterministic shield is untouched by its absence.
+    out = pii_shield.redact("Dr. Carlos Silva aprovou o contrato.").redacted_text
+    assert "Carlos" not in out and "Silva" not in out, out

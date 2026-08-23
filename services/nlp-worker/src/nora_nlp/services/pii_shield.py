@@ -25,6 +25,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from ..models import PiiRedactionV1, PiiType, Redaction
+from . import pii_ner
 
 
 def _fold(value: str) -> str:
@@ -3087,24 +3088,57 @@ def redact(text: str, tenant_terms: frozenset[str] = frozenset()) -> PiiRedactio
     """
     text = unicodedata.normalize("NFC", text)
 
-    baseline_text, baseline_redactions, baseline_spans, intermediate = _one_pass(text, frozenset())
+    baseline_text, baseline_redactions, baseline_spans, intermediate, baseline_counters = (
+        _one_pass(text, frozenset())
+    )
     if not tenant_terms:
-        return PiiRedactionV1(redactedText=baseline_text, redactions=baseline_redactions)
+        return _with_ner_backstop(baseline_text, baseline_redactions, baseline_counters, tenant_terms)
 
     # `intermediate` comes from the baseline pass and the span coordinates belong to it. The
     # candidate pass recomputes the same string -- `_apply_basic_patterns` takes no tenant
     # terms -- so it is returned and discarded rather than recomputed a third time here.
-    candidate_text, candidate_redactions, candidate_spans, _ = _one_pass(text, tenant_terms)
+    candidate_text, candidate_redactions, candidate_spans, _, candidate_counters = _one_pass(
+        text, tenant_terms
+    )
 
     if _frees_anything_undeclared(intermediate, baseline_spans, candidate_spans, tenant_terms):
-        return PiiRedactionV1(redactedText=baseline_text, redactions=baseline_redactions)
+        return _with_ner_backstop(
+            baseline_text, baseline_redactions, baseline_counters, tenant_terms
+        )
 
-    return PiiRedactionV1(redactedText=candidate_text, redactions=candidate_redactions)
+    return _with_ner_backstop(
+        candidate_text, candidate_redactions, candidate_counters, tenant_terms
+    )
+
+
+def _with_ner_backstop(
+    text: str,
+    redactions: list[Redaction],
+    counters: dict[PiiType, int],
+    tenant_terms: frozenset[str],
+) -> PiiRedactionV1:
+    """Runs the statistical backstop over the text the deterministic machinery settled on.
+
+    IT RUNS HERE, AFTER THE GUARD, AND THE PLACE IS THE POINT. The first version of this called
+    the backstop inside `_one_pass`, which put model-found spans into the two passes the tenant
+    guard compares -- and the guard reasons positionally about DETERMINISTIC claims. A model
+    reading the baseline text and the candidate text is reading two different strings and may
+    legitimately disagree with itself between them, so feeding that disagreement into the guard
+    made it discard good passes and, worse, miss a real one: `A Nora Bittencourt aprovou o
+    escopo.` with `nora` declared came out with the full name in the clear and the guard silent,
+    because the span the baseline had claimed was not a span the guard could see.
+
+    Outside the guard, the invariant is trivial again: the guard decides between two
+    deterministic passes exactly as it did before this layer existed, and the backstop then adds
+    to whichever won. Nothing here can free anything, so nothing here can change that decision.
+    """
+    text, ner_redactions = _apply_ner_backstop(text, counters, tenant_terms)
+    return PiiRedactionV1(redactedText=text, redactions=redactions + ner_redactions)
 
 
 def _one_pass(
     text: str, tenant_terms: frozenset[str]
-) -> tuple[str, list[Redaction], list[tuple[int, int]], str]:
+) -> tuple[str, list[Redaction], list[tuple[int, int]], str, dict[PiiType, int]]:
     """One full redaction over already-NFC `text`. Independent of any other call.
 
     Counters are created inside `_apply_basic_patterns`, so two passes never share numbering
@@ -3115,7 +3149,75 @@ def _one_pass(
     final_text, person_redactions, spans = _redact_person_names(
         intermediate, counters, tenant_terms
     )
-    return final_text, basic_redactions + person_redactions, spans, intermediate
+    return final_text, basic_redactions + person_redactions, spans, intermediate, counters
+
+
+def _apply_ner_backstop(
+    text: str, counters: dict[PiiType, int], tenant_terms: frozenset[str]
+) -> tuple[str, list[Redaction]]:
+    """Redacts person names the deterministic rules could not reach. See `pii_ner`.
+
+    ONLY ADDS. It runs over the text the deterministic pass already produced and writes new
+    placeholders into gaps; there is no path here that removes one. That is what keeps the
+    layer from being able to introduce a leak, and it is why the tenant-term guard in `redact`
+    does not need to know this step exists: the spans it compares are the deterministic ones,
+    returned unchanged by `_one_pass`.
+
+    The spans it returns are NOT added to that list on purpose. They are not a claim the guard
+    should reason about — a model reading a candidate pass and a baseline pass can legitimately
+    disagree with itself about a sentence whose surrounding words changed, and feeding that
+    disagreement into a guard designed for deterministic spans would discard good passes for a
+    reason that has nothing to do with tenant terms.
+
+    Applied back-to-front so an earlier span's coordinates survive a later replacement.
+    """
+    # The vocabulary handed to the backstop is WIDER than the negative list, and that is the
+    # difference between this layer helping and this layer costing more than it buys. The model
+    # knows nothing about weekdays, business areas or the tenant's own trade names: measured over
+    # the corpus, a backstop given only `_PERSON_NAME_NEGATIVE_LIST` cut the leak rate from 2.12%
+    # to 0.35% and pushed FALSE redaction from 9.30% to 16.40%, and the bulk of that second number
+    # was the calendar -- "A entrega ficou para Sexta" came back with the day of the week redacted
+    # as a person.
+    #
+    # `_ORDINARY_AFTER_OPENER` is applied here UNCONDITIONALLY, where the deterministic pass only
+    # consults it in slot 2 behind a sentence opener. That is deliberate and it is the wider rule:
+    # the risk it takes is a person actually called `Sexta` or `Financeiro`, and the risk it
+    # removes is every ordinary calendar word in the transcript. Note what the set does NOT hold
+    # -- `Marco`, `Maio`, `Abril`, `Domingo` are held out precisely because they are plausible
+    # pt-BR names, so this does not quietly widen into months.
+    # `_COMPANY_TAIL_WORDS` is in here for the same reason and is the largest single win of the
+    # three: the model reads "Andre Teixeira Solutions confirmou o prazo" as one person and takes
+    # the company suffix with the name. Those twenty words are exactly the deterministic side's
+    # answer to that shape, and reusing them means the two layers agree about where a company
+    # name starts instead of each keeping its own opinion.
+    def _is_ordinary(token: str) -> bool:
+        folded = _fold(token)
+        return (
+            folded in _PERSON_NAME_NEGATIVE_LIST
+            or folded in _ORDINARY_AFTER_OPENER
+            or folded in _COMPANY_TAIL_WORDS
+            or folded in tenant_terms
+        )
+
+    spans = pii_ner.person_spans(text, _is_ordinary)
+    if not spans:
+        return text, []
+
+    redactions: list[Redaction] = []
+    rebuilt = text
+    for start, end in sorted(spans, reverse=True):
+        value = rebuilt[start:end]
+        counters[PiiType.PERSON_NAME] += 1
+        placeholder = f"[[{PiiType.PERSON_NAME.value}_{counters[PiiType.PERSON_NAME]}]]"
+        rebuilt = rebuilt[:start] + placeholder + rebuilt[end:]
+        redactions.append(
+            Redaction(
+                placeholder=placeholder, type=PiiType.PERSON_NAME, originalHash=_hash(value)
+            )
+        )
+    # Reversed so the reported order follows the text, like every other list here.
+    redactions.reverse()
+    return rebuilt, redactions
 
 
 def _frees_anything_undeclared(

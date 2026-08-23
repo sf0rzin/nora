@@ -17,7 +17,7 @@ from datetime import date
 import pytest
 
 from nora_nlp.models import PiiType
-from nora_nlp.services import pii_shield
+from nora_nlp.services import pii_ner, pii_shield
 from nora_nlp.services.pii_shield import redact
 from tests.pii_corpus import pools
 from tests.pii_corpus.cases import (
@@ -169,11 +169,48 @@ _PLACEHOLDER_IN_TESTS = re.compile(r"\[\[[A-Z_]+_\d+\]\]")
 #   directly, since adding names to the pools here would have moved both denominators and made
 #   this row unreadable.
 #
+#   THE ENUMERATED ROW WAS SUBSEQUENTLY RUN, on 2026-08-23, and both figures were exactly
+#   right: 120/5664 and 512/5507. Recorded because the paragraph above warned that they had not
+#   been measured, and a warning that is never resolved is worse than one that is.
+#
 #   If CI disagrees with either number, the ceiling is what is wrong, not the shield: take the
 #   figure out of the failure message, correct the line below, and replace this paragraph with
 #   the measurement.
+#
+# --------------------------------------------------------------------------- #
+# TWO PIPELINES, TWO PAIRS OF CEILINGS.
+#
+# Since 2026-08-23 the shield has an optional second layer: a pt-BR NER backstop for
+# PERSON_NAME (`services/pii_ner.py`), which is off when spaCy or `pt_core_news_sm` is not
+# installed. The two configurations do not have similar rates, so one pair of constants cannot
+# describe both -- it would either be slack enough to hide a real regression in the stronger
+# pipeline, or tight enough to fail the weaker one for existing behaviour. Measured over the
+# same corpus on 2026-08-23:
+#
+#     backstop OFF   leak 2.12%  (120/5664)   false redaction  9.30%  (512/5507)
+#     backstop ON    leak 0.41%  ( 23/5664)   false redaction 11.06%  (609/5507)
+#
+# That is the trade, stated rather than averaged: a 5.2x reduction in the rate that matters for
+# the non-negotiable, paid for with 1.76 points of over-redaction. The rows are selected here,
+# at import, by asking the module whether it can actually run -- not by reading a setting, so a
+# deployment that believes it installed the model and did not fails against the honest ceiling.
+NER_BACKSTOP_ACTIVE = pii_ner.available()
+
+# Captured at import, before any fixture can swap it. The `report` fixture is module-scoped and
+# holds its stub for the whole module, so a test that needs the REAL layer cannot simply rely on
+# the fixture having torn down -- it has not.
+_REAL_PERSON_SPANS = pii_ner.person_spans
+
+# The deterministic ceilings. Unchanged by the backstop, because the `report` fixture holds it
+# off — see the docstring there for why the contract in this file is measured without it.
 MAX_LEAK_RATE = 120 / 5664
 MAX_FALSE_REDACTION_RATE = 512 / 5507
+
+# The backstop's own ceilings, measured 2026-08-23 over the same corpus with the layer on:
+# leak 23/5664 (0.41%), false redaction 609/5507 (11.06%). Held as counts rather than as a
+# percentage for the same reason as everything else here — the corpus grows.
+NER_MAX_LEAK_CASES = 23
+NER_MAX_FALSE_REDACTION_CASES = 609
 
 # Counted in CASES, not in percentage points: the corpus grows, and a slack written as a fraction
 # would silently widen every time it did.
@@ -248,7 +285,30 @@ MIN_CAPS_PAIRS_BROKEN_BY_LOOSENING = 6
 
 @pytest.fixture(scope="module")
 def report():
-    return run(all_cases())
+    """The corpus measured over the DETERMINISTIC pipeline, with the NER backstop switched off.
+
+    THE WHOLE FILE BELOW IS A CONTRACT ABOUT THE DETERMINISTIC RULES: which case is a documented
+    gap, which ordinary word must survive, how far the ratchet may move, what each goal is worth.
+    Every one of those statements is about a list, a regex or a frequency table. Running it
+    against a pipeline that also has a statistical layer would not make those statements
+    stronger, it would make them unreadable — a gap closing would look like a rule improving, and
+    a new over-redaction would look like a rule regressing, when in both cases the rules did not
+    change at all.
+
+    So the layer is held off here and measured on its own in `test_the_backstop_moves_both_rates`,
+    which is the only test in this file that sees it. That test carries the trade; this fixture
+    carries the contract.
+
+    Swapped by hand rather than with `monkeypatch`, which is function-scoped and cannot be
+    requested by a module-scoped fixture. The original is restored in a `finally` so a failure
+    inside `run` cannot leave the layer disabled for the rest of the session.
+    """
+    original = pii_ner.person_spans
+    pii_ner.person_spans = lambda text, is_negative: []
+    try:
+        yield run(all_cases())
+    finally:
+        pii_ner.person_spans = original
 
 
 # --------------------------------------------------------------------------- #
@@ -1581,3 +1641,61 @@ def test_the_gate_refuses_the_common_pt_br_shape(company: str) -> None:
         "is the decision this test exists to force: re-read `admissible_tenant_terms`'s "
         "docstring and the third-party measurement before changing it."
     )
+
+
+# --------------------------------------------------------------------------- #
+# The NER backstop, measured on the same corpus
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.skipif(
+    not NER_BACKSTOP_ACTIVE,
+    reason="spaCy or pt_core_news_sm is not installed; the backstop is off by design",
+)
+def test_the_backstop_moves_both_rates() -> None:
+    """The trade, in one place, against the same 5,664 cases the deterministic ceilings use.
+
+        deterministic only   leak 120/5664 (2.12%)   false redaction 512/5507 ( 9.30%)
+        with the backstop    leak  23/5664 (0.41%)   false redaction 609/5507 (11.06%)
+
+    A 5.2x reduction in the rate the non-negotiable is about, bought with 1.76 points of
+    over-redaction. Both halves are asserted: a change that improved the leak rate by redacting
+    everything would fail the second assertion, which is the failure mode this corpus was built
+    to price in the first place.
+
+    The counts are ceilings, not equalities, so an improvement does not break the build — but the
+    numbers above are exact at the time of writing, and a drift in either direction is worth
+    reading before it is worth re-pinning.
+    """
+    stubbed = pii_ner.person_spans
+    pii_ner.person_spans = _REAL_PERSON_SPANS
+    try:
+        measured = run(all_cases())
+    finally:
+        pii_ner.person_spans = stubbed
+    leaks = measured.leak.failed
+    false_redactions = measured.false_redaction.failed
+
+    assert leaks <= NER_MAX_LEAK_CASES, (
+        f"REGRESSION: {leaks} leaks with the backstop on, ceiling {NER_MAX_LEAK_CASES}.\n"
+        "Something the model was catching is not being caught. The backstop only ever ADDS a "
+        "redaction, so a rise here means the deterministic side lost ground, the trim got "
+        "greedier, or the model changed.\n\n" + measured.render()
+    )
+    assert false_redactions <= NER_MAX_FALSE_REDACTION_CASES, (
+        f"REGRESSION: {false_redactions} false redactions with the backstop on, ceiling "
+        f"{NER_MAX_FALSE_REDACTION_CASES}.\n"
+        "This is the half that catches a leak fix paid for by redacting more, and it is the "
+        "direction this layer is allowed to fail in — which is exactly why it needs a ceiling "
+        "rather than trust.\n\n" + measured.render()
+    )
+
+
+def test_the_deterministic_contract_is_measured_without_the_backstop(report) -> None:
+    """Guards the guard: the fixture must actually be holding the layer off.
+
+    Without this, someone removing the monkeypatch in `report` would silently convert every
+    per-case assertion in this file from a statement about the rules into a statement about the
+    rules plus a model, and the file would keep passing until the model changed under it.
+    """
+    assert pii_ner.person_spans("Neusa Datasul Nardelli assumiu a entrega.", lambda t: False) == []
