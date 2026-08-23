@@ -34,6 +34,13 @@ written and marked historical below** — they are the record of what was actual
 the past so it agrees with today's decision is a mistake this repository has already made and
 undone once.
 
+**Read the cells as dated, not as current.** Sub-phase 1.1 says the synthetic dataset is 12 `.txt`
+plus 3 `.vtt`, 2 `.srt` and 3 JSON contexts, and it was, on 2026-05-11; PR #488 has since taken it
+to 17/3/2/4. `docs/product/backlog.md` §3 carries the present counts. One cell is not merely dated
+but **was wrong when written**, and it is left alone with the correction here rather than quietly
+patched: the same row says `packages/nlp-baseline/` has "3 TF-IDF modules", and the commit it
+describes added **four** — `normalize`, `tokenize`, `tfidf` and `stopwords`. The 52 tests are right.
+
 | Sub-phase | Date | PRs | Delivery summary | Related ADRs |
 |---|---|---|---|---|
 | **1.0 (implicit, pre-audit)** | up to 2026-05-10 | #1, #3-#8, #22-#25, #29-#50 | Monorepo scaffolding; e-mail/password auth (US01-US04) with JWT; text upload (US07); LLM worker (US11-US14); Tauri desktop (US09); AWS-style IAM (US35-US40); Customer Confidence LLM schema (without persistence); Productivity opt-in; web auth flow; analysis persistence in the DB. The base for everything that came afterwards. | 0001-0009 |
@@ -84,13 +91,15 @@ status per user story is in [`backlog.md`](backlog.md); this table is chronology
 | **Audit → realignment (86 findings, 19 decisions)** | 2026-08-16 | #457–#471 | A seven-front audit left 86 surviving findings and the maintainer closed 19 decisions on them. First wave in the code: Azure Speech deleted from both halves, the desktop reduced to Windows and its unrendered local UI removed, three container-level exposures closed, the chat given the company context, Flows trigger parity, honest retention semantics, and the operator console made fail-closed and put inside `ci-gate` | ADR 0038, 0039, 0040, 0041 |
 | **Documentation reconciliation** | 2026-08-16/17 | #478–#484 | The four realignment ADRs written; the data model brought to V027; the whole HTTP surface described in `openapi.yaml` with a CI check gating drift; `AGENTS.md`, the architecture document, the backlog (85 user stories, every status re-derived from the code) and the vision reconciled | ADR 0038–0041 |
 | **A unit-test runner for `apps/web`** | 2026-08-17 | — | Vitest plus v8 coverage in the `web` job, closing the runner ADR 0018 planned for Sub-phase 1.12 and never built. 85 tests over four `src/lib` modules — the shared `request()` behind all 66 `client.ts` wrappers, the Markdown report builder, the BFF PII redaction (with a mirror test that reads the worker's PII Shield off disk) and the password policy (mirroring the backend's constants and DTO bounds). **No page and no component is tested**, so whole-app coverage is 5.5%; the gate is per module and only on three files | ADR 0018, 0042 |
+| **Finish the declared scope** | 2026-08-17 | #485–#519 | The seven stories ADR 0046 §1 reactivated, delivered in one wave: tenant usage and its period export (US33/US34), policy templates and the form editor (US41/US42), permission boundaries (US44, V033), participant identity over the declared roster (US13) and scheduled Flows (US75, V032). Four ADRs written with them — 0047 for the scheduler's five undocumented semantics, 0048 for why matching must stay on the API side of the PII Shield, 0049 for the four questions a cap raises, and 0044 for why the RAG backfill is operator-triggered | ADR 0044, 0046, 0047, 0048, 0049 |
+| **Repository-wide audit, and the operational half of it** | 2026-08-23 | (branch `fix/auditoria-2026-08-23`, no PR number yet) | A seven-front audit against the whole tree, executed rather than filed. In the product: `DELETE /meetings/{id}` gives ADR 0021's soft delete the writer it never had (US88) and separates `meeting:erase` from `meeting:update`; `GET /iam/users` and `GET /iam/policies/{id}/versions` make the IAM directory and the policy history readable instead of database-only; `GET /tasks` paginates; a spend limiter sits in front of every provider call and `/split` and `/analyze-live` report their cost. In the front ends: the chat route joins the session-refresh interceptor and gains an idle budget, the Flows editor stops discarding unsaved work, Projects pages and counts honestly, IAM gains labels and pickers, and both Next.js apps gain page-level tests where they had none. In the infrastructure: eight alert rules with a contact point, an off-host backup leg, a quarterly restore drill and `deploy.sh --follow-release`. In the documents: the backlog stopped citing line numbers, three published counts were withdrawn rather than refreshed, ADR 0013 was accepted five months after the code implemented it, and ADR 0050 unfroze the landing page | ADR 0013, 0050 |
 
 ### Cumulative metrics
 
-- **334 PRs** merged into `main` (measured 2026-08-17; the most recent merged number is #484). The count includes the "audit follow-up" hardening wave #114–#138 and the 2026-08 realignment wave
-- **ADRs**: 44 numbered, of which seven (0038–0044) record the August 2026 realignment and its first builds. `docs/adr/README.md` is the canonical index and the single source for status — several ADRs are partially superseded and the index is where that is tracked
-- **Migrations**: 27, ceiling `V027__composite_fk_iam_user_attachments.sql`. `docs/engineering/data-model.md` is the single source for the schema. Recent milestones: V016/V019/V020 RLS, V017 Customer Confidence, V021 `meeting_embeddings`, V022 chat sessions, V023 workflows, V024–V026 integration connections, V027 composite FK on the IAM attachment tables
-- **HTTP surface**: 21 controllers in `services/api`, described in full by `docs/api/openapi.yaml`, whose coverage against the code is checked in CI by `scripts/check-openapi-coverage.sh`
+- **PRs**: the most recent merged number is **#519** (2026-08-17). The total this bullet used to state — "334 merged" — is withdrawn rather than refreshed, because nothing in the repository reproduces it: `git log` finds 315 distinct PR numbers in subject lines, and the gap is squashes whose subject lost the number. A count that only GitHub can confirm is a count this document should not carry
+- **ADRs**: **50 numbered, 45 of them accepted** (2026-08-23). `docs/adr/README.md` is the canonical index and the single source for status — three are superseded outright and two only partially, and the index is where that distinction is kept. It also carries the command that recounts both figures; do not copy them from here
+- **Migrations**: **32**, ceiling `V033__create_iam_permission_boundaries.sql`, with **`V031` a permanent gap** (it was a released reservation, V032 shipped while it was empty, and filling it afterwards would have made an out-of-order migration). `docs/engineering/data-model.md` is the single source for the schema. Recent milestones: V028 tenant-context versions, V029 MCP tokens, V030 `action_item.completed_at`, V032 workflow schedules, V033 IAM permission boundaries
+- **HTTP surface**: 21 controllers in `services/api` carrying **104 mapped handlers**, described in full by `docs/api/openapi.yaml`, whose coverage against the code is checked in CI by `scripts/check-openapi-coverage.sh`
 - **Test coverage**: **not restated here.** The figures this section carried until 2026-08-17 — worker 87%, backend 67% line / 53% branch, web 0% — were measured on **2026-05-13**, carried a "to be re-measured" note that nobody acted on, and were quoted for three months across the pitch material. They are withdrawn rather than hand-refreshed: `docs/engineering/standards.md` §Test coverage targets is the single source, and `scripts/report-coverage.sh` now re-measures on every run in the `api`, `worker` and `web` jobs. Read the last CI run, not this bullet
 - **Infrastructure cost**: **no number.** The line this section used to carry ("Azure dev cost R$110-180/month") described a subscription ADR 0034 shut down on 2026-08-07. The bare-metal host's real running cost has never been measured, and an unmeasured number is worse than none
 
@@ -177,25 +186,36 @@ today, measured, not assumed:
 - **Cloudflare Tunnel is the only HTTP ingress** — no web port is published — with Caddy routing by
   Host behind it, and SSH carried over the same tunnel behind an Access allow-list (ADR 0025, 0037).
 - **Secrets in SOPS + age**, the private key on the host only.
-- **Deploy is pull, and its consumer was never written.** `deploy-host.yml` publishes an immutable
-  release pointer (`release/prod/<sha>`) and moves `release/prod/current`; nothing on the host reads
-  either. The installed timer runs `deploy.sh --if-changed` with no `--tag`, so it re-probes the tag
-  already running — whose digest never changes — and never discovers a newer release. Rolling
-  forward is a manual `deploy.sh --tag sha-<short>`. The workflow's own header says so, and
-  ADR 0038 §6e records it as a declared deferral: one operator with SSH is an acceptable substitute
-  for an automatic consumer. **Writing that consumer is the one substrate item that is real work
-  rather than a flag flip**, and it is not scheduled.
-- **Observability without paging.** Prometheus, Loki, Grafana and a provisioned dashboard exist;
-  there is no Alertmanager, no `rule_files` and no contact point. Deferred because there is nobody
-  on call — an alert with no recipient is a configuration file (ADR 0038 §6a).
-- **Backup on the host only.** An hourly logical dump with a checksum beside each file, and no copy
-  off the host (ADR 0036 §3, restated by ADR 0038 §6b). `restore-drill.sh` is real and has never
-  been run, so the RTO floor has never been measured (ADR 0038 §6c).
+- **Deploy is pull, and the consumer exists since 2026-08-23.** `deploy-host.yml` publishes an
+  immutable release pointer (`release/prod/<sha>`) and moves `release/prod/current`;
+  `deploy.sh --follow-release` resolves that pointer over `git ls-remote`, refuses it unless the
+  immutable sibling tag exists — which is what makes it inherit the ancestry and GHCR-manifest
+  checks the promotion already runs — and implies `--sync`, because a pointer names a commit and
+  images from one commit must not run against the compose of another. `bootstrap-host.sh` installs
+  the timer as `deploy.sh --if-changed --follow-release`. The bullet here previously described this
+  as "the one substrate item that is real work rather than a flag flip, and it is not scheduled",
+  and ADR 0038 §6e recorded it as a declared deferral; it was built anyway, which does not reopen
+  the deferral block — see §2.5.
+- **Observability, and paging since 2026-08-23.** Prometheus, Loki, Grafana and a provisioned
+  dashboard, plus eight alert rules, a contact point and a notification policy under
+  `infra/host/observability/grafana/provisioning/alerting/`. Two of the eight conditions had no
+  series to fire on, so the OTel collector gained `hostmetrics` (the container's own root mount, not
+  the host filesystem) and `postgresql` receivers. Every systemd unit escalates to `nora-alert@`
+  instead of failing silently. ADR 0038 §6a deferred this because there is nobody on call; that is
+  still true, and the rules now exist for whoever eventually is.
+- **Backup on the host, and one leg off it.** An hourly logical dump with a checksum beside each
+  file (ADR 0036 §3), plus `scripts/offsite-backup.sh` on an hourly timer that **fails loudly**
+  until `NORA_OFFSITE_TARGET` is set, with `none` as the only way to turn it off deliberately. The
+  five observability volumes are still not copied, and that is now written into the compose as a
+  decision rather than an omission. `restore-drill.sh` runs quarterly on a timer since 2026-08-23,
+  and **has still never been executed**, so the RTO floor remains unmeasured — the deferral in
+  ADR 0038 §6c has shrunk from the cadence to the measurement.
 
-**`docs/operations/production-readiness-gaps.md` has not caught up.** It still plans its gaps
-against Key Vault, Application Insights and Flexible Server PITR, and calls the work "Sub-phase
-1.12". ADR 0038 §Consequences names it as an unreconciled document; where the two disagree, the ADR
-is the authority, and this roadmap does not schedule what that document plans.
+**`docs/operations/production-readiness-gaps.md` was reconciled on 2026-08-23.** It had planned its
+gaps against Key Vault, Application Insights and Flexible Server PITR for three months after that
+substrate stopped existing; every gap now carries a note saying what is true of the bare-metal host,
+and Gaps 3, 4 and 6 record what the work above closed. It remains a historical document kept for its
+gap-by-gap reasoning, not an operating runbook — `docs/operations/host-deploy.md` is that.
 
 ### 2.5 Not planned, and the difference between the two ways of not being planned
 
@@ -213,7 +233,13 @@ is the authority, and this roadmap does not schedule what that document plans.
   ADR 0049) — and ADR 0046 §2 moved US08 to **WONT** with a reason that can be checked, replacing
   one that never could.
 - **The operations block** — one reactivation trigger for all of it: **NORA acquires a user who is
-  not the maintainer** (ADR 0038 §6).
+  not the maintainer** (ADR 0038 §6). **Four of its eight items were built on 2026-08-23 without
+  the trigger firing** — alerting (§6a), the off-host leg (§6b), the drill cadence (§6c) and the
+  roll-forward consumer (§6e) — and that does not reopen the block or invalidate the ADR. A
+  declared deferral says an item is not owed to anybody, so nobody is late; it never said the item
+  must stay unbuilt. What is still deferred is deferred for reasons that are not effort: secret
+  rotation has no schedule (§6d), desktop code signing needs a certificate that cannot exist in a
+  public repository (§6f), the RLS repository default stays off (§6g), and US80 is §6h.
 
 ### Criteria for a "closed Sub-phase"
 
@@ -237,7 +263,7 @@ For a sub-phase to be considered **closed** (`DONE`):
 |---|---|
 | **Complete Productivity Score** (US45-US47) | US45 + US46 absorbed by Sub-phase 1.8. US47 was never about productivity — it was about pulling state out of external trackers — and ADR 0041 closed it |
 | **Complete Customer Confidence** (US48-US51) | US48-US49 absorbed by #148 (V017 + worker emit + server-side trend + `CustomerConfidenceCard`). The aggregate on top of them, US50/US51, is **closed scope** by ADR 0038 §4: it aggregates over history that does not exist |
-| **Audio upload** (US08) | Open, no trigger. Its old reactivation criterion mentioned Azure Speech batch becoming cheap; that path died with the subscription (ADR 0034/0036) and no replacement is planned |
+| **Audio upload** (US08) | **Closed** by ADR 0046 §2. This row said "open, no trigger" until 2026-08-23, which had been contradicted by the backlog since ADR 0046 was accepted. Its old reactivation criterion mentioned Azure Speech batch becoming cheap; that path died with the subscription (ADR 0034/0036), and the replacement reason is checkable: transcription is a **streaming realtime** session since ADR 0039/0045, so a file upload needs the provider's **batch** API — a second provider surface, credential path, cost model and failure mode |
 | **MCPs (Calendar, Tasks, CRM)** (US27-US29, US47) | Split by ADR 0041 into two directions that were never one feature. **Outbound** — NORA acting on other tools — shipped as nine OAuth integrations (ADR 0031), which is what US28 and US29 actually asked for. **Inbound** — an external client querying NORA — is US27, the MCP server, delivered read-only; see §2.3 |
 | **Desktop finalisation** | Windows capture (WASAPI loopback) works. The client is Windows-only by ADR 0038 §2 — the macOS (BlackHole) and Linux (PulseAudio) paths and the ScreenCaptureKit debt were deleted, having never been exercised — and the local UI went with them. Transcription is being replaced (§2.3, ADR 0039). Real Windows/Teams validation is still pending |
 | **SSO Entra ID / SAML** (US05) | **Closed** by ADR 0038 §4 |
@@ -294,4 +320,5 @@ Some decisions about **how** we work (not **what** to deliver) that affect the r
 |---|---|---|
 | 1.0 | 2026-05-14 | **Initial creation** as a living roadmap. Replaces `docs/plano-de-execucao.md` (discontinued — it described a week-by-week split between two developers, outside the current real flow). Consolidates the history of the 11 Sub-phases (1.0-1.10) with a cross-check of audit `2026-05-13-audit-pre-subfase-1.10.md` §11. Defines the upcoming Sub-phases 1.11 (Demo Polish Plan A), 1.12 (Production Hardening), 1.13+ (post-pitch) with explicit scope and prerequisites. Includes the long-term vision (3 horizons H1-H3) and process notes |
 | 1.1 | 2026-06-06 | Doc x code reconciliation + standardisation |
+| **1.3** | **2026-08-23** | §1 gained two rows — the ADR 0046 delivery wave and the 2026-08-23 audit — and §2.4 was rewritten because three of its four "what does not exist" bullets stopped being true on the same day: the release pointer has a consumer, alerting has rules and a recipient, and the backup has a leg off the host. §2.5 records that four items of the ADR 0038 §6 deferral were built without the trigger firing, and why that neither reopens the block nor invalidates the ADR. §3's US08 row said "open, no trigger", contradicting the backlog since ADR 0046 §2 closed it; it now says closed and carries the checkable reason. Cumulative metrics: 50 ADRs and 32 migrations recounted, `V031` recorded as a permanent gap, the handler count added, and **the PR total withdrawn rather than refreshed** — nothing in the tree reproduces the 334 this section carried, and a figure only GitHub can confirm does not belong in a file that claims to be auditable from a clone. **§1's rows stay as written**, including the 2026-05-11 cell that says 12 `.txt` and three modules: it was accurate on its date, and the version above it says why editing the past to agree with the present is a mistake this repository has already made and undone once |
 | **1.2** | **2026-08-17** | **Rewritten against the real substrate and ADR 0038-0041.** §1 kept as the record and extended: the Azure-era sub-phases are marked historical rather than edited, and everything delivered after 2026-05-23 — chat and RAG, the control plane, Flows, OAuth integrations, operational LGPD, the exit from Azure, the realignment — is added by theme, because sub-phase numbering lapsed and inventing one retroactively would describe a plan that never existed. §2 replaced entirely: the old plan for a separate `rg-nora-prod`, Azure Monitor alerts, Key Vault rotation and a DR runbook that was never written is deleted rather than rescheduled, and what is ahead is now the close-out of 1.11(e)/(f), the rubric artefacts, the builds ADRs 0039/0040/0041 decided, the four stories ADR 0038 §5 reactivated, and the substrate they land on — one bare-metal host, Cloudflare Tunnel, SOPS + age, and a pull deploy whose consumer was never written. Cumulative metrics corrected: 334 merged PRs, 41 ADRs, migration ceiling V027, the Azure cost line deleted with no number put in its place, and the May 2026 coverage figures withdrawn in favour of `docs/engineering/standards.md`. §3 no longer restates per-story status — it records where each original phase went and points at the backlog — and the H1-H3 commercial horizons are marked historical against ADR 0038 §1 |

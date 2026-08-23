@@ -132,20 +132,25 @@ where a reader looks for it: [ADR 0034](../adr/0034-azure-to-proxmox-migration.m
 and the roadmap's history section. What is gone from here is a copy of it that had already drifted
 twice.
 
-**On test coverage, since the old section quoted numbers.** The old snapshot's figures — worker 87%,
-backend 67%, web 0% — were measured on `2026-05-13` and went three months unrepeated. CI now
-measures them on every run: **worker 92.4% statement over 863 tests; backend 79.5% instruction
-and 63.6% branch over 713 tests; web 9.37% statement over 150 tests** (2026-08-17). The backend
-figure jitters by about a tenth of a point between runs of the same commit, which is worth knowing
-before anyone treats a one-decimal move as a regression. The web figure is low for a reason worth
-stating rather than averaging away: its unit suite (ADR 0042) covers eight `src/lib` modules and no
-page or component at all, so 9.37% is the honest whole-app denominator while the six gated modules
-sit at 96.6%, 97.7%, 98.4%, 100%, 100% and 89.9%. Current numbers come from `scripts/report-coverage.sh`; read the last
-CI run rather than this paragraph. What is actually enforced in CI is narrower and is verifiable: a
-JaCoCo rule over the single class `PolicyEvaluator` at instruction >= 90% / branch >= 75%
-(`services/api/pom.xml`), `pytest --cov=nora_nlp.services.pii_shield --cov-fail-under=90` over that
-one module, and per-module coverage floors on three `src/lib` files in `apps/web/vitest.config.mts`
-(all three in `.github/workflows/ci.yml`). ADR 0018's ">85% sustained" is an aspiration, not a gate.
+**On test coverage, since the old section quoted numbers — and this paragraph then quoted its own.**
+The old snapshot's figures (worker 87%, backend 67%, web 0%) were measured on `2026-05-13` and went
+three months unrepeated. The fix was to measure on every CI run, and it worked; what did not work
+was restating the result here, because a restated figure decays exactly like a snapshot. On
+2026-08-23 this paragraph said the web app was at 9.37% over 150 tests when it had already moved
+past that, and it named three gated `src/lib` files in a sentence that had said six two lines
+earlier. The correction is deliberately written without the replacement number: on that same day
+the web figure was measured twice and moved between the two readings, because more tests landed in
+between — a restated figure can go stale inside an afternoon, which is the whole argument.
+
+**So the numbers are gone from here and there is one place to read them:**
+`docs/engineering/standards.md` §Test coverage targets carries the table with a date per row, and
+`scripts/report-coverage.sh` prints the live figures on every run. Two facts about the shape of it
+do belong in a vision document, because they change how the rest should be read: the backend
+aggregate **jitters by about a tenth of a point between runs of the same commit**, so a one-decimal
+move is not a regression; and the front-end whole-app figures are low because most screens have no
+unit test, which is a real statement about the product and not an artefact of the denominator.
+ADR 0018's ">85% sustained" is an aspiration; what blocks a merge is a short list of narrow gates
+declared in `pom.xml`, `ci.yml` and the two `vitest.config.mts` files.
 
 What §4 and §5 below describe is the product. They are the part of this document that states
 commitments, and they are the part to keep true.
@@ -216,7 +221,7 @@ Company (Tenant)
 
 **The mechanism behind that example is built.** Meetings carry a free-form key/value `attributes` map (`V007`, GIN-indexed in `V008`), the upload contract accepts it (`MeetingUploadMetadata`), and the listing endpoints evaluate conditions per item against exactly those attributes (`MeetingsController` → `AuthorizationService.filterAllowed(..., Meeting::attributes)`). A meeting with no attribute fails an attribute-based condition, which is the fail-closed direction.
 
-**What is missing is a producer.** No shipped surface sets `attributes` on a meeting. The web client sends title, language, format, timestamps, participants and tags (`apps/web/src/lib/api/client.ts:228-236`); the desktop sends the same minus the language choice (`apps/desktop/src/lib/meetings.ts:96-105`). Neither sends `attributes`. So the condition in the example above works, and today it can only be exercised by a caller talking to `POST /meetings` directly. **Attribute-based conditions are a capability of the API, not yet a feature of the product**, and that distinction is the honest reading of the "Real example".
+**What is missing is a producer.** No shipped surface sets `attributes` on a meeting. The web client sends title, language, format, timestamps, participants and tags (the `metadata` object in `uploadMeeting`, `apps/web/src/lib/api/client.ts`); the desktop sends the same minus the language choice (`uploadTranscript`, `apps/desktop/src/lib/meetings.ts`). Neither sends `attributes`. So the condition in the example above works, and today it can only be exercised by a caller talking to `POST /meetings` directly. **Attribute-based conditions are a capability of the API, not yet a feature of the product**, and that distinction is the honest reading of the "Real example".
 
 **Effect on Company Context — none today.** There is **one** context record per tenant: `tenant_contexts.tenant_id` is `UNIQUE` (`V005:15`). Per-department sub-catalogues, selected by the conditions of whoever triggered the analysis, were described here for over a year and were never built. If they are wanted, they are a schema change, not a configuration.
 

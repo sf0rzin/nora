@@ -22,12 +22,12 @@ This page documents:
 |---|---|
 | **Personas and empathy map** | [`personas-and-empathy-map.md`](personas-and-empathy-map.md) — 3 personas (Lucas Almeida, Camila Souza, Rafael Costa) |
 | **Use case diagram (UML)** | [`use-case-diagram.md`](use-case-diagram.md) — mermaid with 20+ use cases |
-| **Prioritized backlog (MoSCoW)** | [`../product/backlog.md`](../product/backlog.md) — 86 stories with a real status each: 73 DONE, 2 PARTIAL, 7 MISSING, 4 WONT. It said "US01-US51" until 2026-08-17, which undercounted by 35: the rewrite added the stories for surfaces that had shipped and were never recorded |
+| **Prioritized backlog (MoSCoW)** | [`../product/backlog.md`](../product/backlog.md) — **88 stories with a real status each: 82 DONE, 0 PARTIAL, 1 MISSING, 5 WONT** (recounted 2026-08-23 by parsing the tables, and the totals close in both directions). It said "US01-US51" until 2026-08-17, which undercounted by 35: the rewrite added the stories for surfaces that had shipped and were never recorded. The split this row carried — "73 DONE, 2 PARTIAL, 7 MISSING, 4 WONT" — was never recounted after that rewrite and matched no version of the table |
 | **Relational data model (Postgres)** | [`../engineering/data-model.md`](../engineering/data-model.md) — relational schema + applied Flyway migrations (canonical source for the migration set) |
 | **Oracle data model (DB deliverable)** | [`../engineering/data-model-oracle.md`](../engineering/data-model-oracle.md) — Oracle 19c+ DDL equivalent to the Postgres schema |
 | **Technical architecture (diagrams, flows)** | [`../engineering/architecture.md`](../engineering/architecture.md) — DDD layers, IAM flow, RAG pipeline, multi-tenancy |
 | **Documented architectural decisions** | [`../adr/README.md`](../adr/README.md) — canonical ADR index (durable decisions with context + alternatives) |
-| **Technical validation (tests)** | Coverage measured by CI on every run, not quoted from a snapshot: worker **92.4%** over `nora_nlp` (863 tests), backend **77.1-77.3%** instruction / **61.5-61.6%** branch (578 tests), `apps/web` **6.2%** statement whole-app (104 tests; a unit suite over five `src/lib` modules, no page or component) — measured 2026-08-17, see the "Measured coverage" section below |
+| **Technical validation (tests)** | Coverage measured by CI on every run, not quoted from a snapshot. The figures live in the "Measured coverage" section below, each with the date it was taken on — this row deliberately no longer restates them, because it restated a set that was two revisions behind the section it points at |
 | **Functional demonstration (deploy)** | NORA runs self-hosted on a single bare-metal host (ADR 0034/0036), behind Cloudflare Tunnel at `nora.systems`. The Azure deployment this rubric item originally pointed at is gone — no subscription, no export (ADR 0036) |
 | **Pitch / final presentation** | [`demo-script.md`](demo-script.md) — block-by-block script with a plan B per block, paired with the seed in `scripts/seed-demo.sh`. **The running time is declared there and nowhere else**, because this page and the roadmap used to carry two different numbers for a script that did not exist |
 
@@ -44,7 +44,7 @@ NORA delivers elements that go beyond the typical academic rubric:
 - **Opt-in Productivity Score** (ADR 0005) — analysis of the meeting's productivity against the declared goal, with the mandatory disclaimer "an indicator of the meeting, not of the participants"
 - **Customer Confidence** (ADR 0006) — score per meeting with buying signals + objections, delivered full-stack with an authoritative per-account trend (PR #148)
 - **Production-grade self-hosted deploy** (ADR 0034/0036) — pull-based rollout whose deploy path opens no inbound port (the machine's own sshd is a separate matter, and is open), secrets encrypted with SOPS + age, self-hosting pitfalls catalogued in `docs/operations/host-deploy.md`. Rolling forward is still a manual `deploy.sh --tag` — the release pointer is published but nothing on the host consumes it. The earlier Azure deployment (8 Azure for Students pitfalls, OIDC workflow, 14 resources via Bicep IaC) is gone — no subscription, no export
-- **Test coverage on the three areas CI actually gates** (ADR 0018, ADR 0042) — a JaCoCo rule over `PolicyEvaluator` (instruction >= 90%, branch >= 75%), `--cov-fail-under=90` over the PII shield, and per-module coverage floors on five `apps/web/src/lib` modules. ADR 0018's ">85% across IAM, Auth and PII" is the aspiration; those three gates are what blocks a merge. See "Measured coverage" below for what the rest of the code actually measures
+- **Test coverage where CI actually gates it** (ADR 0018, ADR 0042) — three JaCoCo rules on the backend, `--cov-fail-under=90` over the PII shield, and per-module coverage floors in the two Next.js apps. ADR 0018's ">85% across IAM, Auth and PII" is the aspiration; the gates are what blocks a merge. See "Measured coverage" below for the list and for what the rest of the code measures
 - **AGPL-3.0 License** (ADR 0017) — protection against clone-and-compete
 
 ### Measured coverage
@@ -53,25 +53,30 @@ Two different things get confused whenever this project quotes a coverage number
 
 **What is measured** — every CI run. `scripts/report-coverage.sh` reads the report the test run just wrote (JaCoCo's CSV, coverage.py's data file, Vitest's coverage summary) and prints it to the job log and to the run summary page. It measures nothing itself, so a figure read in CI and a figure read on a workstation come from one implementation.
 
-| Scope | Measured 2026-08-17 | How |
+Every row carries its own measurement date. A single date over the table is a date that is wrong for
+most of it, which is how the web row here stayed at 9.37% through two waves of work.
+
+| Scope | Measured | How |
 |---|---|---|
-| Spring backend, overall | **79.5%** instruction · 63.6% branch · 79.9% line (713 tests) | `mvn -B verify` → JaCoCo |
+| Spring backend, overall | **2026-08-17** — 79.5% instruction · 63.6% branch · 79.9% line (713 tests). The suite is at **809 `@Test` methods** now, so this is stale in an unknown direction | `mvn -B verify` → JaCoCo |
 | ↳ *why that row is a range* | three runs of the same branch gave 77.1%, 77.2% and 77.3%; the per-area rows below did not move at all | the aggregate is good to about ±0.1 point |
-| Backend IAM packages (`*.iam`) | 90.9% instruction · 80.4% branch | idem |
-| Backend Auth packages (`*.identity`, `*.security`) | 93.8% instruction · 72.8% branch | idem |
-| `PolicyEvaluator` — the one gated class | 96.3% instruction · 86.0% branch | idem |
-| NLP worker, whole package | **92.4%** statement (863 tests) | `pytest --cov=nora_nlp` |
-| Worker PII shield — the one gated module | 96.6% statement | idem |
-| `apps/web`, whole app | **9.37%** statement · 8.39% branch · 9.11% line (150 tests) | `npm run test:coverage` → Vitest + v8 |
-| ↳ *why that row is so low* | the unit suite covers eight `src/lib` modules; **no page and no component has a unit test** | the three Playwright e2e specs exercise routing, headers and CSP, and are not counted here |
-| `apps/web` gated modules | `redact.ts` 96.6% · `markdown.ts` 97.7% · `tasks-export.ts` 100% · `usage-report.ts` 98.4% · `password-policy.ts` 100% · `iam/policy-document.ts` 89.9% statement | idem |
-| `apps/web/src/lib/api/client.ts` | 30.9% statement — reported, deliberately not gated | one `request()` plus 74 one-line wrappers; the percentage counts wrappers |
+| Backend IAM packages (`*.iam`) | **2026-08-17** — 90.9% instruction · 80.4% branch | idem |
+| Backend Auth packages (`*.identity`, `*.security`) | **2026-08-17** — 93.8% instruction · 72.8% branch | idem |
+| `PolicyEvaluator` | **2026-08-17** — 96.3% instruction · 86.0% branch | idem |
+| NLP worker, whole package | **2026-08-23** — **94%** statement, 1,682 statements with 97 uncovered (1,194 tests) | `pytest --cov=nora_nlp` |
+| Worker PII shield — the one gated module | **2026-08-23** — **97%** statement (502 statements, 14 uncovered) | idem |
+| `apps/web`, whole app | **2026-08-23** — **26.42%** statement · 20.68% branch · 26.75% line (319 tests in 25 files) | `npm run test:coverage` → Vitest + v8 |
+| ↳ *why that row is still low* | most screens have no unit test. Two now do — the Flows editor and the IAM page — which is what moved the figure from 9.37% | the three Playwright e2e specs exercise routing, headers and CSP, and are not counted here |
+| `apps/web` gated modules | The list is not reproduced here. `apps/web/vitest.config.mts` is what decides which modules carry a threshold, and four documents once carried four different lists of it | idem |
+| `apps/web/src/lib/api/client.ts` | **2026-08-23** — 37.83% statement, reported and deliberately not gated | one `request()` plus 78 one-line wrappers around it (and `streamChat`, which is not one); the percentage counts wrappers |
+| `apps/admin`, whole app | **2026-08-23** — **26.93%** statement (64 tests in 4 files), with `access.ts` at 100% | `npm run test:coverage`. The console had **no test at all** before this date |
+| `apps/desktop` | not a percentage — **38** Rust tests plus **13** TypeScript tests | `cargo test` and `node --test` |
 
-**What is gated** — three narrow rules, and only three. A regression anywhere outside them fails nothing:
+**What is gated:**
 
-- `services/api/pom.xml` — a JaCoCo rule over the single class `PolicyEvaluator` (instruction >= 90%, branch >= 75%), `haltOnFailure`
+- `services/api/pom.xml` — three JaCoCo rules with `haltOnFailure`: the class `PolicyEvaluator` (instruction >= 90%, branch >= 75%), the package `domain.iam` (instruction >= 80%) and the whole bundle (instruction >= 70%, branch >= 55%). The last two were added on 2026-08-23; before that the single-class rule was the entire backend gate, so a coverage drop anywhere else passed `mvn verify` in silence
 - `.github/workflows/ci.yml` — `pytest --cov=nora_nlp.services.pii_shield --cov-fail-under=90` over that one module
-- `apps/web/vitest.config.mts` — per-module `coverage.thresholds` over `redact.ts`, `markdown.ts`, `tasks-export.ts`, `usage-report.ts` and `password-policy.ts`, applied by the `web` job's test run (ADR 0042). Each is a **floor below the measured rate**, so it fires on a regression rather than certifying a level
+- `apps/web/vitest.config.mts` and `apps/admin/vitest.config.mts` — per-module `coverage.thresholds` (ADR 0042). **The module list is not repeated here**: this document, `AGENTS.md`, `README.md` and `apps/web/README.md` each carried a different version of it, none matching the config. Each threshold is a **floor below the measured rate**, so it fires on a regression rather than certifying a level
 
 The table above is a report, not a threshold. Making it one would mean picking a global minimum, which ADR 0018 considered and rejected on the grounds that forcing a number on boilerplate produces valueless tests.
 

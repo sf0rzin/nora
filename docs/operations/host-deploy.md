@@ -577,6 +577,14 @@ sops updatekeys secrets.env.sops
 The compose's `TUNNEL_TOKEN` implies a **remotely managed tunnel**: the hostname configuration
 lives in the Cloudflare dashboard/API, not in a local `config.yml`.
 
+> This section is the **current** procedure for every hostname, `nora.systems` included. The DNS
+> cutover that put the root domain in front of the Azure deployment — when the web app had public
+> ingress and only the console came through a tunnel — is recorded in
+> [`web-custom-domain.md`](web-custom-domain.md), which is historical and says so in its own
+> banner. It is linked from here because nothing linked to it at all until 2026-08-23, and an
+> unreachable historical runbook is found by search at exactly the wrong moment: by somebody in a
+> hurry who does not read the banner.
+
 1. **Create the tunnel** (Zero Trust → Networks → Tunnels → Create a tunnel → *Cloudflared*), named
    `nora-prod`. Copy the **connector token** into `CLOUDFLARE_TUNNEL_TOKEN`.
 
@@ -629,10 +637,31 @@ Flags that matter:
 |---|---|
 | `--tag sha-xxxxxxx` | tag of the app images to bring up |
 | `--service api,web` | only these services (repeatable or a list) |
-| `--if-changed` | only deploys if the remote digest differs — this is what the systemd timer calls |
+| `--if-changed` | only deploys if the remote digest differs — half of what the systemd timer calls |
+| `--follow-release` | resolves `release/prod/current` and rolls out the `sha-<short>` it names. **Implies `--sync`**, because the pointer names a commit and images from one commit must not run against the compose of another. Refuses a pointer whose immutable sibling tag `release/prod/<short>` is missing — that tag is written only after the promotion has verified every announced manifest in GHCR and that the SHA descends from `main`, so following the pointer inherits both checks. The other half of what the timer calls |
+| `--sync` | `git pull --ff-only` on the host repo before anything else. Without it a deploy updates **images only**, and a change to the compose, the Caddyfile or the scripts stays in git and never reaches the machine |
 | `--rollback` | returns the selected services to the previous tag recorded in the state |
 | `--no-rollback` | on a health failure, leaves it broken for debugging |
 | `--dry-run` | shows what it would do |
+
+**The timer runs `deploy.sh --if-changed --follow-release`.** Until 2026-08-23 it passed no
+`--tag` and no `--follow-release`, so it re-probed the digest of the release already running —
+which never changes — and no published release ever reached the host by itself. If you are reading
+an older note that says rolling forward is manual, that is why.
+
+### The three timers `bootstrap-host.sh` installs
+
+The hourly database dump is not among them — it is the `nora-backup` **container** in the compose
+file, which is why it survives a host that has never run `bootstrap-host.sh`.
+
+| Unit | Cadence | Notes |
+|---|---|---|
+| `nora-deploy.timer` | every `PULL_INTERVAL` (default 5 min), 2 min after boot, with a 60 s randomised delay so it does not hit GHCR on the same second as everyone else | runs `deploy.sh --if-changed --follow-release` |
+| `nora-offsite-backup.timer` | hourly, at `:30` | **fails every run until `NORA_OFFSITE_TARGET` is set** in `/etc/nora/offsite.env`. That is deliberate: a backup leg that quietly does nothing is the failure it exists to prevent. `none` is the only way to disable it on purpose |
+| `nora-restore-drill.timer` | quarterly | runs `restore-drill.sh` unattended — it is safe to, because the drill restores into a disposable `--network none` container and never touches the live database |
+
+All three escalate through `nora-alert@`, which runs `scripts/notify-failure.sh`. Before
+2026-08-23 a failing unit was silent, which is the same defect as a backup that does nothing.
 
 The rollout state (current tag, previous tag, digest, timestamp) lives in
 `/srv/nora/state/deploy-state.env` — it is what makes rollback possible without your having
@@ -1009,7 +1038,13 @@ second host to drill them on:
 
 | Date | Dump | Measured RTO | Findings |
 |---|---|---|---|
-| _(pending — first drill within 30 days after go-live)_ | | | |
+| _(pending — the quarterly timer exists since 2026-08-23; no drill has been executed)_ | | | |
+
+> **What "pending" means here, precisely.** The drill is real code, it is now scheduled
+> (`nora-restore-drill.timer`), and it has still never been run — so **the RTO floor has never been
+> measured.** ADR 0038 §6c deferred the cadence and the cadence now exists; what is left is a
+> single execution on the host. Until this table has a row, treat any RTO figure anywhere in this
+> repository as an estimate somebody wrote down, including the 2 h below.
 
 > Treat the number from this drill as the RTO **floor**, never as the RTO — see the script's own
 > header for what it deliberately does not measure. If the measured floor already exceeds 2h (the
@@ -1026,4 +1061,5 @@ not a retroactive edit of the two above it.
 |---|---|
 | 2026-08-07 | v1.0 — runbook created together with ADR 0034. Supersedes the historical Azure-era runbook. Covers VM provisioning, bootstrap, SOPS+age, Cloudflare Tunnel/Access, first deployment, restore coming from Azure, verification, the 9 self-hosting pitfalls, 3-level rollback and the quarterly restore drill. |
 | 2026-08-07 | v1.1 — reconciliation with the actual files in the infra directory: correct names (`postgres/init/01-roles-and-db.sql`, `R001__provision_app_roles.sql`), the real `deploy.sh` flags (`--platform`, `--tag`, `--service`, `--rollback`, `--if-changed`) in place of `--profile platform` and manual editing of `API_TAG`, rollout state in `/srv/nora/state/deploy-state.env`, tmpfs on `/dev/shm`, and separation of the two configuration planes (`env.defaults` vs. `secrets.env.sops`) in the secrets inventory. Reference to the restore-into-host script. |
+| 2026-08-23 | v1.3 — reconciled with the roll-forward and observability work of the same date. `deploy.sh` gained `--follow-release` and `--sync`, and the flag table and the timer description now say that the installed timer runs `--if-changed --follow-release` rather than re-probing the tag already running. Added the three systemd timers the bootstrap installs, with the note that the hourly dump is a compose service and not one of them, and that all three escalate to `nora-alert@` instead of failing silently. The restore-drill row says what "pending" now means: the cadence exists, the measurement does not. |
 | 2026-08-10 | v1.2 — reconciled with ADR 0036: the substrate is a single bare-metal host, no hypervisor. Removed the fictitious VM-provisioning walkthrough (and the host details it exposed), the hypervisor-backup / VM-snapshot rollback and drill, and every link to the deleted Azure runbooks. Rewrote Level 3 rollback and the restore drill around "rebuild from repo" and the disposable-container drill that `restore-drill.sh` actually runs. |

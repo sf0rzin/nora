@@ -1,8 +1,17 @@
 # Architecture — NORA
 
 > End-to-end technical view of NORA: stack, layers, flows and the rationale behind the decisions.
-> Every statement here is anchored in code (`path:line`), a Flyway migration or an ADR.
+> Every statement here is anchored in code, a Flyway migration or an ADR.
 > When something is planned but not implemented, it is explicitly marked as such.
+>
+> **Anchors name a symbol, not a line, since 2026-08-23.** This document used to cite `path:line`
+> and roughly forty of those citations had drifted — `MeetingsController.java:64` resolved to an
+> `import`, `AuthorizationService.java:41` to a blank line, and the whole `package.json` column of
+> the stack table pointed at the wrong dependencies. Re-anchoring buys one commit of accuracy; a
+> method or constant name is resolved by `grep` and moves with the code. `scripts/check-doc-links.sh`
+> can only verify that a cited line **exists**, never that it still means what the prose says, which
+> is why the drift ran for weeks against a green gate. Line numbers survive only where the file has
+> no symbols to name — a JSON Schema range, for instance.
 
 ## §1. Stack overview
 
@@ -13,7 +22,7 @@ Each row was read from the file cited beside it, on 2026-08-17, at commit `4017b
 | **Backend** Java | 21 | Spring Boot + DDD + JPA | `services/api/pom.xml:21` |
 | Spring Boot | 3.5.16 | Backend framework | `services/api/pom.xml:10` |
 | Flyway | inherited from Spring Boot | Versioned Postgres migrations (V001–V027, plus the control plane's own line — §6) | `services/api/pom.xml:59-66` |
-| Postgres | 16 | Transactional, multi-tenant database | ADR 0002, `infra/host/docker-compose.yml:152` |
+| Postgres | 16 | Transactional, multi-tenant database | ADR 0002, `infra/host/docker-compose.yml` |
 | JJWT | 0.13.0 | JWT issuance and parsing | `services/api/pom.xml:79-95` |
 | springdoc-openapi | 2.9.0 | Automatic OpenAPI spec generation | `services/api/pom.xml:72-76` |
 | Bucket4j | 8.10.1 | Rate limiting. `AuthRateLimiter` (login/signup/reset) is its only consumer | `services/api/pom.xml:112-116` |
@@ -25,14 +34,14 @@ Each row was read from the file cited beside it, on 2026-08-17, at commit `4017b
 | OpenAI SDK | ≥1.50 | LLM client (provider agnostic) | `services/nlp-worker/pyproject.toml:20`, ADR 0004 |
 | nlp-baseline | 0.1.0 (local path) | Reusable PT-BR TF-IDF package | `packages/nlp-baseline/`, ADR 0010 |
 | scikit-learn | ≥1.4 | TF-IDF baseline | `packages/nlp-baseline/pyproject.toml:11` |
-| **Web** Next.js | 16.3.0 | App Router + RSC. Also the BFF (§8, §14) | `apps/web/package.json:24` |
-| React | 18.3.1 | UI | `apps/web/package.json:25-26` |
-| TypeScript | ^5.6.3 | Strict typing on the frontend | `apps/web/package.json:45` |
-| Tailwind CSS | ^3.4.13 | Styling. **No shadcn, no MUI** | `apps/web/package.json:44` |
-| Monaco Editor (React) | ^4.7.0 | JSON editor for IAM policies | `apps/web/package.json:17` |
-| React Flow (`@xyflow/react`) | ^12.11.3 | Graph engine of the Flows canvas (§13) | `apps/web/package.json:21`, ADR 0032 |
-| react-markdown | ^10.1.0 | Rendering of the analysis `summary` | `apps/web/package.json:27` |
-| **Operator console** Next.js | 16.3.0 | `apps/admin`: model catalog + AI cost telemetry (§6) | `apps/admin/package.json:15`, ADR 0023/0024/0025 |
+| **Web** Next.js | 16.3.0 | App Router + RSC. Also the BFF (§8, §14) | `apps/web/package.json` |
+| React | 18.3.1 | UI | `apps/web/package.json` |
+| TypeScript | ^5.6.3 | Strict typing on the frontend | `apps/web/package.json` |
+| Tailwind CSS | ^3.4.13 | Styling. **No shadcn, no MUI** | `apps/web/package.json` |
+| Monaco Editor (React) | ^4.7.0 | JSON editor for IAM policies | `apps/web/package.json` |
+| React Flow (`@xyflow/react`) | ^12.11.3 | Graph engine of the Flows canvas (§13) | `apps/web/package.json`, ADR 0032 |
+| react-markdown | ^10.1.0 | Rendering of the analysis `summary` | `apps/web/package.json` |
+| **Operator console** Next.js | 16.3.0 | `apps/admin`: model catalog + AI cost telemetry (§6) | `apps/admin/package.json`, ADR 0023/0024/0025 |
 | **Desktop** Tauri | 2 | Native wrapper + audio capture | `apps/desktop/src-tauri/Cargo.toml:71`, ADR 0008 |
 | Rust | edition 2021 | System-wide audio capture via WASAPI loopback. Windows-only | `apps/desktop/src-tauri/Cargo.toml:6`, ADR 0038 §2 |
 | tokio-tungstenite | 0.28 | Realtime STT transport: one WebSocket per track, rustls with bundled roots (§14) | `apps/desktop/src-tauri/Cargo.toml`, ADR 0039 → ADR 0045 |
@@ -43,7 +52,7 @@ Notes:
 
 - The monorepo lives in `apps/`, `services/`, `packages/` and `infra/` (ADR 0001). There is still no `mcp/` folder, and there is not going to be one: ADR 0041 decided that NORA exposes MCP as an **inbound** adapter inside `services/api`, not a separate process, and that adapter is built — `api/mcp/`, `api/controllers/McpController.java`, migration V029 (§19). It is the direction where an external client asks NORA questions. The **outbound** one, NORA acting on nine external providers through OAuth integrations, is §12 (ADR 0031). The two are different protocols pointing opposite ways; conflating them is what made a delivered subsystem look unstarted.
 - Web runs on **raw Tailwind**: the editorial palette and tokens live in `apps/web/src/app/globals.css` and `apps/web/tailwind.config.ts`. There is no dependency on `@shadcn/ui`, MUI, Chakra or similar. React Flow (§13) is the single exception ADR 0032 argued for, and it is a graph-interaction engine, not a component library.
-- The worker has two operating modes: `USE_LLM_STUB=true` (CI / dev without an LLM) and any endpoint compatible with OpenAI's Chat Completions API via `LLM_BASE_URL`, default `https://api.openai.com/v1` with `gpt-4o-mini` (`services/nlp-worker/src/nora_nlp/settings.py:34-40`, ADR 0004). The third mode this note used to list — Azure OpenAI for Enterprise — went with the subscription (ADR 0034, ADR 0036). The runtime override that replaced static provider choice is the control plane's per-service binding (§6), and the worker does **not** read it.
+- The worker has two operating modes: `USE_LLM_STUB=true` (CI / dev without an LLM) and any endpoint compatible with OpenAI's Chat Completions API via `LLM_BASE_URL`, default `https://api.openai.com/v1` with `gpt-4o-mini` (`services/nlp-worker/src/nora_nlp/settings.py`, ADR 0004). The third mode this note used to list — Azure OpenAI for Enterprise — went with the subscription (ADR 0034, ADR 0036). The runtime override that replaced static provider choice is the control plane's per-service binding (§6), and the worker does **not** read it.
 
 ## §2. Backend DDD layers
 
@@ -68,11 +77,11 @@ api/            <- controllers REST, DTOs, exception handlers
 | Class | Layer | Why |
 |---|---|---|
 | `IamPolicy` (`domain/iam/IamPolicy.java`) | domain | Immutable record; pure validation logic |
-| `PolicyEvaluator` (`domain/iam/PolicyEvaluator.java:35`) | domain | IAM algorithm (Deny-first, wildcards) with no external dependency |
-| `AuthorizationService` (`application/iam/AuthorizationService.java:17`) | application | Orchestrates `UserRepository` + `IamRepository` (ports) |
+| `PolicyEvaluator` (`domain/iam/PolicyEvaluator.java`) | domain | IAM algorithm (Deny-first, wildcards) with no external dependency |
+| `AuthorizationService` (`application/iam/AuthorizationService.java`) | application | Orchestrates `UserRepository` + `IamRepository` (ports) |
 | `MeetingService` (`application/meeting/MeetingService.java`) | application | Upload, listing, reprocessing via repos |
 | `JjwtJwtIssuer` (`infrastructure/security/JjwtJwtIssuer.java`) | infrastructure | Implements `JwtIssuer` (port) with the JJWT library |
-| `MeetingsController` (`api/controllers/MeetingsController.java:64`) | api | Thin controller that delegates to `MeetingService` |
+| `MeetingsController` (`api/controllers/MeetingsController.java`) | api | Thin controller that delegates to `MeetingService` |
 
 ### Why DDD in strict layers
 
@@ -104,9 +113,9 @@ Every tenant-bound table carries `tenant_id UUID NOT NULL` (the schema goes up t
 The JWT issued by `JjwtJwtIssuer` carries `tenantId` in the claim. On every authenticated request:
 
 1. `JwtAuthenticationFilter` validates the token and populates `CurrentUser` with `AuthenticatedPrincipal(userId, tenantId, ...)`.
-2. Each controller obtains the principal via `CurrentUser.require()` (example: `MeetingsController.java:101`).
+2. Each controller obtains the principal via `CurrentUser.require()` (example: `MeetingsController.java`).
 3. Every call to `MeetingService`, `AnalysisService`, `IamService` etc. receives `tenantId` explicitly; there is never a global lookup by `id`.
-4. `AuthorizationService.isAllowed(userId, tenantId, action, resource)` (`application/iam/AuthorizationService.java:27`) injects the `tenantId` into `PolicyEvaluator`.
+4. `AuthorizationService.isAllowed(userId, tenantId, action, resource)` (`application/iam/AuthorizationService.java`) injects the `tenantId` into `PolicyEvaluator`.
 
 In SQL this becomes `WHERE tenant_id = :tenantId AND id = :id` — never just `WHERE id = :id`. Attempts to access outside the scope return 403 (or 404, depending on enumeration risk; see `GlobalExceptionHandler`).
 
@@ -136,13 +145,13 @@ Tenant
 
 Root uniqueness guarantee: partial index `UNIQUE (tenant_id) WHERE is_root = TRUE` (V006:26-27).
 
-### Evaluation algorithm (`PolicyEvaluator.java:35`)
+### Evaluation algorithm (`PolicyEvaluator.java`)
 
-1. **Root bypass** (`AuthorizationService.java:41`): if `users.isRoot(userId, tenantId)`, it returns `ALLOW` immediately.
+1. **Root bypass** (`AuthorizationService.java`): if `users.isRoot(userId, tenantId)`, it returns `ALLOW` immediately.
 2. **Collect applicable statements** (from the user itself + from all the groups it belongs to).
-3. **Deny-first** (`PolicyEvaluator.java:91-93`): any `Deny` matching Action+Resource+Condition wins.
+3. **Deny-first** (`PolicyEvaluator.java`): any `Deny` matching Action+Resource+Condition wins.
 4. **At least one `Allow` matching** Action+Resource+Condition → returns `ALLOW`.
-5. **Default deny** (line 96): if no `Allow` matched, returns `false`.
+5. **Default deny**: if no `Allow` matched, returns `false`.
 6. **Permission boundary** (US44, ADR 0049): if the answer so far is ALLOW *and* the user carries a boundary, rules 2-5 run a second time over the boundary document, and the result is the intersection. A boundary never grants — it is consulted only after an allow, so it can only turn one into a deny. A user with no boundary is unaffected, and that is every user until one is attached. See §25.
 
 ### Wildcards
@@ -191,13 +200,16 @@ Exhaustive map extracted from the controllers (Grep in `services/api/src/main/ja
 
 | Resource | Actions |
 |---|---|
-| **meeting** | `meeting:upload`, `meeting:read`, `meeting:update`, `meeting:reprocess`, `meeting:analyze:live` |
+| **meeting** | `meeting:upload`, `meeting:read`, `meeting:update`, `meeting:reprocess`, `meeting:analyze:live`, `meeting:delete`, `meeting:erase` |
 | **iam (groups/policies/audit)** | `iam:group:read`, `iam:group:create`, `iam:group:delete`, `iam:group:add-member`, `iam:group:remove-member`, `iam:policy:read`, `iam:policy:create`, `iam:policy:update`, `iam:policy:delete`, `iam:policy:simulate`, `iam:attachment:create`, `iam:attachment:delete`, `iam:audit:read`, `iam:boundary:read`, `iam:boundary:set`, `iam:boundary:delete` |
 | **iam (invitations)** | `iam:user:invite`, `iam:invite:read`, `iam:invite:revoke` |
 | **tenant** | `tenant:read`, `tenant:name:write`, `tenant:domain:read`, `tenant:domain:write`, `tenant:context:read`, `tenant:context:write` |
 | **task** | `task:read`, `task:write` |
 | **workflow** (#51) | `workflow:read`, `workflow:write`, `workflow:test` |
 | **integration** (#51) | `integration:read`, `integration:write` |
+| **stt** | `stt:session:create` |
+
+**`meeting:delete` and `meeting:erase` are two actions, and separating them was the point** (2026-08-23). Until then the only removal the product offered was the LGPD hard delete of US78, and it was gated by `meeting:update` — the action for editing a title. So a grant meant to let somebody fix a typo carried the power to destroy a transcript, its participants, its tags and every analysis of it, with no way back. `meeting:erase` now gates that, and `meeting:delete` gates `DELETE /meetings/{id}`, the reversible removal that stamps `deleted_at` (ADR 0021, US88). Reversible removal belongs to the ordinary working set of somebody who runs meetings; permanent destruction does not, and neither grant may imply the other. Both authorize **inside the service transaction, on the loaded meeting's attributes** — with an empty condition context an attribute-scoped Deny never matches, which is fail-closed for an Allow and silently drops a Deny over a deletion.
 
 `workflow:test` is deliberately separate from read and write: it executes the wired actions for real (e-mail, Slack, issue creation) against the tenant's integrations.
 
@@ -206,6 +218,8 @@ Exhaustive map extracted from the controllers (Grep in `services/api/src/main/ja
 The three `iam:boundary:*` actions (US44, ADR 0049) run the same argument as `iam:policy:simulate` and land in the same place: which policy caps which user is part of the attachment graph, and no other endpoint exposes it, so folding the read into `iam:policy:read` would widen what its holders can learn. `set` and `delete` are separate from each other so a delegated admin can be given the power to bound their team without the power to unbound anyone. See §25.
 
 `GET /iam/policy-templates` (US41) runs the same argument the other way and lands on the opposite answer, which is why **the table above does not grow a row for it**. The catalogue is a constant of the build: identical for every caller of every tenant apart from the tenant id substituted into the ARNs, which the caller's own token already carries. A new action would gate no knowledge the holder of `iam:policy:read` does not already have, and would make every existing admin policy stop working the day it shipped. See §22.
+
+Two reads added on 2026-08-23 reuse an existing action for that same reason, so the table did not grow for them either. **`GET /iam/policies/{id}/versions`** reuses `iam:policy:read`: a revision is the object that grant already returns, at an earlier point in time — it exposes no attachment and no other tenant. **`GET /iam/users`** reuses `iam:group:read`: whoever can list the members of a group can already learn which user ids exist, so a directory adds nothing to that grant. In both cases a new action would have gated no additional knowledge while breaking every admin policy that did not happen to use the `iam:*` shape. The rule these three cases jointly establish is worth stating once: **a new action is warranted when the endpoint reveals something no existing grant reveals, and only then.**
 
 Canonical resource: `nora:tenant/{tenantId}:{recurso}/{instanceId|*}`. Examples:
 
@@ -257,12 +271,12 @@ Meeting analysis flow — triggered when an upload arrives or via `POST /meeting
 
 1. **PII Shield** (`services/nlp-worker/src/nora_nlp/services/pii_shield.py`): redacts email, phone, CPF, CNPJ, credit card and BR proper names before any external call. See §7.
 2. **TF-IDF baseline** (`packages/nlp-baseline/src/nlp_baseline/`, ADR 0010): extracts the top-N terms from the text for academic interpretability and prompt enrichment.
-3. **LLM call** (`services/nlp-worker/src/nora_nlp/services/llm_analyzer.py:112`): `analyze()` loads the versioned prompt from `prompts/{version}.md`, assembles system+user prompts, and calls the agnostic LLM client (`clients/llm.py:77`) with `response_format=json_schema` (strict mode — ADR 0003).
+3. **LLM call** (`services/nlp-worker/src/nora_nlp/services/llm_analyzer.py`): `analyze()` loads the versioned prompt from `prompts/{version}.md`, assembles system+user prompts, and calls the agnostic LLM client (`clients/llm.py`) with `response_format=json_schema` (strict mode — ADR 0003).
 4. **Pydantic validation** (`models.py`, `MeetingAnalysisV1`): every field of the response goes through strict validation — score 0-100, enum bands, sizes, etc. A schema failure is a controlled error, not an exposed stack trace.
 
 ### Provider agnostic (ADR 0004)
 
-Variables: `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` (`services/nlp-worker/src/nora_nlp/settings.py:34-40`). Default: `https://api.openai.com/v1` + `gpt-4o-mini`. Any endpoint that speaks the Chat Completions API works by pointing `LLM_BASE_URL` at it. CI uses `USE_LLM_STUB=true` (zero cost, deterministic stub in `services/stub_analyzer.py`).
+Variables: `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` (`services/nlp-worker/src/nora_nlp/settings.py`). Default: `https://api.openai.com/v1` + `gpt-4o-mini`. Any endpoint that speaks the Chat Completions API works by pointing `LLM_BASE_URL` at it. CI uses `USE_LLM_STUB=true` (zero cost, deterministic stub in `services/stub_analyzer.py`).
 
 For the **analysis** service this env-var binding is still the whole story: ADR 0024 added a runtime catalog that can rebind a service to another model without a redeploy, and the worker does not consume it. §6 says which surface does.
 
@@ -284,7 +298,7 @@ with its own Flyway line (`services/api/src/main/resources/db/platform/V001__cre
 its own history table and its own datasource
 (`infrastructure/platform/PlatformDataSourceConfig.java`, `NamedParameterJdbcTemplate`, not a second
 JPA `EntityManagerFactory`). On the self-hosted substrate that separation is the
-`postgres-platform` service with its own volume (`infra/host/docker-compose.yml:198`) — weaker
+`postgres-platform` service with its own volume (`infra/host/docker-compose.yml`) — weaker
 isolation than the two Azure servers it replaced, and the compose file says so in its own comment.
 
 Five tables: `llm_models` (the catalog: provider, baseUrl, model, modality, per-MTok pricing and the
@@ -299,8 +313,8 @@ test and CI: no connection, no Flyway run. Its Flyway runs inside a `try/catch` 
 
 | Surface | Endpoints | Caller |
 |---|---|---|
-| `PlatformAdminController.java:53` — `/admin/platform` | `GET`/`POST /models`, `DELETE /models/{id}`, `GET /config`, `PUT /config/{service}`, `GET /flags`, `GET /telemetry/cost`, `/telemetry/health`, `/telemetry/business` | The operator console `apps/admin` |
-| `PlatformInternalController.java:27` — `/internal/platform` | `GET /llm-config?service=…` (`:38`), `POST /usage` (`:48`, fire-and-forget, always 202) | Runtime consumers |
+| `PlatformAdminController.java` — `/admin/platform` | `GET`/`POST /models`, `DELETE /models/{id}`, `GET /config`, `PUT /config/{service}`, `GET /flags`, `GET /telemetry/cost`, `/telemetry/health`, `/telemetry/business` | The operator console `apps/admin` |
+| `PlatformInternalController.java` — `/internal/platform` | `GET /llm-config?service=…`, `POST /usage` (fire-and-forget, always 202) | Runtime consumers |
 
 Each runs on its own `SecurityFilterChain`, ahead of the tenant JWT chain and gated by an
 `X-Internal-Token` header (`infrastructure/platform/security/PlatformSecurityConfig.java`: `@Order(1)`
@@ -311,19 +325,19 @@ deliberately rather than by omission.
 
 ### The router, and what actually reads it
 
-`LlmConfigResolver.java:30` knows three services — `chat`, `analysis`, `multimodal` — and resolves
-each through a Caffeine cache with `expireAfterWrite(60s)` (`:37-38`), so a switch propagates within
+`LlmConfigResolver.java` knows three services — `chat`, `analysis`, `multimodal` — and resolves
+each through a Caffeine cache with `expireAfterWrite(60s)`, so a switch propagates within
 a minute and no request pays a database round trip. Binding validation lives in
 `ModelCatalogService`: `analysis` refuses a model with `supportsStrictJsonSchema=false` (that is
 ADR 0003's strict pipeline being protected from the operator's own console) and `multimodal`
 requires `modality=multimodal`.
 
-The fallback is **soft by design** (`LlmConfigResolver.java:63-80`): platform off, binding absent,
+The fallback is **soft by design** (`LlmConfigResolver.java`): platform off, binding absent,
 model disabled or query failure all return the service's env default. The resolver never throws.
 A control plane that is down must not be able to take chat down with it.
 
 **One honest gap.** Of the three services the router knows, only **`chat`** has a consumer:
-`apps/web/src/app/api/chat/route.ts:169` fetches `GET /internal/platform/llm-config?service=chat`
+`apps/web/src/app/api/chat/route.ts` fetches `GET /internal/platform/llm-config?service=chat`
 before every conversation. The worker resolves its model from `LLM_*` environment variables and
 never calls the endpoint (§5), and `multimodal` has no consumer at all because the modality it
 routes for does not exist yet. So an operator who rebinds `analysis` in the console changes a row
@@ -335,9 +349,9 @@ wired.
 Usage arrives by two paths into the same `UsageRecorder` port
 (`application/platform/UsageRecorder.java`):
 
-- **In-process**, for analysis: `AnalysisService.java:143` calls `emitUsage` (`:207`) with the token
+- **In-process**, for analysis: `AnalysisService.java` calls `emitUsage` with the token
   counts the worker reported. Wrapped in a `try/catch` that logs and continues.
-- **Over HTTP**, for the chat BFF: `apps/web/src/app/api/chat/route.ts:230` posts to
+- **Over HTTP**, for the chat BFF: `apps/web/src/app/api/chat/route.ts` posts to
   `/internal/platform/usage` fire-and-forget.
 
 Cost is recomputed server-side from the catalog's pricing, so the price of record is the catalog's
@@ -362,7 +376,7 @@ describes the opposite default — degrade to edge-only when the variables are m
 is what was decided then; the inversion landed in PR #471 and the ADR stays as written.
 
 The console and the platform database both sit behind the compose profile `platform`
-(`infra/host/docker-compose.yml:529`), so a host that does not want a control plane simply does not
+(`infra/host/docker-compose.yml`), so a host that does not want a control plane simply does not
 start one.
 
 ## §7. PII Shield (ADR 0012)
@@ -419,8 +433,8 @@ vector itself as a **JSON array of floats in a `TEXT` column**. `ON DELETE CASCA
 so the erasure path of ADR 0029 takes the vector with the meeting. RLS enforced inline, same pattern
 as V019.
 
-Indexing happens at the end of a successful analysis: `AnalysisService.java:154-157` passes
-`summarySnippet` to `EmbeddingService.index` (`application/embedding/EmbeddingService.java:35`).
+Indexing happens at the end of a successful analysis: `AnalysisService.java` passes
+`summarySnippet` to `EmbeddingService.index` (`application/embedding/EmbeddingService.java`).
 **The meeting title is deliberately not part of the payload** — the summary has been through the PII
 Shield because it was generated from the redacted transcript, while the title comes raw from
 whoever typed it at upload (ADR 0012). The whole call is best-effort: an embedding failure logs and
@@ -471,7 +485,7 @@ would return all-zero counters that look like "nothing to do".
 
 ### The client
 
-`infrastructure/embedding/HttpEmbeddingClient.java:36-57` implements the `EmbeddingClient` port with
+`infrastructure/embedding/HttpEmbeddingClient.java` implements the `EmbeddingClient` port with
 a plain `java.net.http` call — provider-agnostic in the sense of ADR 0004, defaulting to Gemini
 (`text-embedding-004`, 768 dimensions) with OpenAI supported by the same code path. **With no
 credential, `isEnabled()` returns false and the whole feature is a no-op**: indexing silently skips
@@ -479,7 +493,7 @@ and search returns an empty list, which the caller must be able to survive.
 
 ### Search: `GET /meetings/search`
 
-`MeetingsController.java:125`. It embeds the query, ranks the tenant's vectors and returns the
+`MeetingsController.java`. It embeds the query, ranks the tenant's vectors and returns the
 top-k meetings (`k` clamped to 1..10). Two authorization gates, and the shape is not accidental:
 
 1. A **pre-gate** — `@RequiresPermission(action = "meeting:read", anyAllow = true)` — so a caller
@@ -492,19 +506,19 @@ top-k meetings (`k` clamped to 1..10). Two authorization gates, and the shape is
 
 ### Similarity is computed in Java, and `pgvector` is not enabled
 
-`EmbeddingService.cosine` (`:75`) walks the tenant's vectors in memory and sorts. The database image
+`EmbeddingService.cosine` walks the tenant's vectors in memory and sorts. The database image
 *is* `pgvector/pgvector:pg16`, and the extension is **not created**: the original reason was Azure's
 extension allow-list, and leaving Azure removed the blocker without removing the JSON-in-`TEXT`
-design (`infra/host/docker-compose.yml:147-150`). It is adequate for tens or hundreds of meetings
+design. It is adequate for tens or hundreds of meetings
 per tenant and it is honestly a linear scan; the upgrade to a real ANN index is a RAG refactor, not
 an infrastructure switch.
 
 ### How the chat consumes it
 
-`apps/web/src/app/api/chat/route.ts:268` calls `/meetings/search?q=…&k=6` and falls back to the
+`apps/web/src/app/api/chat/route.ts` calls `/meetings/search?q=…&k=6` and falls back to the
 twelve most recent meetings when the search returns empty or fails — so a workspace with no
 embedding credential still gets a chat with context, just not a relevant one. The query is passed
-through `redactPii` **before** it leaves the BFF (`:783`), because the search sends it to the
+through `redactPii` **before** it leaves the BFF, because the search sends it to the
 embeddings provider, which is a different external provider from the chat one (ADR 0033).
 
 ## §9. Productivity Score (ADR 0005)
@@ -545,10 +559,10 @@ The UI (and any future export) **must** display: *"Indicador da reunião, não d
 ### What exists now (post-PR #148, 2026-05-21)
 
 - **Postgres tables (V017)**: `customer_accounts` (dedup by `LOWER(name)`), `meeting_account_links`, `customer_confidence_assessments`, `customer_buying_signals`, `customer_objections` — all tenant-owned with RLS (see `data-model.md §2.29-2.33`). `account_health_snapshots` was never migrated and never will be (US50-51 closed by ADR 0038 §4).
-- **The worker emits**: Pydantic `MeetingAnalysisV1.customer_confidence` (`models.py:252`) + stub + prompt + strict JSON Schema; it emits only in conversations with a customer/lead (internal meeting → `null`).
-- **Persistence in the pipeline**: `AnalysisService.java:127` → `CustomerConfidenceService.persist` does a get-or-create of the account (case-insensitive dedup), an idempotent meeting↔account link, computes the **trend server-side** (comparing with the account's previous assessment, dead band ±5) and records the assessment + signals + objections. Scoped by tenant.
+- **The worker emits**: Pydantic `MeetingAnalysisV1.customer_confidence` (`models.py`) + stub + prompt + strict JSON Schema; it emits only in conversations with a customer/lead (internal meeting → `null`).
+- **Persistence in the pipeline**: `AnalysisService.java` → `CustomerConfidenceService.persist` does a get-or-create of the account (case-insensitive dedup), an idempotent meeting↔account link, computes the **trend server-side** (comparing with the account's previous assessment, dead band ±5) and records the assessment + signals + objections. Scoped by tenant.
 - **Endpoint**: `GET /meetings/{id}` (`MeetingsController:239` → `findViewByMeetingId`) expands `MeetingDetailResponse` with `customerConfidence` when present.
-- **UI**: `CustomerConfidenceCard` rendered in `meetings/[id]/page.tsx:182`.
+- **UI**: `CustomerConfidenceCard` rendered in `meetings/[id]/page.tsx`.
 
 > **Stale comments (frozen):** the header of `V017__create_customer_confidence.sql` and the Javadoc of `CustomerConfidenceAssessment` were written in Slice 1 of #148 and still say "worker does not emit / no wiring". The one in the `.sql` is **intentionally untouched** (a migration is forward-only/immutable — `standards.md §6`); the reality is the wiring described above.
 
@@ -572,20 +586,20 @@ behind a bus.
 
 `application/ports/DomainEventPublisher` is the port; `infrastructure/events/SpringDomainEventPublisher`
 is the adapter over Spring's `ApplicationEventPublisher`. Its one interesting line is the
-**post-commit rule** (`SpringDomainEventPublisher.java:29-39`): with a transaction active at publish
+**post-commit rule** (`SpringDomainEventPublisher.java`): with a transaction active at publish
 time the event is held in an `afterCommit` synchronisation, so a rollback discards it; with no
 transaction active — which is the analysis pipeline's case, since it commits status in short
 transactions — delivery is immediate. **A listener never observes uncommitted state.**
 
 Events are plain records in `domain/event/`, with no Spring in them. Three exist, and
-`AnalysisService.publishDomainEvents` (`AnalysisService.java:167`) emits them right after the
+`AnalysisService.publishDomainEvents` (`AnalysisService.java`) emits them right after the
 `COMPLETED` status commit: one `MeetingAnalysisCompletedEvent`, one `ActionItemCreatedEvent` per
 action item, and one `MeetingRiskDetectedEvent` per **HIGH** severity risk only — low and medium
 risk as a trigger is noise. Each publish is individually fail-soft.
 
 ### The listener
 
-`infrastructure/events/WorkflowEventListener.java:33-49`, `@Async @EventListener`. It re-sets the
+`infrastructure/events/WorkflowEventListener.java`, `@Async @EventListener`. It re-sets the
 tenant in `TenantRlsContext` **from the event** rather than trusting the thread pool's decorator,
 clears it in a `finally`, and catches every `RuntimeException` — the last line of defence that keeps
 a workflow error from ever travelling back into the analysis pipeline. Same pattern as
@@ -596,7 +610,7 @@ a workflow error from ever travelling back into the analysis pipeline. Same patt
 `application/workflow/WorkflowEngine.java` matches the event against the tenant's **ACTIVE**
 workflows for that trigger — served by the partial index `idx_workflows_tenant_trigger`
 (`V023__create_workflows.sql`) — builds an immutable `WorkflowEventContext` from committed state,
-and walks the graph breadth-first from the trigger node (`:198-258`): conditions are evaluated by
+and walks the graph breadth-first from the trigger node: conditions are evaluated by
 `ConditionEvaluator` and stop their branch when they do not pass; actions are resolved by type
 through `ActionRegistry` and executed. Every step is appended by `ExecutionLogBuilder` into
 `workflow_executions.log_json`, and the execution row is written **before** the walk starts, so a
@@ -633,7 +647,7 @@ its whole life — a value in the catalogue must be a value something actually f
 `V023__create_workflows.sql`: `workflows` (the canvas graph in `definition_json` JSONB, with
 `trigger_type` denormalised for the engine's match) and `workflow_executions`
 (RUNNING/SUCCESS/FAILED + `log_json`), both tenant-owned with RLS. `WorkflowsController`
-(`/workflows`) exposes CRUD plus `POST /{id}/test` (`:128`) and `GET /{id}/executions` (`:135`).
+(`/workflows`) exposes CRUD plus `POST /{id}/test` and `GET /{id}/executions`.
 Graph validation on save is `WorkflowDefinitionParser` — exactly one trigger, unique node ids, no
 edge to a nonexistent node, known action and condition types — and a violation is a 422
 `WORKFLOW_INVALID_DEFINITION` with an actionable message.
@@ -651,6 +665,13 @@ post it in *your* Slack — need real OAuth against external accounts, and they 
 asynchronous listener where no user is present to re-authenticate. This section is the outbound
 half of the product; MCP (ADR 0041) is the inbound half, and it is §20.
 
+Registering a **new** provider's app — where to click, which scopes to ask for, what the redirect
+URI has to be — is not repeated here: it is in
+[`docs/product/possible-integrations.md`](../product/possible-integrations.md), which was written
+as a build plan, has since been fully executed, and is kept for exactly that half. Nothing else in
+the repository linked to it until 2026-08-23, which is how a document with the only copy of ten
+credential walkthroughs became unreachable.
+
 ### Nine providers, three ways of connecting
 
 `domain/integration/IntegrationProvider.java` lists `google`, `slack`, `github`, `notion`,
@@ -658,13 +679,13 @@ half of the product; MCP (ADR 0041) is the inbound half, and it is §20.
 V024 (google, slack), V025 (github, notion, todoist, linear), V026 (microsoft, telegram, trello) —
 each wave a `CHECK` constraint swap on `integration_connections.provider`, nothing else.
 
-Not all nine connect the same way, and `IntegrationsController.java:42` shows the three shapes:
+Not all nine connect the same way, and `IntegrationsController.java` shows the three shapes:
 
 | Mode | Endpoints | Providers |
 |---|---|---|
-| OAuth authorization code | `POST /integrations/{provider}/oauth/start` (`:71`), `GET /integrations/{provider}/oauth/callback` (`:90`) | google, slack, github, notion, todoist, linear, microsoft |
-| Code pairing | `POST /integrations/telegram/pairing/start` (`:134`), `/verify` (`:146`) | telegram (the stored token is the bot chat id) |
-| Pasted token | `POST /integrations/trello/token` (`:157`) | trello |
+| OAuth authorization code | `POST /integrations/{provider}/oauth/start`, `GET /integrations/{provider}/oauth/callback` | google, slack, github, notion, todoist, linear, microsoft |
+| Code pairing | `POST /integrations/telegram/pairing/start`, `/verify` | telegram (the stored token is the bot chat id) |
+| Pasted token | `POST /integrations/trello/token` | trello |
 
 The OAuth callback is a **public** route by necessity — it arrives as a browser redirect with no
 guarantee of a session cookie — so the `state` parameter *is* the credential: an HMAC-SHA256 signed,
@@ -732,7 +753,7 @@ category, since it imposes no appearance and the nodes stay our own React compon
 | `side-panel.tsx` | Per-block parameter editing and the execution history |
 | `flows.css` | Overrides for the library's functional base CSS (edges, handles, controls) |
 
-**The contract with the backend is `definition_json`.** `flow-editor.tsx:81-118` converts React Flow
+**The contract with the backend is `definition_json`.** `flow-editor.tsx` converts React Flow
 nodes and edges into the `{kind, type, params}` node shape the engine parses (§11) and back again,
 persisting canvas positions so a flow reopens exactly as it was drawn. The canvas knows only the
 catalog; the backend validates it. Adding a block type is a catalog entry plus an `ActionExecutor`
@@ -799,8 +820,8 @@ provider **directly**:
    in minutes, not renewable into a second session. A new session means a new call, which means a
    new authorization check.
 3. **Live transcription survives.** The overlay, the live highlights and
-   `POST /meetings/live-analyze` (`MeetingsController.java:545`, called from
-   `apps/desktop/src-tauri/src/live_analysis.rs:100`) stay in the product. That is the expensive
+   `POST /meetings/live-analyze` (`MeetingsController.java`, called from
+   `apps/desktop/src-tauri/src/live_analysis.rs`) stay in the product. That is the expensive
    option of the three that were on the table, and it was chosen because deleting live transcription
    deletes the desktop's reason to exist.
 4. **Attribution stays per track.** `track: "mic"` is the local user, `track: "system"` is everyone
@@ -914,11 +935,11 @@ sequenceDiagram
 Step by step in words:
 
 1. **Login** (`POST /auth/login`): authenticates the user, issues `nora_access` (JWT 15 min) and `nora_refresh` (UUID 30d, persisted in `refresh_tokens` — V011). Both cookies HttpOnly. See `AuthController.login`.
-2. **Upload** (`POST /meetings`, multipart): accepts `.txt`, `.vtt`, `.srt` (`ALLOWED_FORMATS` in `MeetingsController.java:66`). Creates a `PENDING` meeting and triggers asynchronous processing.
+2. **Upload** (`POST /meetings`, multipart): accepts `.txt`, `.vtt`, `.srt` (`ALLOWED_FORMATS` in `MeetingsController.java`). Creates a `PENDING` meeting and triggers asynchronous processing.
 3. **Backend → Worker** (`MeetingService.processAsync` → `AnalysisService.requestAnalysis`): assembles the `AnalyzeRequest` with transcript + tenant_context + options.
 4. **Worker** (`/analyze`): PII Shield → TF-IDF baseline → strict LLM → Pydantic validate → returns `AnalyzeResponse`.
 5. **Persistence**: the backend saves `meeting_analyses` + children (`meeting_decisions`, `meeting_action_items`, `meeting_risks`, `meeting_opportunities`) + optionally `meeting_productivity_assessments` + `meeting_outcome_coverage`. It updates `meetings.processing_status = COMPLETED`.
-6. **Post-COMPLETED fan-out** (`AnalysisService.java:143-157`), all of it fail-soft and none of it able to revert the analysis: usage telemetry to the control plane (§6), the three Flows domain events (§11), and the embedding of the summary for semantic search (§8). Fail-soft means the embedding can silently not happen; §8 describes the backfill path that repairs that afterwards without re-running this pipeline.
+6. **Post-COMPLETED fan-out** (`AnalysisService.java`), all of it fail-soft and none of it able to revert the analysis: usage telemetry to the control plane (§6), the three Flows domain events (§11), and the embedding of the summary for semantic search (§8). Fail-soft means the embedding can silently not happen; §8 describes the backfill path that repairs that afterwards without re-running this pipeline.
 7. **Frontend polling**: the "Processing" card in `apps/web/src/app/(app)/meetings/[id]/page.tsx` polls every ~2s until `processing_status = COMPLETED`.
 8. **Render**: the UI shows the summary (markdown via `react-markdown`), decisions, action items, risks/opportunities and, if present, `ProductivityScoreCard`.
 
@@ -929,10 +950,16 @@ Compose v2 — under compose project `nora` (ADR 0034; substrate corrected by AD
 no hypervisor and no other guest on the machine). Provisioned via
 `infra/host/docker-compose.yml` and deployed by `deploy-host.yml`, which publishes an immutable
 release pointer. The deploy direction is PULL, never PUSH, because the repository is public
-(ADR 0017) — but the consumer half was never written: nothing on the host reads that pointer, so
-rolling forward is a manual `deploy.sh --tag sha-<short>` today. The installed `nora-deploy.timer`
-runs `deploy.sh --if-changed` with no `--tag`, which re-checks the release already running rather
-than discovering a newer one. See the header of `.github/workflows/deploy-host.yml`. Operational details (the self-hosting pitfalls,
+(ADR 0017). **The consumer half exists since 2026-08-23**: `nora-deploy.timer` runs
+`deploy.sh --if-changed --follow-release`, which resolves `release/prod/current` over
+`git ls-remote`, refuses the pointer unless the immutable sibling tag `release/prod/<short>` also
+exists — that tag is written only after the promotion has checked that every announced manifest is
+in GHCR and that the SHA is an ancestor of `main`, so following the pointer inherits both checks —
+and implies `--sync`, because a pointer names a **commit** and images from one commit must never
+run against the compose and Caddyfile of another. Until that date the timer passed no `--tag` and
+re-probed the release already running, whose digest never changes, so it never discovered a newer
+one. `deploy.sh --tag sha-<short>` remains for a deliberate roll-back or roll-forward. See the
+header of `.github/workflows/deploy-host.yml`. Operational details (the self-hosting pitfalls,
 first-deployment steps, rollback, restore drill) live in `docs/operations/host-deploy.md`.
 
 ### Current inventory
@@ -946,11 +973,11 @@ first-deployment steps, rollback, restore drill) live in `docs/operations/host-d
 | `secrets.env.sops` (SOPS + age) | Key Vault + Managed Identities | Encrypted, versioned in git; private key only on the host |
 | `otel-collector` → `prometheus` | Application Insights | `opentelemetry-javaagent` on the API only |
 | `alloy` → `loki` | Log Analytics | Docker socket log collection |
-| `grafana` | Metrics Explorer / Workbooks | at `grafana.<domain>`. Dashboards only — **no alert rule and no Alertmanager** (ADR 0038 §6a) |
-| `backup` (hourly `pg_dump`) | 7-day PITR | `BACKUP_RETENTION_DAYS` default 14, with a `BACKUP_MIN_KEEP` floor; no off-host copy today (ADR 0036, ADR 0038 §6b) |
+| `grafana` | Metrics Explorer / Workbooks | at `grafana.<domain>`. Dashboards **and eight alert rules** since 2026-08-23, with one webhook contact point and one notification policy under `provisioning/alerting/`. Still no Alertmanager: the rules are Grafana-managed, which is what keeps the alerting surface inside the component that already exists |
+| `backup` (hourly `pg_dump`) | 7-day PITR | `BACKUP_RETENTION_DAYS` default 14, with a `BACKUP_MIN_KEEP` floor. **One leg off the host** since 2026-08-23 (`scripts/offsite-backup.sh`, hourly), which fails loudly until `NORA_OFFSITE_TARGET` is set — `none` is the only deliberate way to disable it. The five observability volumes are still not copied, recorded as a decision in the compose (ADR 0036, ADR 0038 §6b) |
 
 `postgres-platform` and `admin` sit behind the compose profile `platform`
-(`infra/host/docker-compose.yml:203,534`): a host that does not want a control plane simply never
+(`infra/host/docker-compose.yml`): a host that does not want a control plane simply never
 starts one, and the product path does not notice.
 
 Azure is gone — no subscription, no export, nothing to decommission (ADR 0036). The historical
@@ -1014,7 +1041,7 @@ instead.
 A hardening wave (PRs ~#114–#138, labeled "audit follow-up #N") landed in `main` after Sub-phase 1.10. Documented retroactively in **ADR 0019** (RLS + composite FK), **ADR 0020** (token rotation) and **ADR 0021** (soft-delete):
 
 - **Postgres RLS (V016)** — see §3. Schema-level ready; enforce is on for the deployed stack and off by default in the repository (ADR 0028; ADR 0038 §6g records that the deferral is the default, not the capability).
-- **Soft-delete (V013)** — `deleted_at` + `@SQLRestriction` in `tenants/users/tenant_contexts/meetings`; UNIQUEs became partial. Hard-delete for LGPD/retention is already operational (ADR 0029): `DELETE /privacy/meetings/{id}` (right to be forgotten) + a scheduled `RetentionSweeper`.
+- **Soft-delete (V013)** — `deleted_at` + `@SQLRestriction` in `tenants/users/tenant_contexts/meetings`; UNIQUEs became partial. Hard-delete for LGPD/retention is already operational (ADR 0029): `DELETE /privacy/meetings/{id}` (right to be forgotten) + a scheduled `RetentionSweeper`. **The column had no writer until 2026-08-23**, which is the more interesting half of this bullet: the migration, the partial unique indexes, the `@SQLDelete`/`@SQLRestriction` pair and the `deleted_at IS NULL` predicates in the Trends, Participants and Tasks queries all defended a state that no code path could produce, so the only removal the product offered was the irreversible one beside it. `DELETE /meetings/{id}` (US88, action `meeting:delete`) is the writer. **A defence with no producer reads exactly like a working feature in a code review** — nothing about `@SQLRestriction` looks wrong; what was missing was somewhere else entirely.
 - **Refresh-token rotation + reuse-detection (V014)** — `refresh_tokens.family_id`/`replaced_by_id`; every `/auth/refresh` rotates; presenting a revoked token revokes the entire family.
 - **Composite isolation FK (V015)** — `meetings.(tenant_id, owner_user_id) → users(tenant_id, id)`: blocks a forged owner from another tenant at the schema level (defense in depth for ADR 0002).
 - **JWT RS256 + JWKS** — asymmetric signature; public key exposed at `GET /.well-known/jwks.json` (RSA mode).

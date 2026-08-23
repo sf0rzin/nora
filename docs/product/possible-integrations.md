@@ -19,14 +19,16 @@
 > volume) and **multi-user** (each NORA user connects their own account — it is not one
 > hardcoded account of ours).
 
-## Current state (measured 2026-08-17)
+## Current state (recounted 2026-08-23)
 
-Counted from `services/api/src/main/java/br/com/nora/api/infrastructure/integration/actions/` and
-from the provider `CHECK` constraints in migrations V024–V026, rather than from memory.
+Counted from the two action packages —
+`services/api/src/main/java/br/com/nora/api/infrastructure/integration/actions/` (13 classes) and
+`.../application/workflow/actions/` (`SendEmailAction`, which needs no connection) — and from the
+provider `CHECK` constraints in migrations V024–V026, rather than from memory.
 
 | | |
 |---|---|
-| Flow actions implemented | **13** — `send_email` (Resend), Gmail, Google Calendar, Outlook, Microsoft Calendar, Slack, Discord, Telegram, GitHub, Notion, Todoist, Linear, Trello, plus the generic webhook |
+| Flow actions implemented | **14** — `send_email` (Resend), Gmail, Google Calendar, Outlook, Microsoft Calendar, Slack, Discord, Telegram, GitHub, Notion, Todoist, Linear, Trello, plus the generic webhook. This row said **13** while listing fourteen: `send_email` lives in the other package because it goes through NORA's own sender, and counting only one directory is how it was missed |
 | OAuth providers registered | **9** — `google`, `microsoft`, `slack`, `telegram`, `github`, `notion`, `todoist`, `linear`, `trello` |
 | Direction | **Outbound only.** NORA writes into these tools; it does not read them back. The inbound direction is the MCP server (ADR 0041), which is a different mechanism and a different document |
 

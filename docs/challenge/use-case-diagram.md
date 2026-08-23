@@ -263,7 +263,17 @@ graph TD
 4. Persists signals and objections with the verbatim quote
 **Result:** the indicator is available in the meeting detail and in the account panel.
 
-### UC30 — Update Account Health Score (Enterprise)
+### UC30 — Update Account Health Score (Enterprise) — **WONT, not built and not planned**
+
+> **Closed scope since ADR 0038 §4** (US50 and US51), and marked here on 2026-08-23 because
+> `docs/product/backlog.md` had been recording for months that this document "has not caught up".
+> The aggregate below never existed: `account_health_snapshots` was foreseen in the data model and
+> never migrated, and the band alert in step 4 alerts on a number nothing computes. It aggregates
+> across accounts over time and there is nothing to aggregate — no tenants, no history (ADR 0038
+> §1). **UC29, the per-meeting Customer Confidence, is built and is unaffected**; it is the
+> aggregate on top of it that is closed. The use case is kept rather than deleted so the original
+> modelling stays legible, which is the same reason the backlog keeps its historical rows.
+
 **Primary actor:** System (triggered by UC29)
 **Pre-condition:** A new Customer Confidence has been persisted
 **Main flow:**

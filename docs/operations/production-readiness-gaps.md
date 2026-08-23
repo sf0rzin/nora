@@ -13,13 +13,30 @@
 > measured on every CI run (see `docs/challenge/fiap-challenge-2026.md`). Kept for the gap-by-gap
 > reasoning, not as an operating runbook — that is `docs/operations/host-deploy.md`.
 >
+> **Reconciled again 2026-08-23, and this time all eight gaps carry a note.** The 2026-08-17 pass
+> reconciled Gaps 2, 5 and 8 and left Gaps 1, 3, 4, 6 and 7 describing a planet that had been
+> switched off — which made the half that is still valid look as obsolete as the half that is not.
+> Where each one stands now, so the reader does not have to derive it: **Gap 1** is void (there is
+> no Bicep and no resource group). **Gap 2** stays half delivered. **Gap 3** and **Gap 4** were
+> substantially closed on this date — an off-host backup leg, a quarterly drill timer, eight alert
+> rules and a contact point — with the residue named in each. **Gap 5** stays delivered. **Gap 6**
+> is a scenario that cannot happen any more, replaced by a different one nobody has written a
+> runbook for. **Gap 7** is genuinely still open. **Gap 8** stays delivered.
+>
 > **Audience (as written):** whoever operates NORA when it is promoted from the `rg-nora-dev` environment to `rg-nora-prod`.
 >
 > **Status:** descriptive (`docs/`). Implementation was tracked in **Sub-phase 1.12 — Production Hardening**, formalised via **ADR 0016 — Production Readiness Checklist**.
 >
 > **Context (as written):** the `rg-nora-dev` environment (`centralus`, 14 resources, 4 secrets in the KV, 8 Azure pitfalls catalogued) deployed NORA successfully. But **dev ≠ prod**. Seven areas had gaps that needed to be addressed before NORA took commercial traffic or exposed real customer data.
 
-## Gap 1 — Bicep `prod.bicepparam` does not exist
+## Gap 1 — Bicep `prod.bicepparam` does not exist — **void**
+
+> **Reconciled 2026-08-23.** `infra/bicep/` was deleted when the platform left Azure (ADR 0034,
+> substrate corrected by ADR 0036), so there is no parameters file to write, no second Service
+> Principal to scope and no `az deployment group what-if` to run. The substrate is one bare-metal
+> host described by `infra/host/docker-compose.yml` and provisioned by `bootstrap-host.sh`; it has
+> no dev/prod split, which retires the mixing risk this gap was about rather than solving it.
+> Nothing survives here except the record that the gap existed.
 
 **Current situation:** `infra/bicep/main.dev.bicepparam` is the only parameters file. It points to `rg-nora-dev`, region `centralus`, `enableSearch=false`, secrets coming from local env vars (generated randomly for dev).
 
@@ -85,7 +102,30 @@ Initial recommendation: **option (1)** for MVP/Pilot, evolving to **(3)** at GA.
 
 ADR 0016 documents the choice.
 
-## Gap 3 — Backup RTO/RPO not formalised, restore not tested
+## Gap 3 — Backup RTO/RPO not formalised, restore not tested — **shape survives, plan does not**
+
+> **Reconciled 2026-08-23.** Everything below names Azure services that no longer exist: there is no
+> Flexible Server and therefore no PITR, no Storage Account soft-delete and no Key Vault. What the
+> gap *asked for* — a tested restore and a measured RTO — is still the right question, and here is
+> the state of it on the bare-metal host:
+>
+> - **Backup:** an hourly logical dump (`infra/host/backup/run-backup.sh`) into `/srv/nora/backups`
+>   with a `.sha256` and a `.toc` beside each file. **RPO is therefore one hour**, by construction
+>   and not by SLA — the "5 min" below was a property of PITR and died with it.
+> - **Off-host copy:** exists since 2026-08-23 (`infra/host/scripts/offsite-backup.sh`, hourly
+>   timer). It **fails loudly** every run until `NORA_OFFSITE_TARGET` is filled in, with `none` as
+>   the only deliberate way to switch it off — a backup leg that silently does nothing is the
+>   failure this gap is about. The five observability volumes are still not copied, and that is
+>   recorded as a decision in the compose rather than left as an omission.
+> - **The drill:** `infra/host/scripts/restore-drill.sh` restores the most recent dump into a
+>   disposable `--network none` container and validates row counts, the Flyway history (it fails on
+>   any row with `success = false`), per-tenant reads and the `nora_app` grants. It runs quarterly
+>   on `nora-restore-drill.timer` since 2026-08-23.
+> - **What is still open, and it is the part that matters:** the drill has never actually been
+>   executed. The results table in `docs/operations/host-deploy.md` still reads `(pending)`, so
+>   **the RTO floor has never been measured.** ADR 0038 §6c deferred the cadence; the cadence now
+>   exists, and the measurement does not. Writing "RTO: 2h" here would be worse than writing
+>   nothing, which is why the number below is left as the Azure-era estimate it was.
 
 **Current situation:** Postgres Flexible Server has a default automatic backup (point-in-time recovery — PITR) with 7 days of retention. The Storage Account has 7-day soft-delete (configured in Bicep). Key Vault soft-delete 7 days (configured).
 
@@ -103,7 +143,28 @@ ADR 0016 documents the choice.
    - Document the real measured time in `docs/operations/disaster-recovery-runbook.md`
 3. **Define the frequency:** drill once per quarter in a mirror environment
 
-## Gap 4 — Monitoring + alerting not wired
+## Gap 4 — Monitoring + alerting not wired — **the alerting half is delivered**
+
+> **Reconciled 2026-08-23.** The stack below is Azure's and is gone; the replacement is
+> OpenTelemetry Collector + Prometheus + Loki + Alloy + Grafana on the host (ADR 0034/0036), so
+> "Azure Monitor" and "an Application Insights workbook" are not options.
+>
+> **What this gap asked for now exists**, and it was the last item of ADR 0038 §6a:
+> `infra/host/observability/grafana/provisioning/alerting/` carries **eight rules**, one contact
+> point and one notification policy. The rules are the upstream failing at the edge, the tunnel
+> reporting zero connections, Postgres not being scraped, any scrape target down, a 5xx rate above
+> 5%, the root filesystem below 5 GiB free, the Loki compactor idle for a day, and no verified
+> database dump in three hours. Two of those conditions had **no series to fire on**, so the
+> collector gained a `hostmetrics` receiver (scoped to the container's own root mount rather than
+> the host filesystem) and a `postgresql` receiver — an alert rule over a metric nobody emits is a
+> configuration file that looks like coverage. Separately, every systemd unit on the host now
+> escalates to `nora-alert@`, which runs `scripts/notify-failure.sh`, so a failing timer is no
+> longer silent.
+>
+> **What is still open:** the "no SLO declared" bullet. The three targets below were written for a
+> service with users; ADR 0038 §1 declares there are none, so an uptime percentage here would be a
+> number nobody is accountable to. The dashboard (`nora-overview.json`) remains how the stack is
+> actually inspected, and it works.
 
 **Current situation:** Application Insights is provisioned, receiving telemetry from the 3 Container Apps + Worker. Log Analytics workspace collecting logs. But:
 
@@ -154,7 +215,33 @@ This gap is no longer Sub-phase 1.12 debt.
 3. Administrative endpoint for full tenant deletion (Root only) — future operational refinement.
 4. `docs/security/lgpd-operations.md` with an incident runbook: detection, escalation, ANPD communication if >50 data subjects are affected — future operational refinement.
 
-## Gap 6 — Disaster recovery scenario "RG deleted by mistake"
+## Gap 6 — Disaster recovery scenario "RG deleted by mistake" — **the scenario no longer exists; the question does**
+
+> **Reconciled 2026-08-23.** There is no resource group to delete. Every command in the plan below
+> — `az keyvault purge`, `az cognitiveservices account purge`, `az group create` — targets a
+> subscription that was shut down on 2026-08-07, and the workflow it tells you to dispatch,
+> `deploy-infra.yml`, **does not exist in this repository**: `ls .github/workflows/` lists eleven
+> files and none of them is it. Following this section literally is not a slow path to recovery, it
+> is a dead end, which is why the note sits above the plan rather than beside it.
+>
+> The equivalent question on one bare-metal host is "the machine is gone, or its disk is", and the
+> pieces of an answer exist without being assembled into a runbook:
+>
+> - **Rebuild the host:** `infra/host/scripts/bootstrap-host.sh` provisions Docker, the compose
+>   project, the tunnel, the secrets bootstrap and the four systemd timers from a clean Ubuntu.
+> - **Get the data back:** `restore-into-host.sh` puts a dump into the live stack;
+>   `restore-drill.sh` is the same operation into a disposable container, and prints an RTO floor.
+> - **Get the secrets back:** SOPS + age, with **the private key on the host only**. This is the
+>   real single point of failure of the current substrate and it is not in the list below because
+>   the list predates it: losing the machine without a copy of that key elsewhere means the
+>   encrypted secrets in the repository cannot be opened by anybody.
+> - **Get the code and images back:** the repository is public and the images are in GHCR; a
+>   release tag names both.
+>
+> **What is still open:** nobody has written `docs/operations/disaster-recovery-runbook.md`, the
+> pieces above have never been exercised end to end, and the age key has no declared escrow.
+> Recovery would still be improvised — which is exactly what this gap said in 2026-05, about a
+> different planet.
 
 **Current situation:** Bicep IaC allows recreating the infra. Postgres has PITR. Storage has soft-delete. **But** the empirical test has already shown (Sub-phase 1.9, vault `azure_access.md`) that recreating with the same name runs into:
 
@@ -182,7 +269,24 @@ This gap is no longer Sub-phase 1.12 debt.
    - Single-region MVP: accepts the downtime
    - Future (GA): geo-redundancy via Postgres geo-replica + Front Door
 
-## Gap 7 — Secrets rotation policy missing
+## Gap 7 — Secrets rotation policy missing — **still open, against a different secret set**
+
+> **Reconciled 2026-08-23**, and this is the one gap of the four where the answer is still "not
+> done". The four Key Vault secrets tabled below no longer exist, `azure-speech-key` least of all —
+> ADR 0035 deleted the Speech broker and ADR 0039 replaced the whole transcription path. ADR 0038
+> §6d already named this section as Azure-era.
+>
+> What exists instead: **31 keys in `infra/host/secrets.env.example`**, encrypted with SOPS + age
+> in `secrets.env.sops`, with the private key on the host only, and
+> `infra/host/scripts/secrets-bootstrap.sh --regenerate` able to reissue the generated ones.
+>
+> What does not exist: **any rotation schedule, runbook or workflow, for any of the 31.** Not one.
+> The `rotate-secrets.yml` proposed at the bottom of this section was never written. ADR 0038 §6d
+> defers it with a reason that is about blast radius rather than effort — the set is a handful of
+> generated passwords plus re-issuable third-party API keys, on a host with exactly one operator,
+> so rotation's value is bounded by the number of people who could have leaked one. That reasoning
+> holds only while §1 of ADR 0038 holds; the moment somebody other than the maintainer has access,
+> this is the first item of the operations block to come back.
 
 **Current situation:** current secrets in the KV:
 - `postgres-password` — generated randomly when the SP was created
@@ -202,23 +306,6 @@ This gap is no longer Sub-phase 1.12 debt.
 | `azure-speech-key` | Every 90 days | `az cognitiveservices account keys regenerate` + updates the KV secret + restarts api |
 
 A dedicated workflow `.github/workflows/rotate-secrets.yml` with a monthly cron can automate part of it.
-
-## Summary
-
-| Gap | Effort | Successor ADR? |
-|---|---|---|
-| 1. Bicep prod.bicepparam | M | ADR 0016 |
-| 2. Migrations safety | **half delivered** — the CI half is `scripts/check-migrations.sh`; the deploy-time pre-flight is open | ADR 0016 |
-| 3. RTO/RPO + restore drill | M (drill + doc) | — |
-| 4. Monitoring + alerting | M (alerts + workbook + SLO) | — |
-| 5. Operational LGPD — **delivered** | — (delivered via ADR 0029) | ADR 0029 |
-| 6. DR runbook | S (doc + dry run) | — |
-| 7. Secrets rotation | M (workflows + rotation scripts) | — |
-| 8. Control plane under RLS enforce | **delivered** — `nora_telemetry` BYPASSRLS + `RlsEnforceTelemetryGuard` | ADR 0022 |
-
-**Total estimate for Sub-phase 1.12 — Production Hardening: ~1-2 agentic weeks.**
-
-Prerequisites: the **code** items of Sub-phase 1.11 already delivered — Customer Confidence (#148), the AUTH_FILTER fix (silent 500 ceiling removed via batched scanning) and PolicyEvaluator (`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan`). Items (e) seed and (f) demo script were delivered on 2026-08-17 (`scripts/seed-demo.sh`, [`../challenge/demo-script.md`](../challenge/demo-script.md)); they never blocked 1.12 either way.
 
 ## Gap 8 — Control plane: business telemetry breaks silently under RLS enforce — **DELIVERED**
 
@@ -247,6 +334,29 @@ Prerequisites: the **code** items of Sub-phase 1.11 already delivered — Custom
 - Minimal alternative: detect the state and return `enabled:false` (instead of `enabled:true` with zeros) when the cross-tenant read is not possible — that way the operator sees "unavailable", not "a real zero".
 - Documented in the Javadoc of `PrimaryDbBusinessMetricsSource` and in the contract (§3). Cost: S. **Does not block v1** (enforce=false today).
 
+## Summary
+
+This table is now **state**, not estimate. The effort column it used to carry priced work against a
+substrate that no longer exists, and a T-shirt size for a task that cannot be performed is noise.
+
+| Gap | State on 2026-08-23 | Successor ADR? |
+|---|---|---|
+| 1. Bicep prod.bicepparam | **Void.** No Bicep, no resource group, no dev/prod split | ADR 0016, ADR 0034/0036 |
+| 2. Migrations safety | **Half delivered.** The CI half is `scripts/check-migrations.sh`; the deploy-time pre-flight is open | ADR 0016 |
+| 3. RTO/RPO + restore drill | **Substantially closed.** Off-host leg and quarterly drill timer exist; the drill has never been run, so the RTO floor is unmeasured | ADR 0036 §3, ADR 0038 §6b/§6c |
+| 4. Monitoring + alerting | **Alerting delivered** — eight rules, one contact point, one notification policy, plus the two receivers the rules needed. No SLO, deliberately | ADR 0038 §6a |
+| 5. Operational LGPD | **Delivered** | ADR 0029 |
+| 6. DR runbook | **Open, against a different scenario.** The Azure one cannot happen; the host one has pieces and no runbook, and the age key has no escrow | ADR 0036 |
+| 7. Secrets rotation | **Open.** 31 keys in SOPS + age, no schedule, no runbook, no workflow | ADR 0038 §6d |
+| 8. Control plane under RLS enforce | **Delivered** — `nora_telemetry` BYPASSRLS + `RlsEnforceTelemetryGuard` | ADR 0022 |
+
+**"Sub-phase 1.12 — Production Hardening" is not a scheduled phase.** The estimate this line
+carried ("~1-2 agentic weeks") was written for a commercial launch that ADR 0038 §1 declares is not
+happening. Items get built when they are worth building, which is how four of them got built on
+2026-08-23 with no phase around them.
+
+Prerequisites: the **code** items of Sub-phase 1.11 already delivered — Customer Confidence (#148), the AUTH_FILTER fix (silent 500 ceiling removed via batched scanning) and PolicyEvaluator (`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan`). Items (e) seed and (f) demo script were delivered on 2026-08-17 (`scripts/seed-demo.sh`, [`../challenge/demo-script.md`](../challenge/demo-script.md)); they never blocked 1.12 either way.
+
 ## History
 
 | Date | Change |
@@ -254,3 +364,5 @@ Prerequisites: the **code** items of Sub-phase 1.11 already delivered — Custom
 | 2026-05-14 | Doc created during Sub-phase 1.10 (Docs Refresh) |
 | 2026-05-28 | Gap 8 added: the control plane's business telemetry (ADR 0022) goes to zero under RLS enforce — a BYPASSRLS role is a prerequisite before turning on RLS enforce |
 | 2026-06-06 | Doc x code reconciliation + standardisation: Gap 5 (operational LGPD) marked as delivered via ADR 0029; reference correction ADR 0019 → ADR 0029 for LGPD |
+| 2026-08-17 | **The document was declared historical and partly reconciled**, and this row is written on 2026-08-23 because the pass that made the change did not record itself here — the most consequential revision the file had ever had was absent from its own history table. What that pass did: added the `**Historical.**` banner (Azure is gone; ADR 0034 partially supersedes ADR 0016 and ADR 0036 removed the premise), marked **Gap 8 delivered** with the `nora_telemetry` BYPASSRLS path and its startup guard, marked **Gap 2 half delivered** with `scripts/check-migrations.sh` as its CI half, and corrected a banner that had been naming Gap 6 as "test coverage" when Gap 6 is the disaster-recovery scenario |
+| 2026-08-23 | **Reconciliation completed across all eight gaps, and four of them moved.** Gaps 1, 3, 4, 6 and 7 had been left describing Azure while Gaps 2, 5 and 8 carried notes, which made the still-valid half look as obsolete as the dead half — the state this document was in when it was cited as "not actionable". Gap 1 is void. Gap 3 gained an off-host backup leg and a quarterly drill timer, with the unmeasured RTO named as the residue. Gap 4's alerting half is delivered: eight rules, a contact point, a notification policy and the two collector receivers two of the rules needed. Gap 6 records that its scenario cannot occur and that the host equivalent has pieces but no runbook, plus the age-key escrow nobody had written down. Gap 7 is restated against the 31 SOPS keys and stays open. The Summary table stopped estimating effort against a dead substrate and now states state, and **Gap 8 was moved above the Summary**, where it had sat below the table that summarised it |

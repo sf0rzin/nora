@@ -609,6 +609,56 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
+  /iam/policies/{id}/versions:
+    get:
+      tags: [IAM]
+      summary: Lists the immutable revisions of a policy
+      description: |
+        IAM action: `iam:policy:read` — the same grant as reading the policy itself, deliberately,
+        because a revision is that object at an earlier point in time. It reveals nothing about the
+        attachment graph and nothing about any other tenant, so a dedicated action would gate no
+        additional knowledge while breaking every admin policy written before it existed.
+
+        `iam_policy_versions` has recorded every update since migration V006 and nothing read it
+        back until 2026-08-23, so the "immutable history" the policy contract promises could not be
+        inspected by the tenant it belonged to. Newest revision first.
+      parameters: [{ $ref: '#/components/parameters/PolicyId' }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/IamPolicyVersion' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /iam/users:
+    get:
+      tags: [IAM]
+      summary: Lists the tenant's users (the directory the rest of IAM needs)
+      description: |
+        IAM action: `iam:group:read`, not an action of its own. Whoever can already list the members
+        of a group can already learn which user ids exist, so a directory adds no knowledge to that
+        grant — while a new action would silently break admin policies written before it.
+
+        Four capabilities take a `userId`: group membership, policy attachment, the permission
+        boundary (US44) and the simulator (US43). Until 2026-08-23 no endpoint of this API returned
+        one — `/auth/me` is the caller's own row and `/iam/groups/{id}/members` only lists people
+        already in the group — so the documented way to use them was to read the database.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/IamDirectoryUser' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /iam/policy-templates:
     get:
       tags: [IAM]
@@ -916,7 +966,16 @@ paths:
     get:
       tags: [Invitations]
       summary: Lists tenant invites
-      description: 'IAM action: `iam:invite:read`. Optional filter by status. Pagination in the MVP is client-side.'
+      description: |
+        IAM action: `iam:invite:read`. Optional filter by status.
+
+        **The envelope is a page of one.** `page` is always `1` and `size` is always the length of
+        `items`; there is no `page` or `size` query parameter and no way to ask for a second page.
+        The shape was invented before the behaviour and is kept because clients read it. What did
+        change on 2026-08-23 is that the read is bounded: the server returns at most the 500 newest
+        invitations. That ceiling is not cosmetic — this handler WRITES, marking every overdue
+        `PENDING` as `EXPIRED` as it goes, so without it one call over a widely-inviting tenant is
+        an unbounded read plus an unbounded number of single-row updates in one transaction.
       parameters:
         - in: query
           name: status
@@ -1334,6 +1393,35 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Meetings]
+      summary: Removes the meeting from the workspace, reversibly
+      description: |
+        IAM action: `meeting:delete`, evaluated on the loaded meeting's attributes inside the
+        service transaction so an attribute-scoped Deny still fires.
+
+        **This is not the erasure.** `DELETE /privacy/meetings/{id}` (`meeting:erase`, US78,
+        ADR 0029) physically destroys the transcript, the participants, the tags and the analyses
+        with no way back; this one stamps `deleted_at` (migration V013, ADR 0021) and the row keeps
+        everything. The two are separate IAM actions on purpose: reversible removal belongs to the
+        ordinary working set of somebody who runs meetings, permanent destruction does not, and one
+        grant must not imply the other.
+
+        Until 2026-08-23 only the destructive one existed, so a user who uploaded the wrong file
+        chose between living with it and erasing PII belonging to everyone else in the meeting.
+        Removed meetings disappear from every listing, from Trends, from Tasks and from participant
+        identity. There is **no undelete endpoint**: the row survives and the state is recoverable
+        in the database, which is not the same as a product feature.
+      parameters: [{ $ref: '#/components/parameters/MeetingId' }]
+      responses:
+        '204': { description: Removed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: Not in this tenant, or already removed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
   /meetings/{id}/goal:
     put:
@@ -1416,11 +1504,28 @@ paths:
     get:
       tags: [Tasks]
       summary: Lists tasks extracted from the tenant's meetings
-      description: 'IAM action: `task:read`. Optional filter by `status`.'
+      description: |
+        IAM action: `task:read`. Optional filter by `status`.
+
+        **Paginated since 2026-08-23**, and the default is the ceiling rather than a small page:
+        this endpoint returned every action item of the tenant on every call, so every existing
+        client asks for no page at all and expects the whole list. Defaulting to 20 would have
+        silently hidden the 21st task from screens that never knew there was a page; at the
+        ceiling, a caller that has not learned about paging sees what it always saw unless the
+        tenant is past 100 tasks — and past that, a truncated list is what the cap exists to
+        produce. `size` above 100 is clamped, not rejected.
       parameters:
         - in: query
           name: status
           schema: { $ref: '#/components/schemas/ActionItemStatus' }
+        - in: query
+          name: page
+          description: Zero-based page index. Negative values are clamped to 0.
+          schema: { type: integer, minimum: 0, default: 0 }
+        - in: query
+          name: size
+          description: Page size, clamped to the 1..100 range.
+          schema: { type: integer, minimum: 1, maximum: 100, default: 100 }
       responses:
         '200':
           description: OK
@@ -2924,6 +3029,35 @@ components:
         createdBy: { type: string, format: uuid }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    IamPolicyVersion:
+      type: object
+      required: [version, document, createdBy, createdAt]
+      description: |
+        One immutable row of `iam_policy_versions`. `version` matches the `currentVersion` the
+        policy carried while this document was in force, so the newest row of the list and the
+        policy's own `document` are the same thing seen twice.
+      properties:
+        version: { type: integer }
+        document: { $ref: '#/components/schemas/PolicyDocument' }
+        createdBy: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+    IamDirectoryUser:
+      type: object
+      required: [id, displayName, email, root]
+      description: |
+        A user of the calling tenant, as the IAM screens need them: enough to choose one, and
+        nothing about what they are allowed to do. Permissions are answered by the simulator
+        (`POST /iam/simulate`), never inferred from this list.
+      properties:
+        id: { type: string, format: uuid }
+        displayName: { type: string }
+        email: { type: string, format: email }
+        root:
+          type: boolean
+          description: |
+            The tenant Root, which bypasses policy evaluation and cannot be capped by a permission
+            boundary (ADR 0049 §2). Surfaced so a screen can say why an action on that row is
+            refused instead of failing without explanation.
     CreatePolicyRequest:
       type: object
       required: [name, document]
@@ -3391,16 +3525,33 @@ components:
         createdAt: { type: string, format: date-time }
     MeetingListItem:
       type: object
-      required: [id, title, processingStatus, actionItemCount, riskCount, opportunityCount]
+      required:
+        [
+          id,
+          title,
+          processingStatus,
+          actionItemCount,
+          openActionItemCount,
+          riskCount,
+          opportunityCount,
+        ]
       properties:
         id: { type: string, format: uuid }
         title: { type: string }
         startedAt: { type: [string, 'null'], format: date-time }
         durationSeconds: { type: [integer, 'null'], format: int64 }
+        # Always null today, and documented as such rather than quietly shipped populated in the
+        # example: the listing query does not join users, so nothing fills it. A client that
+        # displays it will display nothing.
         ownerName: { type: [string, 'null'] }
         processingStatus: { $ref: '#/components/schemas/ProcessingStatus' }
         summarySnippet: { type: [string, 'null'] }
+        # Two counts, because one was being read as the other. `actionItemCount` is the size of
+        # the collection and never goes down when somebody completes a task, so a panel that
+        # labelled it "open" only ever counted up. `openActionItemCount` is the one to show under
+        # that word.
         actionItemCount: { type: integer }
+        openActionItemCount: { type: integer }
         riskCount: { type: integer }
         opportunityCount: { type: integer }
         tags:
@@ -3863,11 +4014,15 @@ components:
         updatedAt: { type: string, format: date-time }
     TaskListResponse:
       type: object
-      required: [items]
+      required: [items, page, size, totalItems, totalPages]
       properties:
         items:
           type: array
           items: { $ref: '#/components/schemas/Task' }
+        page: { type: integer, description: Zero-based index of the page returned. }
+        size: { type: integer, description: Page size actually applied, after clamping. }
+        totalItems: { type: integer, format: int64, description: Tasks visible to this caller across every page. }
+        totalPages: { type: integer }
     TaskUpdateRequest:
       type: object
       description: |

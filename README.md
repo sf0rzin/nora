@@ -24,7 +24,9 @@ Postgres row-level security **is enforced on the deployed stack** since 2026-08-
 
 It is **off by default in the repository** (`NORA_RLS_ENFORCE` defaults to `false`), so a local `make dev` still connects as the owner and the application-layer filter is the only control there. Identity and IAM tables are exempt by design (ADR 0028): login resolves a user by global e-mail before any tenant exists, and RLS with no tenant context would fail that closed.
 
-One thing to know before reading the code as production-ready: `apps/web` is tested very unevenly. It has a Vitest unit suite over five `src/lib` modules and three Playwright e2e specs (security headers, route protection, CSP violations), and **no page or component has a unit test at all**, so its whole-app coverage was 6.2% statement on 2026-08-17. All three surfaces are measured on every CI run — backend 77.1-77.3% instruction, worker 92.4% statement, web 6.2% statement with four gated `src/lib` modules between 96.6% and 100% (`scripts/report-coverage.sh`; ADR 0042 explains what is gated and what is only reported).
+One thing to know before reading the code as production-ready: the front ends are tested very unevenly. `apps/web` has a Vitest unit suite and three Playwright e2e specs (security headers, route protection, CSP violations); until 2026-08-23 the unit suite covered pure `src/lib` modules only and **no page or component had a test at all**, and most screens still have none, so its whole-app coverage is far below the backend's. `apps/admin` had no test of any kind until the same date.
+
+**This section publishes no coverage percentage, deliberately.** Four documents in this repository once carried four different web figures and three different counts of gated modules, none of them matching `vitest.config.mts`, and every one of them had been correct when it was written. Every CI run measures all four surfaces and prints them — `scripts/report-coverage.sh` — so the last run is the answer and a number copied out of it here is a number that starts decaying immediately. ADR 0042 explains what is gated and what is only reported; the gated list itself lives in the two `vitest.config.mts` files, in `pom.xml` and in the worker's `--cov-fail-under`, and nowhere else.
 
 ## Architecture
 
@@ -67,14 +69,14 @@ docs/                      Documentation, see below
 
 | Layer | What it is |
 |---|---|
-| Web and admin | Next.js 16.3 · TypeScript 5.6 · Tailwind CSS 3.4, no component library |
+| Web and admin | Next.js 16.3 · TypeScript 5.6 · Tailwind CSS 3.4, no component library and no shadcn — that is a decision, ADR 0013, with OKLCH design tokens on top of it |
 | Backend | Java 21 · Spring Boot 3.5 · Spring Security · JPA · Flyway |
 | Database | Postgres 16. Self-hosted runs the `pgvector/pgvector:pg16` image with the extension available but not created; local development runs plain `postgres:16-alpine` |
 | NLP worker | Python 3.12 · FastAPI · Pydantic 2 · provider-agnostic LLM and embeddings client |
 | Desktop | Tauri 2 · Rust · streaming speech-to-text over a WebSocket, on a session credential minted by the API (ADR 0039/0045). The provider key never reaches the client |
 | Hosting | Self-hosted: one bare-metal Ubuntu host, no hypervisor, Docker Compose, Cloudflare Tunnel, Caddy, SOPS + age |
 | Observability | OpenTelemetry Collector · Prometheus · Loki · Alloy · Grafana |
-| CI/CD | GitHub Actions. Deployment is pull-based — nothing pushes to the host. The release pointer is published but has no consumer yet, so rolling forward is a manual `deploy.sh --tag` |
+| CI/CD | GitHub Actions. Deployment is pull-based — nothing pushes to the host. The host's timer follows the published release pointer since 2026-08-23 (`deploy.sh --if-changed --follow-release`), and refuses a pointer whose immutable sibling tag is missing; `deploy.sh --tag sha-<short>` is still there for a deliberate roll-back or roll-forward |
 | Model | OpenAI `gpt-4o-mini` by default; the client is provider-agnostic |
 
 ## Running it locally
@@ -89,7 +91,7 @@ make db-up
 
 `make env` creates `.env.local` at the root and for the API, worker, web and desktop, from their `.env.example` files. `make db-up` starts Postgres and Adminer from `infra/docker/docker-compose.yml`; it needs `.env.local` to exist, so run `make env` first.
 
-One default worth knowing about immediately: `apps/web/.env.local` starts with `NEXT_PUBLIC_USE_MOCKS=true`, so the web application renders fixtures and never calls the backend. That makes the UI work before anything else is running, and it also means you can follow every step here, see a working application, and not be looking at your API. Set it to `false` to exercise the real one.
+One default worth knowing about immediately: `apps/web/.env.local` starts with `NEXT_PUBLIC_USE_MOCKS=false`, so the web application calls the backend and the quickstart needs it running. That default was `true` until 2026-08-23, and it did not do what it promised: `USE_MOCKS` is read by exactly two functions in `src/lib/api/client.ts`, so the dashboard and the meeting detail rendered fixtures while eight other screens failed against an API that was not there. Set it to `true` deliberately when you want to look at those two screens with no backend at all.
 
 Then run each service in its own terminal:
 
@@ -107,11 +109,13 @@ No external credential is needed to bring the stack up. The worker ships with `U
 
 `make admin-dev` starts the operator console; it installs its dependencies first, the same way `make web-dev` does. It serves on port 3002 and its default is the production shape: the real data layer with Cloudflare Access JWT validation on, which on a machine with no `CF_ACCESS_*` set means every page answers 403 naming the two missing variables. Run `NORA_ADMIN_USE_MOCKS=true make admin-dev` for the mock data. The variable used to default the other way, and the point of the change is that forgetting it can no longer serve fabricated data with the identity gate off. It needs no `.env` file, which is why `make env` does not create one for it, and it is deliberately not part of `make dev` — it is a separate concern from the product slice.
 
-For tests, `make api-test` runs the backend suite, `make worker-test` the worker's and `make web-test` the web unit suite with coverage. `make test` runs all three. The Playwright e2e specs are not in it — they need a production build and a browser download, so run them with `npm run test:e2e` inside `apps/web`.
+For tests, `make api-test` runs the backend suite through `mvn verify`, so the JaCoCo gate runs with it; `make worker-test` runs the worker's; `make web-test` and `make admin-test` run the two Next.js suites with coverage, which is what applies their per-module floors; and `make desktop-test` runs the Tauri crate's `cargo test` plus the TypeScript tests on Node's own runner. `make test` runs all five. The Playwright e2e specs are not in it — they need a production build and a browser download, so run them with `npm run test:e2e` inside `apps/web`.
 
 ## Documentation
 
-Start with the [product vision](docs/product/vision.md), then the [architecture](docs/engineering/architecture.md) for how the pieces fit together and why, then the [ADR index](docs/adr/README.md), which is the source of truth for every architectural decision. The [backlog](docs/product/backlog.md) records the real per-story status and the [roadmap](docs/product/roadmap.md) records what shipped when.
+Start with the [product vision](docs/product/vision.md), then the [architecture](docs/engineering/architecture.md) for how the pieces fit together and why, then the [ADR index](docs/adr/README.md), which is the source of truth for every architectural decision and links to each one. The [backlog](docs/product/backlog.md) records the real per-story status and the [roadmap](docs/product/roadmap.md) records what shipped when.
+
+Four decisions are the ones most likely to be got wrong by reading older records: [ADR 0040](docs/adr/0040-pii-scope-analysis-transcription-subprocessor.md) scopes the PII promise to analysis and names transcription as an external subprocessor, [ADR 0043](docs/adr/0043-pii-address-coverage-and-a-decreasing-corpus-target.md) turns the PII corpus into a decreasing target with a date, [ADR 0046](docs/adr/0046-finish-the-declared-scope.md) is the scope decision in force, and [ADR 0050](docs/adr/0050-the-landing-page-states-what-the-code-does.md) is why the public page describes less than it used to.
 
 For operating it: the [deployment runbook](docs/operations/host-deploy.md) is the current one, and [production-readiness-gaps.md](docs/operations/production-readiness-gaps.md) is an honest list of what is not ready.
 

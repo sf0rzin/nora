@@ -5,26 +5,33 @@
       "title": "Discovery Acme — Renovação 2026",
       "startedAt": "2026-05-02T14:00:00Z",
       "durationSeconds": 2880,
-      "ownerName": "Lucas Silva",
+      "ownerName": null,
       "processingStatus": "COMPLETED",
       "summarySnippet": "Cliente sinaliza interesse em expandir o módulo financeiro...",
       "actionItemCount": 2,
+      "openActionItemCount": 1,
       "riskCount": 1,
       "opportunityCount": 1,
-      "tags": ["discovery", "renovacao"]
+      "tags": [
+        "discovery",
+        "renovacao"
+      ]
     },
     {
       "id": "8a31b7c4-44f1-49a7-bb02-2e4c9d1a0e22",
       "title": "Follow-up Beta Corp — Proposta v2",
       "startedAt": "2026-05-01T10:00:00Z",
       "durationSeconds": 1820,
-      "ownerName": "Lucas Silva",
+      "ownerName": null,
       "processingStatus": "COMPLETED",
       "summarySnippet": "Cliente aprovou proposta com ressalvas no SLA...",
       "actionItemCount": 3,
+      "openActionItemCount": 3,
       "riskCount": 0,
       "opportunityCount": 0,
-      "tags": ["follow-up"]
+      "tags": [
+        "follow-up"
+      ]
     }
   ],
   "page": 0,

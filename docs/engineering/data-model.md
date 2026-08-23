@@ -3,7 +3,7 @@
 > Actual state of the schema, aligned with **migrations V001–V033** in `services/api/src/main/resources/db/migration/` (full inventory in §5).
 > Each table is mapped to its originating migration. Where there is **drift** between what was documented and what is in the database, it is marked explicitly.
 > Multi-tenancy: `tenant_id` column on every tenant-bound table (ADR 0002). **RLS enabled in the schema (V016, completed in V019; auth-aware scope in V020; extended to every table added since, V021–V024, V028, V033, V032)** — enforcement is opt-in via the `nora_app` role + the `nora.security.rls.enforce` flag; see §RLS.
-> **Soft-delete** (V013): the `tenants`, `users`, `tenant_contexts`, `meetings` tables have `deleted_at`; Spring Data queries filter `deleted_at IS NULL` via `@SQLRestriction`; full UNIQUEs became partial ones (see §4).
+> **Soft-delete** (V013): the `tenants`, `users`, `tenant_contexts`, `meetings` tables have `deleted_at`; Spring Data queries filter `deleted_at IS NULL` via `@SQLRestriction`; full UNIQUEs became partial ones (see §4). **On `meetings` the column had no writer until 2026-08-23** — the migration, the partial indexes and the restriction all defended a state nothing could produce, until `DELETE /meetings/{id}` (US88) became its producer. The native queries behind Trends, Participants and Tasks gained the `deleted_at IS NULL` predicate on the same date: `@SQLRestriction` is a JPA-level filter and does not reach hand-written SQL, which was invisible for as long as the column stayed empty.
 
 ## 1. Overview (ER)
 
@@ -162,7 +162,7 @@ Status: **orphaned**. A comment in `V006:7-9` indicates "removal in a future mig
 | `attributes` | `JSONB NOT NULL DEFAULT '{}'::jsonb` | **V007**. Arbitrary key/value pairs (`department`, `region`, etc.) used in IAM conditions (ADR 0007) |
 | `created_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
 | `updated_at` | `TIMESTAMPTZ NOT NULL DEFAULT NOW()` | |
-| `deleted_at` | `TIMESTAMPTZ` | **V013** — soft-delete. NULL = active |
+| `deleted_at` | `TIMESTAMPTZ` | **V013** — soft-delete. NULL = active. **Written by `DELETE /meetings/{id}` since 2026-08-23** (US88, action `meeting:delete`), through the entity's `@SQLDelete`; before that no code path set it on a meeting at all |
 
 **Indexes**:
 - `idx_meetings_tenant_created(tenant_id, created_at DESC)`
