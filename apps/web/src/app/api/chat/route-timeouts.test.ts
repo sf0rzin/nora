@@ -59,6 +59,17 @@ describe('every outbound call in the chat route is bounded', () => {
     },
   );
 
+  it('bounds the response BODY as well as the headers', () => {
+    // The header deadline is cleared the moment the headers land, which for a long time left the
+    // body unbounded: a provider that sent one token and then stopped held the request until the
+    // edge gave up. What the stream needs is an IDLE budget — a reply still producing tokens is
+    // healthy however long it runs — and this asserts the route still hands one to the transform.
+    // The transform's own behaviour is tested for real in `src/lib/chat/sse-to-ndjson.test.ts`.
+    const idle = Number(/PROVIDER_IDLE_TIMEOUT_MS = ([\d_]+)/.exec(ROUTE)?.[1].replace(/_/g, ''));
+    expect(idle).toBeGreaterThan(0);
+    expect(ROUTE).toMatch(/idleTimeoutMs:\s*PROVIDER_IDLE_TIMEOUT_MS/);
+  });
+
   it('keeps the internal budget well under the provider one', () => {
     const internal = Number(
       /INTERNAL_CALL_TIMEOUT_MS = ([\d_]+)/.exec(ROUTE)?.[1].replace(/_/g, ''),

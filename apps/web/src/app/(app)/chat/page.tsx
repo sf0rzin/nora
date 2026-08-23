@@ -25,8 +25,12 @@ import {
   appendChatMessage,
   createChatSession,
   getChatSession,
+  streamChat,
 } from "@/lib/api/client";
+import { applyChatFrames, createChatFrameDecoder } from "@/lib/chat/ndjson";
+import { applyStoredReasoning, rememberReasoning } from "@/lib/chat/reasoning-store";
 import { notifySessionsChanged } from "@/lib/chat-sessions-sync";
+import { errorCopy } from "@/lib/strings";
 
 type Role = "user" | "assistant";
 interface Msg {
@@ -44,6 +48,15 @@ interface Msg {
   /** Marks an answer cut off by the user (stop button) — enables "Tentar de novo". */
   interrupted?: boolean;
 }
+
+/**
+ * A refusal for budget reasons, kept apart from every other failure.
+ *
+ * `/api/chat` answers 429 from its own per-principal budget, and the semantic search behind it
+ * answers `MEETING_RATE_LIMITED`. Neither is a malfunction, and the generic wrapper the catch
+ * puts around an error reports them as one.
+ */
+class ChatRateLimitedError extends Error {}
 
 // §3.7 — generic product suggestions, no customer names and no internal jargon.
 const SUGGESTIONS = [
@@ -65,12 +78,29 @@ function ChatRoom() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionParam = searchParams.get("s");
+  /**
+   * The question typed into the landing composer, which travels `/?q=…` → `/auth/signup?q=…` →
+   * here. This page read only `?s=` (a session id), so the parameter arrived and was dropped: the
+   * landing invited a visitor to start typing and the product then showed them an empty box.
+   *
+   * It SEEDS the composer instead of sending itself. A URL that fires an LLM call on load is a
+   * link anybody can hand somebody else, and the last step of the promise is the user pressing
+   * send — not the product answering a question they can no longer see.
+   */
+  const seedParam = searchParams.get("q");
 
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [title, setTitle] = useState("Nova sessão");
   const [loading, setLoading] = useState(false);
+  /**
+   * The conversation is running but nothing is reaching the history — either the session could
+   * not be created or an append failed. It used to be two silent `catch` blocks, so the user kept
+   * talking to a sidebar entry that did not exist and lost everything on reload. Degradation is
+   * acceptable here; degradation nobody is told about is not.
+   */
+  const [persistenceOff, setPersistenceOff] = useState(false);
 
   // Persisted session. Lives in a ref so it is available inside `send` without
   // recreating the callback; the state only mirrors it for the UI/URL.
@@ -89,12 +119,14 @@ function ChatRoom() {
     }
     let cancelled = false;
     setLoading(true);
+    setPersistenceOff(false);
     getChatSession(sessionParam)
       .then((detail) => {
         if (cancelled) return;
-        setMessages(
-          detail.messages.map((m) => ({ role: m.role, content: m.content })),
-        );
+        // `applyStoredReasoning` puts the chain of thought back on the bubbles it belongs to.
+        // The backend message carries role and content only, so without it a reloaded session
+        // shows the answers and none of the thinking the user watched arrive.
+        setMessages(applyStoredReasoning(sessionParam, detail.messages));
         setTitle(detail.title?.trim() || "Sessão");
       })
       .catch(() => {
@@ -110,6 +142,18 @@ function ChatRoom() {
     };
   }, [sessionParam]);
 
+  // Seeds the composer from `?q=` and takes the parameter out of the URL, so a reload does not
+  // overwrite whatever the user has typed since. Capped at the same 280 chars the auth screen
+  // shows, and only on a fresh conversation — landing on `?s=` means they came back to a session.
+  useEffect(() => {
+    const seed = seedParam?.trim().slice(0, 280);
+    if (!seed) return;
+    if (!sessionParam) setInput(seed);
+    router.replace((sessionParam ? `/chat?s=${encodeURIComponent(sessionParam)}` : "/chat") as Route, {
+      scroll: false,
+    });
+  }, [seedParam, sessionParam, router]);
+
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, busy]);
@@ -122,18 +166,29 @@ function ChatRoom() {
   }, [input]);
 
   // Persists a message in the current session without breaking the flow if the back-end fails.
-  const persist = useCallback(async (role: Role, content: string) => {
-    const id = sessionIdRef.current;
-    if (!id) return;
-    try {
-      await appendChatMessage(id, { role, content });
-      // Live sidebar: the title (derived from the 1st message), the snippet and
-      // the ordering by updatedAt change on every persisted message.
-      notifySessionsChanged();
-    } catch {
-      // Persistence is best-effort: the conversation goes on even if history fails.
-    }
-  }, []);
+  // `index` is the position the message takes in the session's history, and it is what the
+  // reasoning is filed under — the backend message has no field for it.
+  const persist = useCallback(
+    async (role: Role, content: string, index: number, reasoning?: string) => {
+      const id = sessionIdRef.current;
+      if (!id) {
+        setPersistenceOff(true);
+        return;
+      }
+      try {
+        await appendChatMessage(id, { role, content });
+        if (role === "assistant") rememberReasoning(id, index, content, reasoning ?? "");
+        // Live sidebar: the title (derived from the 1st message), the snippet and
+        // the ordering by updatedAt change on every persisted message.
+        notifySessionsChanged();
+      } catch {
+        // Still best-effort — the conversation must not stop because the history did — but the
+        // failure is now visible in the topbar instead of being swallowed here.
+        setPersistenceOff(true);
+      }
+    },
+    [],
+  );
 
   const run = useCallback(
     async (history: Msg[]) => {
@@ -143,69 +198,65 @@ function ChatRoom() {
 
       const controller = new AbortController();
       abortRef.current = controller;
-      let acc = "";
+      // Where this answer lands in the persisted history — the reasoning is filed under it.
+      const answerIndex = history.length;
+      const stream = { reasoning: "", content: "" };
       let aborted = false;
+      let failure: string | null = null;
 
       try {
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: history }),
-          signal: controller.signal,
-        });
+        // `streamChat`, not a raw `fetch`: it is the only path with the 401 interceptor and the
+        // single-flight refresh. Called directly, an expired access token turned into a
+        // permanent error bubble in a tab that stayed "signed in" as far as the middleware was
+        // concerned, and only F5 recovered it.
+        const res = await streamChat({ messages: history }, controller.signal);
 
         if (!res.ok || !res.body) {
-          const err = (await res.json().catch(() => ({}))) as { error?: string };
+          const err = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+          // 429 gets said plainly, not wrapped in "não consegui responder (…)". The request
+          // budget and the semantic search's own `MEETING_RATE_LIMITED` both land here, and both
+          // mean the same thing to the user: nothing is broken, wait and ask again. A body that
+          // arrives without text still gets pt-BR copy rather than a bare status number.
+          if (res.status === 429) {
+            throw new ChatRateLimitedError(err.error ?? errorCopy.MEETING_RATE_LIMITED);
+          }
           throw new Error(err.error ?? `Erro ${res.status}`);
         }
 
-        // The body is NDJSON now: one `{"t":"r"|"c","c":"..."}` per line. `r` is the model
-        // thinking out loud, `c` is the answer. They are accumulated apart because the
-        // reasoning must never end up inside `content` — it would read as the answer, and a
-        // reasoning model spends far more tokens thinking than replying.
-        //
-        // `frames` holds the tail of a chunk that split mid-line: SSE and NDJSON both cut on
-        // arbitrary byte boundaries, so the last piece is never assumed to be whole.
+        // The body is NDJSON: one `{"t":"r"|"c","c":"..."}` per line, decoded by the module that
+        // also writes it (`@/lib/chat/ndjson`), so the two ends of the format cannot drift.
+        // Reasoning and answer are accumulated apart because the reasoning must never end up
+        // inside `content` — it would read as the answer, and a reasoning model spends far more
+        // tokens thinking than replying.
         const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let thinking = "";
-        let frames = "";
+        const bytes = new TextDecoder();
+        const frames = createChatFrameDecoder();
         for (;;) {
           const { done, value } = await reader.read();
-          if (done) break;
-          frames += decoder.decode(value, { stream: true });
-          const lines = frames.split("\n");
-          frames = lines.pop() ?? "";
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const f = JSON.parse(line) as { t?: string; c?: string };
-              if (f.t === "r" && f.c) thinking += f.c;
-              else if (f.t === "c" && f.c) acc += f.c;
-            } catch {
-              // a frame that does not parse is dropped rather than shown: printing raw
-              // protocol at the user is worse than losing one delta.
-            }
+          if (done) {
+            applyChatFrames(stream, frames.flush());
+            break;
           }
+          applyChatFrames(stream, frames.push(bytes.decode(value, { stream: true })));
           setMessages([
             ...history,
-            { role: "assistant", content: acc, reasoning: thinking || undefined },
+            {
+              role: "assistant",
+              content: stream.content,
+              reasoning: stream.reasoning || undefined,
+            },
           ]);
         }
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
           aborted = true;
+        } else if (e instanceof ChatRateLimitedError) {
+          // Already a complete sentence in pt-BR, and nothing failed — wrapping it in "não
+          // consegui responder (…)" would report a working limit as a malfunction.
+          failure = e.message;
         } else {
           const reason = e instanceof Error ? e.message : "erro desconhecido";
-          setMessages([
-            ...history,
-            {
-              role: "assistant",
-              content: `Não consegui responder agora (${reason}).`,
-              interrupted: true,
-            },
-          ]);
-          return;
+          failure = `Não consegui responder agora (${reason}).`;
         }
       } finally {
         abortRef.current = null;
@@ -213,18 +264,41 @@ function ChatRoom() {
         taRef.current?.focus();
       }
 
-      if (aborted) {
-        setMessages([
-          ...history,
-          { role: "assistant", content: acc, interrupted: true },
-        ]);
-        if (acc.trim()) await persist("assistant", acc);
+      // A failed answer is persisted like any other. It used to `return` before the persist, so
+      // the saved history showed the question with nothing after it — indistinguishable from a
+      // conversation still in progress.
+      if (failure !== null) {
+        setMessages([...history, { role: "assistant", content: failure, interrupted: true }]);
+        await persist("assistant", failure, answerIndex);
         return;
       }
 
-      const finalText = acc.trim() ? acc : "_(sem resposta)_";
-      setMessages([...history, { role: "assistant", content: finalText }]);
-      await persist("assistant", finalText);
+      if (aborted) {
+        setMessages([
+          ...history,
+          {
+            role: "assistant",
+            content: stream.content,
+            reasoning: stream.reasoning || undefined,
+            interrupted: true,
+          },
+        ]);
+        if (stream.content.trim()) {
+          await persist("assistant", stream.content, answerIndex, stream.reasoning);
+        }
+        return;
+      }
+
+      const finalText = stream.content.trim() ? stream.content : "_(sem resposta)_";
+      setMessages([
+        ...history,
+        {
+          role: "assistant",
+          content: finalText,
+          reasoning: stream.reasoning || undefined,
+        },
+      ]);
+      await persist("assistant", finalText, answerIndex, stream.reasoning);
     },
     [persist],
   );
@@ -245,15 +319,20 @@ function ChatRoom() {
           router.replace(`/chat?s=${encodeURIComponent(created.id)}` as Route, {
             scroll: false,
           });
+          setPersistenceOff(false);
         } catch {
-          // No persistence: the conversation goes on in memory in this tab.
+          // The conversation goes on in memory in this tab — but it says so now. Silently
+          // running unsaved meant the sidebar never showed the session and a reload took the
+          // whole conversation with it, with nothing on screen having hinted at either.
+          setPersistenceOff(true);
         }
       }
 
+      const userIndex = messages.length;
       const next: Msg[] = [...messages, { role: "user", content }];
       setMessages(next);
       setInput("");
-      await persist("user", content);
+      await persist("user", content, userIndex);
       await run(next);
     },
     [busy, loading, messages, persist, run, router],
@@ -305,7 +384,25 @@ function ChatRoom() {
           borderBottom: empty ? "none" : "1px solid var(--border)",
         }}
       >
-        <div style={{ fontSize: 13, color: "var(--muted)", letterSpacing: "-0.005em" }}>{title}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+          <div style={{ fontSize: 13, color: "var(--muted)", letterSpacing: "-0.005em" }}>{title}</div>
+          {persistenceOff && (
+            <span
+              role="status"
+              title="A conversa continua funcionando nesta aba, mas não vai aparecer no histórico."
+              style={{
+                fontSize: 11.5,
+                color: "var(--warn)",
+                border: "1px solid var(--border)",
+                borderRadius: 999,
+                padding: "3px 10px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Esta conversa não está sendo salva
+            </span>
+          )}
+        </div>
         {!empty && (
           <button type="button" className="btn btn-ghost btn-sm" onClick={startNew}>
             {sessionParam ? "Nova sessão" : "Limpar"}
@@ -380,7 +477,19 @@ function ChatRoom() {
             </div>
           </div>
         ) : (
-          <div style={{ maxWidth: 720, margin: "0 auto", padding: "32px 24px 160px", display: "flex", flexDirection: "column", gap: 22 }}>
+          // `log` + `polite`, and both halves are deliberate. The answer arrives token by token,
+          // so an assertive region would interrupt the screen reader on every delta and read the
+          // reply several times over; `polite` lets it finish the current utterance and then
+          // announce what was appended. `log` is the role for a running transcript — additions at
+          // the end, older entries not re-read — which is exactly what this list is.
+          <div
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions text"
+            aria-busy={busy}
+            aria-label="Conversa com a Nora"
+            style={{ maxWidth: 720, margin: "0 auto", padding: "32px 24px 160px", display: "flex", flexDirection: "column", gap: 22 }}
+          >
             {messages.map((m, i) => (
               <ChatBubble
                 key={i}
@@ -415,8 +524,14 @@ function ChatRoom() {
             boxShadow: "0 4px 14px -8px rgba(15,23,42,0.08)",
           }}
         >
+          {/* A placeholder is not a label: it disappears on the first keystroke and is not
+              associated with the field, so a screen reader announces an unnamed edit box. The
+              visible design has no room for a caption, so the name is attached rather than
+              drawn — the one case where aria-label is the right tool instead of a shortcut. */}
           <textarea
             ref={taRef}
+            id="chat-input"
+            aria-label="Pergunte qualquer coisa para a Nora"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {

@@ -58,6 +58,18 @@ function apiOrigin() {
 // covers a handful of route prefixes rather than every response, or a `header` directive in
 // the Caddyfile — which would split one policy across two files. Neither is worth it for a
 // measurement that is a deliberate, bounded act anyway.
+/**
+ * Where violation reports go. Same-origin, served by `src/app/api/csp-report/route.ts`.
+ *
+ * Report-Only without one of these is the worst of both worlds and is what this policy was: it
+ * blocks nothing, by design, AND collects nothing, so the measurement the whole arrangement exists
+ * for happened only while a person had devtools open on the right page. The endpoint is named
+ * twice on purpose — `report-uri` is deprecated but is still what most engines actually send to,
+ * `report-to` is the replacement — and the group below is what makes the second one resolvable.
+ */
+const CSP_REPORT_PATH = "/api/csp-report";
+const CSP_REPORT_GROUP = "nora-csp";
+
 function contentSecurityPolicy() {
   const api = apiOrigin();
   const connectSrc = ["'self'", api].filter(Boolean).join(" ");
@@ -71,6 +83,8 @@ function contentSecurityPolicy() {
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "object-src 'none'",
+    `report-uri ${CSP_REPORT_PATH}`,
+    `report-to ${CSP_REPORT_GROUP}`,
   ].join("; ");
 }
 
@@ -158,6 +172,13 @@ const securityHeaders = [
   {
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=()",
+  },
+  // Declares the group `report-to` above names. Without this header the directive resolves to
+  // nothing and modern engines drop the report silently, which is indistinguishable from having
+  // no violations — the exact false clean this whole change is about.
+  {
+    key: "Reporting-Endpoints",
+    value: `${CSP_REPORT_GROUP}="${CSP_REPORT_PATH}"`,
   },
   {
     key: "Content-Security-Policy-Report-Only",

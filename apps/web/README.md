@@ -19,17 +19,20 @@ npm run dev             # http://localhost:3000
 
 ## Mock mode vs real API
 
-`NEXT_PUBLIC_USE_MOCKS=true` is the default in `.env.example`, but it does **not** make the whole
-app work without a backend, and the fixtures directory shows why: there are two of them.
+`NEXT_PUBLIC_USE_MOCKS=false` is the default in `.env.example`, and the quickstart above therefore
+needs the backend running. That default was `true` until 2026-08-23, which made the documented
+first run produce an application where most screens failed: `USE_MOCKS` is read in exactly two
+functions in `src/lib/api/client.ts` — `listMeetings` and `getMeeting` — and the other 77 exported
+functions always issue a real fetch. Eight broken screens is a worse first impression than one
+clear failure at the first request, and the client itself had already been flipped to default off
+for the same reason (a build that forgot the variable used to serve fixtures in production).
 
-`USE_MOCKS` is read in exactly two functions in `src/lib/api/client.ts` — `listMeetings` and
-`getMeeting`. The other 67 exported functions in that file always issue a real fetch. So on the
-documented default, the meeting list and the meeting detail render from
-`src/fixtures/*.json`, and `/tasks`, `/trends`, `/flows`, `/integrations`, `/projects`, `/settings/context`,
-`/settings/iam` and the chat sidebar all fail against a backend that is not there.
-
-Set `NEXT_PUBLIC_USE_MOCKS=false` and `NEXT_PUBLIC_API_BASE_URL=http://localhost:8080` to exercise
-the real API — which is what every screen except two is doing regardless.
+Set `NEXT_PUBLIC_USE_MOCKS=true` deliberately when you want to look at the dashboard and the meeting
+detail with no backend at all. Everything else — `/tasks`, `/trends`, `/flows`, `/integrations`,
+`/projects`, `/settings/context`, `/settings/iam` and the chat sidebar — needs the API either way.
+The two fixtures in `src/fixtures/` are kept in step with what the API actually returns, including
+the fields that are usually absent (`productivityBand`, `participants`), so mock mode does not hide
+features that exist.
 
 ## Structure
 
@@ -52,11 +55,13 @@ src/
       settings/                 # page.tsx redirects the bare prefix to context/
       settings/context/         # tenant company/product context
       settings/iam/             # groups, policies, invitations, audit
-    api/chat/route.ts           # BFF: the only server route, holds the provider key
+    api/chat/route.ts           # BFF: the streaming chat route, holds the provider key
+    api/csp-report/route.ts     # collector the Report-Only CSP points at
   components/                   # flat, no feature folders
   lib/
-    api/client.ts               # fetch wrapper; 78 exported functions
+    api/client.ts               # fetch wrapper; 79 exported functions
     api/types.ts                # types mirroring OpenAPI
+    chat/ projects/ iam/        # logic lifted out of the screens so it can be tested
   fixtures/                     # two files, see "Mock mode" above
   styles/                       # tokens.css + components.css
   middleware.ts                 # route protection
@@ -85,28 +90,37 @@ npm run test:e2e:ui   # playwright, headed
 ```
 
 Two suites, and they never see each other's files: Playwright owns `e2e/`, Vitest owns
-`src/**/*.test.ts`. Both packages export a global `test` and a global `expect`, so a glob that
+`src/**/*.test.{ts,tsx}`. Both packages export a global `test` and a global `expect`, so a glob that
 crossed the line would have Vitest collect Playwright specs and fail confusingly; `vitest.config.mts`
 keeps them apart.
 
-**What each one covers, and what neither does.** The Playwright suite checks routing, response
-headers and CSP violations against a real `next start` — no product behaviour, by design (see the
-note at the top of `e2e/fixtures.ts`). The Vitest suite covers eight `src/lib` modules: the
-`request()` function that all 78 exported wrappers in `src/lib/api/client.ts` go through, the
-Markdown report builder, the task-list CSV/Markdown exporter, the BFF's PII redaction, the password
-policy, the trends panel's date/axis helpers and the IAM policy-document conversion that the form
-editor is built on. **No page and no component has a unit test**, which is why whole-app coverage is
-around 9.4% (9.37% statement, 150 tests across 8 files, measured 2026-08-17).
+**What each one covers.** The Playwright suite checks routing, response headers and CSP violations
+against a real `next start` — no product behaviour, by design (see the note at the top of
+`e2e/fixtures.ts`). The Vitest suite lives in `src/**/*.test.{ts,tsx}`, one file next to the module
+or screen it covers; `find src -name "*.test.ts*"` is the list, and this document deliberately does
+not repeat it.
 
-Two of those tests are mirrors and read files from other services: `src/lib/pii/redact.test.ts`
-compares its pattern literals with the worker's PII Shield, and `src/lib/password-policy.test.ts`
-compares its constants with the backend's `PasswordPolicy` and DTO bounds. They fail loudly if
-those files move — do not turn that into a skip.
+Until 2026-08-23 it covered pure `src/lib` modules only and no page or component had a test at all.
+It now also covers behaviour that had none and had already broken in production: the NDJSON framing
+between `POST /api/chat` and the chat screen (`src/lib/chat/`), the 401 refresh on the chat's own
+call, the flow editor's unsaved-work guard, the projects screen's arithmetic and paging, and the IAM
+screen's field labelling, group membership and two-step deletes.
 
-`npm run test:coverage` is also the gate: `vitest.config.mts` declares per-module coverage floors
-on `redact.ts`, `markdown.ts`, `tasks-export.ts`, `password-policy.ts` and `iam/policy-document.ts`,
-each set below the measured rate so it fires on a regression. There is no whole-app threshold, and none on
-`client.ts`. ADR 0042 has the reasoning; `scripts/report-coverage.sh web` prints both scopes.
+Two tests are mirrors and read files from other services: `src/lib/pii/redact.test.ts` compares its
+pattern literals with the worker's PII Shield, and `src/lib/password-policy.test.ts` compares its
+constants with the backend's `PasswordPolicy` and DTO bounds. They fail loudly if those files move —
+do not turn that into a skip.
+
+`npm run test:coverage` is also the gate: `vitest.config.mts` declares per-module coverage floors,
+each set below the measured rate so it fires on a regression. **The list of gated modules lives in
+that file and nowhere else** — every copy of it in a document has been wrong at some point, in a
+different way. There is no whole-app threshold, and none on `client.ts` (the reasoning is in the
+config, next to the omission). ADR 0042 has the rest; `scripts/report-coverage.sh web` prints both
+scopes.
+
+**No coverage percentage is quoted here, on purpose.** Four documents in this repository published
+four different web coverage numbers and three different counts of gated modules, none of them
+matching `vitest.config.mts`; every one had been correct when written. Read the last CI run.
 
 ## CSS strategy (ADR 0013)
 

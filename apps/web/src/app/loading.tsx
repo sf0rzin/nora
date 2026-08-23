@@ -1,10 +1,29 @@
+/**
+ * Root loading state. Tokens and the product's own `.wave` mark instead of a generic Tailwind
+ * spinner — see the note in `error.tsx`. `role="status"` so the wait is announced rather than
+ * being an unlabelled animation.
+ */
 export default function RootLoading() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50">
-      <div className="flex flex-col items-center gap-3 text-slate-600">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
-        <p className="text-sm">Carregando…</p>
-      </div>
+    <div
+      role="status"
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 16,
+        background: 'var(--canvas)',
+        color: 'var(--muted)',
+      }}
+    >
+      <span className="wave wave--breathe" aria-hidden>
+        {[14, 22, 30, 22, 14].map((height, i) => (
+          <span key={i} style={{ height }} />
+        ))}
+      </span>
+      <p style={{ fontSize: 13, margin: 0 }}>Carregando…</p>
     </div>
   );
 }

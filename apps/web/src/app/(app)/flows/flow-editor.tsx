@@ -15,7 +15,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   addEdge,
@@ -53,6 +53,8 @@ import {
   blockMeta,
   type BlockMeta,
 } from "./catalog";
+import { installUnsavedChangesGuard } from "@/lib/unsaved-changes";
+
 import { BlockNode, type RFNode } from "./block-node";
 import { SidePanel, type PanelTab } from "./side-panel";
 import { BlockPalette } from "./block-palette";
@@ -152,6 +154,8 @@ function FlowEditorInterno({ workflowId }: { workflowId: string | null }) {
   const [tentouSalvar, setTentouSalvar] = useState(false);
   const [confirmaExcluir, setConfirmaExcluir] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
+  /** Back arrow pressed with unsaved work: the confirmation replaces the navigation. */
+  const [confirmaSair, setConfirmaSair] = useState(false);
 
   // ── Executions ──
   const [execucoes, setExecucoes] = useState<WorkflowExecutionResponse[] | null>(null);
@@ -186,6 +190,13 @@ function FlowEditorInterno({ workflowId }: { workflowId: string | null }) {
       vivo = false;
     };
   }, [workflowId, setNodes, setEdges]);
+
+  // Closing the tab, reloading or typing another address with unsaved work. Registered once and
+  // reading `sujo` through a ref, so a keystroke in the name field does not unbind and rebind the
+  // listener; the graph is minutes of dragging and nothing used to stand between it and Ctrl+W.
+  const sujoRef = useRef(sujo);
+  sujoRef.current = sujo;
+  useEffect(() => installUnsavedChangesGuard(() => sujoRef.current), []);
 
   // Wrappers that mark the document dirty on real graph changes
   // (selection and dimension measuring do not count as an edit).
@@ -351,12 +362,13 @@ function FlowEditorInterno({ workflowId }: { workflowId: string | null }) {
     return null;
   }
 
-  async function salvar() {
+  /** Returns whether the document actually reached the backend — "Salvar e sair" depends on it. */
+  async function salvar(): Promise<boolean> {
     setTentouSalvar(true);
     const pendencia = validar();
     if (pendencia) {
       setAviso({ tipo: "erro", msg: pendencia });
-      return;
+      return false;
     }
     setAviso(null);
     setSalvando(true);
@@ -366,18 +378,23 @@ function FlowEditorInterno({ workflowId }: { workflowId: string | null }) {
         const w = await updateWorkflow(workflowId, { name: nome.trim(), active: ativo, definition });
         setSalvoAs(shortTime(w.updatedAt));
         setSujo(false);
+        sujoRef.current = false;
         setTentouSalvar(false);
       } else {
         const w = await createWorkflow({ name: nome.trim(), active: ativo, definition });
+        setSujo(false);
+        sujoRef.current = false;
         // switches to the canonical URL of the just-created flow (the editor reloads saved)
         router.replace(`/flows/${w.id}` as Route);
       }
+      return true;
     } catch (e) {
       // 422 WORKFLOW_INVALID_DEFINITION carries an actionable PT-BR message from the engine
       setAviso({
         tipo: "erro",
         msg: e instanceof ApiRequestError ? e.message : "Falha ao salvar o fluxo. Tente de novo.",
       });
+      return false;
     } finally {
       setSalvando(false);
     }
@@ -501,6 +518,14 @@ function FlowEditorInterno({ workflowId }: { workflowId: string | null }) {
           aria-label="Voltar pra lista de fluxos"
           title="Fluxos"
           style={{ width: 32, height: 32, flexShrink: 0 }}
+          onClick={(e) => {
+            // The one exit the app itself controls. `beforeunload` cannot see a client-side
+            // route change, so without this the arrow discarded the graph in silence — the
+            // topbar was already saying "Alterações não salvas" one element to the right.
+            if (!sujo) return;
+            e.preventDefault();
+            setConfirmaSair(true);
+          }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 19l-7-7 7-7" />
@@ -590,6 +615,72 @@ function FlowEditorInterno({ workflowId }: { workflowId: string | null }) {
           {salvando ? "Salvando…" : "Salvar"}
         </button>
       </div>
+
+      {/* ── Leaving with unsaved work ──
+          A bar and not a `window.confirm`: the native dialog is unstyled, unlabelable and cannot
+          offer "Salvar e sair", which is the answer the user actually wants most of the time. */}
+      {confirmaSair && (
+        <div
+          role="alertdialog"
+          aria-label="Alterações não salvas"
+          data-testid="unsaved-exit-guard"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            padding: "10px 18px",
+            borderBottom: "1px solid var(--border)",
+            background: "var(--sidebar)",
+            flexShrink: 0,
+          }}
+        >
+          <span style={{ fontSize: 13, color: "var(--ink)" }}>
+            Você tem alterações não salvas neste fluxo. Sair agora descarta tudo.
+          </span>
+          <span style={{ flex: 1 }} />
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            data-testid="unsaved-exit-save"
+            disabled={salvando}
+            onClick={() => {
+              // Saves and only then leaves — and only if the save really landed. A failed
+              // request (or a validation refusal) also returns from `salvar()`, so leaving
+              // unconditionally would discard the graph in exactly the case this bar exists for.
+              void (async () => {
+                if (await salvar()) router.push("/flows" as Route);
+                else setConfirmaSair(false);
+              })();
+            }}
+          >
+            {salvando ? "Salvando…" : "Salvar e sair"}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            data-testid="unsaved-exit-discard"
+            style={{ color: "var(--danger)" }}
+            onClick={() => {
+              // Clears the ref too, not just the state: the `beforeunload` listener reads the
+              // ref, and React has not re-rendered yet when the router starts the transition.
+              setSujo(false);
+              sujoRef.current = false;
+              router.push("/flows" as Route);
+            }}
+          >
+            Sair sem salvar
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            data-testid="unsaved-exit-cancel"
+            onClick={() => setConfirmaSair(false)}
+          >
+            Continuar editando
+          </button>
+        </div>
+      )}
 
       {/* ── Body: palette | canvas | panel ── */}
       <div className="flows-body">

@@ -14,10 +14,23 @@ export interface MeetingListItem {
   title: string;
   startedAt: string;
   durationSeconds?: number;
-  ownerName: string;
+  /**
+   * Declared required and non-null here for a field the API has never once populated:
+   * `MeetingsController` passes a literal `null` into this slot. Nothing renders it, so the lie
+   * cost nothing in practice — it just meant the type could not be trusted about the one thing a
+   * type is for. Optional and nullable until there is an owner to put in it.
+   */
+  ownerName?: string | null;
   processingStatus: ProcessingStatus;
   summarySnippet?: string;
+  /** Every action item the analysis extracted, DONE included. Never goes down. */
   actionItemCount: number;
+  /**
+   * Action items not yet DONE — the number any copy that says "abertos" or "pendentes" has to
+   * read. The two are separate fields because they answer different questions and only one of
+   * them shrinks when somebody finishes their work.
+   */
+  openActionItemCount: number;
   riskCount: number;
   opportunityCount: number;
   tags: string[];
@@ -35,6 +48,41 @@ export interface MeetingsListResponse {
   size: number;
   totalItems: number;
   totalPages: number;
+}
+
+// ---------- Participant identities (US13, ADR 0048) ----------
+
+/** One meeting a person appears in, as `GET /meetings/participants` returns it. */
+export interface ParticipantMeetingRef {
+  id: string;
+  title: string;
+  startedAt: string;
+}
+
+/**
+ * A person recognised across the tenant's meeting rosters.
+ *
+ * `variants` is not decoration: the matching is fuzzy on the name side, so every grouping arrives
+ * with the spellings that produced it. A merge the API got wrong is visible in the same response
+ * that made it, which is the only reason a reader can trust the rest of the row.
+ */
+export interface ParticipantIdentity {
+  /** Stable opaque handle, reproducible across requests and stored nowhere. */
+  id: string;
+  displayName: string;
+  email?: string | null;
+  isInternal: boolean;
+  variants: string[];
+  /** Over the whole visible set — never truncated, unlike `meetings` below. */
+  meetingCount: number;
+  firstSeenAt?: string | null;
+  lastSeenAt?: string | null;
+  /** The ten most recent, at most. */
+  meetings: ParticipantMeetingRef[];
+}
+
+export interface ParticipantsResponse {
+  items: ParticipantIdentity[];
 }
 
 export interface Decision {
@@ -243,6 +291,13 @@ export interface TenantInfo {
 }
 
 // ---------- IAM Invitations (US06, ADR 0011) ----------
+//
+// Every flat IAM listing has a server-side ceiling and no pagination: 500 rows for groups,
+// policies, the user directory and invites (`IamService.LIST_LIMIT`, `InvitationService`), 200
+// for the audit feed and for chat sessions (`ChatSessionService.LIST_LIMIT`). They are guard
+// rails rather than pages — a tenant with 500 groups has a different problem than a missing page
+// 2 — but a screen that assumes it holds everything is wrong past the ceiling, silently. Noted
+// here because the response shape gives no hint: there is no `totalItems` to compare against.
 
 export type InviteStatus = 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED';
 

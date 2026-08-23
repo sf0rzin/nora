@@ -146,6 +146,18 @@ function deriveTitle(fileName: string): string {
   return fileName.replace(/\.[^.]+$/, "") || fileName;
 }
 
+/**
+ * Mirrors `MeetingsController.MAX_UPLOAD_BYTES` and `spring.servlet.multipart.max-file-size`.
+ * The dropzone has always advertised "até 10 MB cada"; it now enforces it too.
+ */
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+function fmtFileSize(bytes: number): string {
+  return bytes >= 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    : `${(bytes / 1024).toFixed(1)} KB`;
+}
+
 export default function UploadMeetingPage() {
   const router = useRouter();
 
@@ -203,8 +215,33 @@ export default function UploadMeetingPage() {
     if (opts?.overwriteTitle || !title) setTitle(deriveTitle(f.name));
   }
 
-  function applyFiles(incoming: File[]) {
-    if (incoming.length === 0) return;
+  function applyFiles(candidates: File[]) {
+    if (candidates.length === 0) return;
+
+    // Size check here, not only at the backend. The dropzone advertises "até 10 MB cada" and then
+    // accepted anything: an oversized transcript was uploaded in full, over the wire, before the
+    // API answered FILE_TOO_LARGE — the whole wait spent on a file that could never be accepted.
+    // The cap mirrors `MeetingsController.MAX_UPLOAD_BYTES` and Spring's `max-file-size: 10MB`;
+    // this is a courtesy, and the server remains the authority.
+    const incoming = candidates.filter((f) => f.size <= MAX_UPLOAD_BYTES);
+    const tooLarge = candidates.filter((f) => f.size > MAX_UPLOAD_BYTES);
+    if (tooLarge.length > 0) {
+      setFormError(
+        tooLarge.length === 1
+          ? `“${tooLarge[0].name}” tem ${fmtFileSize(tooLarge[0].size)} e o limite é 10 MB por arquivo.`
+          : `${tooLarge.length} arquivos passam de 10 MB e não foram adicionados: ${tooLarge
+              .map((f) => f.name)
+              .join(", ")}.`,
+      );
+    } else {
+      setFormError(null);
+    }
+    if (incoming.length === 0) {
+      // Nothing usable came in — the input is still cleared so the same file can be retried.
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
     let next: File[];
     if (files.length === 1 && incoming.length === 1) {
       // 1 file already selected + 1 new = SWAP ("clique pra trocar"),

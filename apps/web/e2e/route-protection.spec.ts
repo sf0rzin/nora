@@ -37,6 +37,7 @@ const PROTECTED: ReadonlyArray<{ prefix: string; page: string }> = [
   { prefix: "/usage", page: "/usage" },
   { prefix: "/chat", page: "/chat" },
   { prefix: "/projects", page: "/projects" },
+  { prefix: "/people", page: "/people" },
   { prefix: "/integrations", page: "/integrations" },
   { prefix: "/flows", page: "/flows" },
 ];

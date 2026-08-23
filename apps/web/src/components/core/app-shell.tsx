@@ -59,6 +59,16 @@ function ProjectsIcon() {
     </svg>
   );
 }
+function PeopleIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
 function TasksIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -97,6 +107,14 @@ function PlugIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 2v6M15 2v6M7 8h10v3a5 5 0 0 1-10 0z" />
       <path d="M12 16v6" />
+    </svg>
+  );
+}
+function KeyIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="12" r="4" />
+      <path d="M12 12h9M18 12v3M15.5 12v2" />
     </svg>
   );
 }
@@ -178,6 +196,7 @@ const NAV: NavItem[] = [
   { label: "Início", href: "/dashboard" as Route, icon: <HomeIcon />, matchPrefixes: ["/dashboard", "/meetings"] },
   { label: "Nova sessão", href: "/chat" as Route, icon: <ChatIcon />, plus: true },
   { label: "Projetos", href: "/projects" as Route, icon: <ProjectsIcon /> },
+  { label: "Pessoas", href: "/people" as Route, icon: <PeopleIcon />, matchPrefixes: ["/people"] },
   { label: "Action items", href: "/tasks" as Route, icon: <TasksIcon /> },
   { label: "Tendências", href: "/trends" as Route, icon: <TrendsIcon />, matchPrefixes: ["/trends"] },
   { label: "Consumo", href: "/usage" as Route, icon: <UsageIcon />, matchPrefixes: ["/usage"] },
@@ -185,16 +204,31 @@ const NAV: NavItem[] = [
 ];
 
 /**
- * The connector hub. The hint said "MCP" and named the wrong protocol: this page is ADR 0031's
- * OAuth integrations, the OUTBOUND direction where NORA writes into the user's own tools. MCP is
- * the inbound one (ADR 0041) and lives under settings/mcp.
+ * The connector hub, both directions of it.
+ *
+ * `/integrations` is ADR 0031's OAuth connectors, the OUTBOUND direction where NORA writes into
+ * the user's own tools. MCP (ADR 0041) is the INBOUND one — an external client reading this
+ * workspace — and the hint on this entry used to say "MCP" while pointing at the outbound page,
+ * which is how the two got confused in the first place.
+ *
+ * MCP is listed here because until now the ONLY way to reach it was knowing the command palette
+ * exists and typing "MCP". A paid capability whose entire discovery path is a keyboard shortcut is
+ * hidden, not minimal; the palette stays as the fast path, not as the only one.
  */
-const CONNECTORS: NavItem = {
-  label: "Integrações",
-  href: "/integrations" as Route,
-  icon: <PlugIcon />,
-  hint: "OAuth",
-};
+const CONNECTORS: NavItem[] = [
+  {
+    label: "Integrações",
+    href: "/integrations" as Route,
+    icon: <PlugIcon />,
+    hint: "OAuth",
+  },
+  {
+    label: "Credenciais MCP",
+    href: "/settings/mcp" as Route,
+    icon: <KeyIcon />,
+    hint: "MCP",
+  },
+];
 
 /**
  * IAM (users, groups, policies, invites, corporate domain, audit). Kept out of the primary
@@ -334,7 +368,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div>
           <div className="side-sec-label">Conectores</div>
-          <NavLink item={CONNECTORS} onNavigate={onNavigate} />
+          {CONNECTORS.map((item) => (
+            <NavLink key={item.href} item={item} onNavigate={onNavigate} />
+          ))}
         </div>
 
         <div>

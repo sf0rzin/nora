@@ -32,6 +32,15 @@ export const strings = {
       action: { label: "Ação", labelPlural: "Ações" },
     },
 
+    /**
+     * Accessible names for the connection points of a node. They are the only thing a screen
+     * reader gets out of a `Handle`, which renders as an unlabelled div otherwise.
+     */
+    node: {
+      inputHandle: (name: string) => `Entrada de ${name}`,
+      outputHandle: (name: string) => `Saída de ${name}`,
+    },
+
     list: {
       eyebrow: "Nora Flows",
       title: "Fluxos",
@@ -253,6 +262,30 @@ export const strings = {
     daysAgo: (n: number) => `há ${n} dias`,
   },
 
+  people: {
+    title: "Pessoas",
+    lede: "Quem aparece nas suas reuniões, reunido a partir das listas de participantes — sem cadastro nenhum.",
+    peopleCount: (n: number) => (n === 1 ? "pessoa" : "pessoas"),
+    meetingCount: (n: number) => (n === 1 ? "reunião" : "reuniões"),
+    internal: "Do time",
+    external: "Externa",
+    /** The spellings that produced a grouping, shown so a wrong merge is visible on the row. */
+    alsoKnownAs: "Também aparece como",
+    lastSeenPrefix: "Última vez",
+    firstSeenPrefix: "Primeira vez",
+    recentMeetings: "Reuniões recentes",
+    /** The API caps the per-person meeting list at ten; the count above it is the real total. */
+    meetingsTruncated: (total: number) => `mostrando as 10 mais recentes de ${total}`,
+    emptyTitle: "Nenhuma pessoa ainda.",
+    emptyBody:
+      "As pessoas aparecem aqui assim que você enviar uma reunião com participantes. A Nora agrupa as grafias parecidas sozinha.",
+    emptyUploadCta: "Enviar reunião",
+    loadFailed: "Não consegui carregar as pessoas agora",
+    loadFailedSuffix: "Verifique a conexão com a API.",
+    scopeNote:
+      "A lista cobre só as reuniões que você pode ler — quem tiver outras permissões pode ver outras pessoas e outras contagens.",
+  },
+
   projects: {
     title: "Projetos",
     lede: "A Nora agrupa reuniões e action items por tag — cada frente de trabalho num só lugar, sem preencher nada.",
@@ -261,6 +294,13 @@ export const strings = {
     openActionItems: "abertos",
     actionItems: "action items",
     risks: "riscos",
+    /** Shown when the workspace has more meetings than the screen was able to group. */
+    truncatedNotice: (shown: number, total: number) =>
+      `Mostrando as ${shown} reuniões mais recentes de ${total}. Projetos que só aparecem em reuniões mais antigas ficam de fora, e as contagens abaixo cobrem só o período mostrado.`,
+    /** `?tag=` pointing at something that is not among the meetings that were read. */
+    notFoundTitle: "Projeto não encontrado",
+    notFoundBody: (tag: string) =>
+      `Nenhuma reunião carregada tem a tag “${tag}”. Ela pode não existir, ou estar só em reuniões fora do período mostrado.`,
     lastActivityPrefix: "Última atividade",
     meetingsSection: "Reuniões",
     tagsFootnote:
@@ -310,6 +350,10 @@ export const errorCopy: Record<string, string> = {
   TOKEN_INVALID: "Esse link expirou ou já foi usado.",
   REFRESH_TOKEN_INVALID: "Sua sessão expirou. Entre novamente.",
   RATE_LIMITED: "Tentativas demais. Aguarde um momento e tente de novo.",
+  // `GET /meetings/search` bills an embedding per call, so the backend caps it per principal.
+  // The palette fires one of these per pause in typing, which makes this the code a user is most
+  // likely to see — and it had no copy at all, so it fell through to the English detail.
+  MEETING_RATE_LIMITED: "Muitas buscas em pouco tempo. Tente de novo em um minuto.",
   VALIDATION_ERROR: "Confira os campos e tente de novo.",
   FORBIDDEN: "Você não tem permissão para isso.",
   IAM_FORBIDDEN: "Você não tem permissão para isso.",

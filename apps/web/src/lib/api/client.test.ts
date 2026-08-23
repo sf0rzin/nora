@@ -350,3 +350,193 @@ describe('fixtures are opt-in', () => {
     expect(result.items.length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * `streamChat` — the chat's own call, and the reason it exists here rather than in the screen.
+ *
+ * `POST /api/chat` is served by this app's own route handler, so it cannot go through `request()`:
+ * that helper prefixes the backend base URL and parses the body as JSON, and this body is an
+ * NDJSON stream read as it arrives. The screen therefore called `fetch("/api/chat")` directly and
+ * was the ONE surface with no 401 interceptor — an expired access token became a permanent error
+ * bubble in a tab the middleware still considered signed in, recoverable only by F5. There is no
+ * proactive refresh to save it either: the timer is armed by `setSession` at login, so a reloaded
+ * tab has none and the interceptor is the only recovery there is.
+ *
+ * What is asserted is the same contract `request` has: one refresh, one retry, then hand over to
+ * `handleSessionExpired`. The single flight matters as much as the retry — two refreshes with the
+ * same cookie trip the backend's reuse detection and drop the whole session.
+ */
+describe('streamChat — the 401 interceptor on the chat path', () => {
+  const body = { messages: [{ role: 'user' as const, content: 'oi' }] };
+
+  it('posts to the app route, not to the API base URL', async () => {
+    fetchMock.mockResolvedValue(respond(200));
+    const { streamChat } = await loadClient();
+
+    await streamChat(body);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/chat');
+    expect(initOf(0)).toMatchObject({ method: 'POST', credentials: 'include', cache: 'no-store' });
+    expect(JSON.parse(initOf(0).body as string)).toEqual(body);
+  });
+
+  it('hands the response back untouched when the call succeeds', async () => {
+    const ok = respond(200);
+    fetchMock.mockResolvedValue(ok);
+    const { streamChat } = await loadClient();
+
+    // Untouched matters: the caller reads the body as a stream, so nothing here may consume it.
+    expect(await streamChat(body)).toBe(ok);
+    expect(sharedRefresh).not.toHaveBeenCalled();
+  });
+
+  it('refreshes once and retries once on a 401', async () => {
+    const retried = respond(200);
+    fetchMock.mockResolvedValueOnce(respond(401, { body: { error: 'Não autenticado.' } }));
+    fetchMock.mockResolvedValueOnce(retried);
+    sharedRefresh.mockResolvedValue({ ok: true });
+    const { streamChat } = await loadClient();
+
+    expect(await streamChat(body)).toBe(retried);
+    expect(sharedRefresh).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(handleSessionExpired).not.toHaveBeenCalled();
+  });
+
+  it('does not retry a second time when the retry itself answers 401', async () => {
+    fetchMock.mockResolvedValue(respond(401));
+    sharedRefresh.mockResolvedValue({ ok: true });
+    const { streamChat } = await loadClient();
+
+    // The retry's own 401 is returned as-is; looping here would hammer the route.
+    const result = (await streamChat(body)) as { status: number };
+    expect(result.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(sharedRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends the session when the refresh fails', async () => {
+    fetchMock.mockResolvedValue(respond(401));
+    sharedRefresh.mockResolvedValue({ ok: false });
+    const { streamChat, ApiRequestError: Err } = await loadClient();
+
+    const error = await streamChat(body).catch((e: unknown) => e);
+
+    expect(handleSessionExpired).toHaveBeenCalledTimes(1);
+    expect(error).toBeInstanceOf(Err);
+    expect((error as ApiRequestError).status).toBe(401);
+    expect((error as ApiRequestError).message).toBe(errorCopy.REFRESH_TOKEN_INVALID);
+  });
+
+  it('leaves any other error status to the caller, with no refresh', async () => {
+    fetchMock.mockResolvedValue(respond(502, { body: { error: 'Provedor de IA indisponível.' } }));
+    const { streamChat } = await loadClient();
+
+    const result = (await streamChat(body)) as { status: number };
+    expect(result.status).toBe(502);
+    expect(sharedRefresh).not.toHaveBeenCalled();
+  });
+
+  it('passes the abort signal through, so the stop button still works', async () => {
+    fetchMock.mockResolvedValue(respond(200));
+    const controller = new AbortController();
+    const { streamChat } = await loadClient();
+
+    await streamChat(body, controller.signal);
+
+    expect(initOf(0).signal).toBe(controller.signal);
+  });
+});
+
+/**
+ * The semantic search is the one call in this module that hands raw user text to an external
+ * embeddings provider, and the palette makes it on every pause in typing straight from the
+ * browser. The chat route redacted before calling it; the palette did not, so the same CPF was
+ * shielded when typed into the chat and forwarded raw when typed into ⌘K. The gate belongs to
+ * the function, not to whichever caller remembers.
+ */
+describe('searchMeetings — the PII gate on the query', () => {
+  it('redacts structured PII out of the query before it leaves the browser', async () => {
+    fetchMock.mockResolvedValue(respond(200, { body: { items: [] } }));
+    const { searchMeetings } = await loadClient();
+
+    await searchMeetings('contrato do cliente ana@example.com');
+
+    const url = fetchMock.mock.calls[0][0];
+    expect(url).not.toContain('ana');
+    expect(decodeURIComponent(url)).toContain('[[EMAIL_1]]');
+  });
+
+  it('leaves a query with nothing to redact exactly as it was typed', async () => {
+    fetchMock.mockResolvedValue(respond(200, { body: { items: [] } }));
+    const { searchMeetings } = await loadClient();
+
+    await searchMeetings('renovação do contrato', 6);
+
+    const url = new URL(fetchMock.mock.calls[0][0]);
+    expect(url.searchParams.get('q')).toBe('renovação do contrato');
+    expect(url.searchParams.get('k')).toBe('6');
+  });
+});
+
+/**
+ * Two removals with two IAM actions behind them. They are separate functions because a caller
+ * that reaches for the wrong one destroys the transcript, the participants and the analyses of
+ * everybody who was in the meeting — and until `DELETE /meetings/{id}` existed, the erasure was
+ * the only removal the product offered.
+ */
+describe('removing a meeting versus erasing one', () => {
+  it('removeMeeting hits the reversible route', async () => {
+    fetchMock.mockResolvedValue(respond(204));
+    const { removeMeeting } = await loadClient();
+
+    await removeMeeting('m-1');
+
+    expect(fetchMock.mock.calls[0][0]).toBe(`${BASE}/meetings/m-1`);
+    expect(initOf(0).method).toBe('DELETE');
+  });
+
+  it('eraseMeeting hits the LGPD route, which is a different path', async () => {
+    fetchMock.mockResolvedValue(respond(204));
+    const { eraseMeeting } = await loadClient();
+
+    await eraseMeeting('m-1');
+
+    expect(fetchMock.mock.calls[0][0]).toBe(`${BASE}/privacy/meetings/m-1`);
+    expect(initOf(0).method).toBe('DELETE');
+  });
+});
+
+describe('listIamUsers', () => {
+  it('reads the tenant directory', async () => {
+    const rows = [{ id: 'u-1', displayName: 'Ana', email: 'ana@example.com', root: false }];
+    fetchMock.mockResolvedValue(respond(200, { body: rows }));
+    const { listIamUsers } = await loadClient();
+
+    await expect(listIamUsers()).resolves.toEqual(rows);
+    expect(fetchMock.mock.calls[0][0]).toBe(`${BASE}/iam/users`);
+  });
+});
+
+describe('listParticipants', () => {
+  it('reads the people endpoint, which is on the meetings controller', async () => {
+    fetchMock.mockResolvedValue(respond(200, { body: { items: [] } }));
+    const { listParticipants } = await loadClient();
+
+    await listParticipants();
+
+    expect(fetchMock.mock.calls[0][0]).toBe(`${BASE}/meetings/participants`);
+  });
+});
+
+describe('listPolicyVersions', () => {
+  it('reads the immutable history of one policy', async () => {
+    fetchMock.mockResolvedValue(respond(200, { body: [] }));
+    const { listPolicyVersions } = await loadClient();
+
+    await listPolicyVersions('p 1');
+
+    expect(fetchMock.mock.calls[0][0]).toBe(`${BASE}/iam/policies/p%201/versions`);
+  });
+});

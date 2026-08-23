@@ -399,6 +399,9 @@ export default function InvitationCard() {
                 <th className="py-2 pr-3 font-medium">Status</th>
                 <th className="py-2 pr-3 font-medium">Convidado em</th>
                 <th className="py-2 pr-3 font-medium">Expira em</th>
+                {/* The one place in the product that pairs a person's e-mail with the user id
+                    every IAM operation asks for. It was already on the wire and thrown away. */}
+                <th className="py-2 pr-3 font-medium">Aceito por</th>
                 <th className="py-2 pr-3 font-medium">Grupos</th>
                 <th className="py-2 pr-3 font-medium text-right">Acoes</th>
               </tr>
@@ -416,6 +419,23 @@ export default function InvitationCard() {
                   </td>
                   <td className="py-2 pr-3 text-slate-600">{formatDate(inv.invitedAt)}</td>
                   <td className="py-2 pr-3 text-slate-600">{formatDate(inv.expiresAt)}</td>
+                  <td className="py-2 pr-3">
+                    {inv.acceptedUserId === null ? (
+                      <span className="text-xs text-slate-400">—</span>
+                    ) : (
+                      <span
+                        className="font-mono text-xs text-slate-600"
+                        title={
+                          inv.acceptedAt
+                            ? `${inv.acceptedUserId} · ${formatDate(inv.acceptedAt)}`
+                            : inv.acceptedUserId
+                        }
+                        data-testid={`invite-accepted-by-${inv.id}`}
+                      >
+                        {inv.acceptedUserId}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-2 pr-3">
                     {inv.groupIds.length === 0 ? (
                       <span className="text-xs text-slate-400">—</span>

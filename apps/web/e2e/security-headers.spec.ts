@@ -40,6 +40,15 @@ test.describe("security headers", () => {
     expect(reportOnly).toContain("frame-ancestors 'none'");
     expect(reportOnly).toContain("object-src 'none'");
 
+    // Report-Only with no reporting endpoint blocks nothing AND collects nothing: the violations
+    // exist only in the console of whoever happens to have devtools open. Both directives are
+    // asserted because engine support is split — `report-uri` is deprecated and still the one
+    // most browsers send to — and `Reporting-Endpoints` is what makes `report-to` resolvable at
+    // all. Dropping any of the three turns the measurement back into a false clean.
+    expect(reportOnly).toContain("report-uri /api/csp-report");
+    expect(reportOnly).toContain("report-to nora-csp");
+    expect(headers["reporting-endpoints"]).toContain('nora-csp="/api/csp-report"');
+
     // Asserted as an ABSENCE on purpose. Flipping this key to enforcing is the eventual
     // goal (SECURITY-FINDINGS item 2) and it must be a deliberate act with the measurement
     // behind it — not something that arrives in a refactor. When it does happen, this line

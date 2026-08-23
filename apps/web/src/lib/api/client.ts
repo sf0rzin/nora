@@ -30,6 +30,9 @@ import type {
   MeetingGoal,
   MeetingsListResponse,
   MeResponse,
+  ParticipantIdentity,
+  ParticipantMeetingRef,
+  ParticipantsResponse,
   SplitPreviewResponse,
   TelegramPairingStart,
   TenantInfo,
@@ -48,11 +51,13 @@ export type { ChatMessage, ChatSessionDetail, ChatSessionSummary };
 export type { WorkflowDefinition, WorkflowExecutionResponse, WorkflowResponse };
 export type { IntegrationProvider, IntegrationStatus, TelegramPairingStart };
 export type { MeResponse, TenantInfo };
+export type { ParticipantIdentity, ParticipantMeetingRef, ParticipantsResponse };
 export type { TrendsGranularity, TrendsResponse };
 export type { UsageResponse };
 import meetingsListFixture from '@/fixtures/meetings-list-response.json';
 import meetingDetailFixture from '@/fixtures/meeting-detail-response.json';
 import { handleSessionExpired, sharedRefresh } from '@/lib/auth';
+import { redactPii } from '@/lib/pii/redact';
 import { errorCopy } from '@/lib/strings';
 
 // Default must be 'false' in prod. It used to be 'true' → if the build forgot to
@@ -200,6 +205,16 @@ export async function listMeetings(params?: ListMeetingsParams): Promise<Meeting
   return request<MeetingsListResponse>(`/meetings?${qs.toString()}`);
 }
 
+/**
+ * The people who appear across the tenant's meeting rosters (`GET /meetings/participants`).
+ *
+ * Authorized as a question about meetings — action `meeting:read`, over the caller's visible set —
+ * so two users of one tenant can legitimately get different people and different counts.
+ */
+export async function listParticipants(): Promise<ParticipantsResponse> {
+  return request<ParticipantsResponse>(`/meetings/participants`);
+}
+
 export async function getMeeting(id: string): Promise<MeetingDetail> {
   if (USE_MOCKS) return meetingDetailFixture as unknown as MeetingDetail;
   return request<MeetingDetail>(`/meetings/${encodeURIComponent(id)}`);
@@ -283,14 +298,29 @@ export async function reprocessMeeting(
   );
 }
 
+/**
+ * Removes the meeting REVERSIBLY (`DELETE /meetings/{id}`, IAM action `meeting:delete`).
+ *
+ * The row keeps everything — transcript, participants, analyses — and only stops being listed
+ * (ADR 0021's soft delete). This is the one a user reaches for after uploading the wrong file,
+ * and it is deliberately a different function from `eraseMeeting` below rather than a flag on
+ * one: the two take different permissions and only one of them can be undone.
+ *
+ * 204 on success; 404 when it is not in the tenant or was already removed.
+ */
+export async function removeMeeting(meetingId: string): Promise<void> {
+  return request<void>(`/meetings/${encodeURIComponent(meetingId)}`, { method: 'DELETE' });
+}
+
 // ---------- Privacy / LGPD (ADR 0029) ----------
 
 /**
- * Right to be forgotten (LGPD Art. 18): PERMANENTLY deletes the meeting and all
- * the PII in cascade (raw transcript, participants, analyses). Irreversible.
+ * Right to be forgotten (LGPD Art. 18): PERMANENTLY destroys the meeting and all the PII in
+ * cascade (raw transcript, participants, analyses). Irreversible, and gated by its own IAM action
+ * (`meeting:erase`) so a tenant can grant the removal above without granting this.
  * Returns 204; 404 when it does not exist in the tenant (does not leak cross-tenant existence).
  */
-export async function deleteMeeting(meetingId: string): Promise<void> {
+export async function eraseMeeting(meetingId: string): Promise<void> {
   return request<void>(`/privacy/meetings/${encodeURIComponent(meetingId)}`, {
     method: 'DELETE',
   });
@@ -560,13 +590,36 @@ export interface TaskListItemDto {
   updatedAt: string;
 }
 
+/**
+ * `GET /tasks` has been paginated since 2026-08-23 and this type had not caught up: it declared
+ * `items` alone, so a caller could not tell a full list from a page. The endpoint defaults `size`
+ * to its own ceiling of 100 rather than to a small page, precisely so the first page is the whole
+ * list for almost every tenant — but "almost every" is not "every", and the 101st action item is
+ * the one a silent truncation hides. The pagination fields are additive on the wire; declaring
+ * them is what lets a screen know whether it is looking at everything.
+ */
 export interface TaskListResponse {
   items: TaskListItemDto[];
+  page: number;
+  size: number;
+  totalItems: number;
+  totalPages: number;
 }
 
-export async function listTasks(status?: TaskStatus): Promise<TaskListResponse> {
+export interface ListTasksParams {
+  status?: TaskStatus;
+  page?: number;
+  /** Capped at 100 by the backend (`TaskService.MAX_PAGE_SIZE`). */
+  size?: number;
+}
+
+/** Accepts a bare status for the callers that only ever filtered by one. */
+export async function listTasks(params?: TaskStatus | ListTasksParams): Promise<TaskListResponse> {
+  const opts: ListTasksParams = typeof params === 'string' ? { status: params } : (params ?? {});
   const qs = new URLSearchParams();
-  if (status) qs.set('status', status);
+  if (opts.status) qs.set('status', opts.status);
+  if (opts.page !== undefined) qs.set('page', String(opts.page));
+  if (opts.size !== undefined) qs.set('size', String(opts.size));
   const path = qs.toString().length > 0 ? `/tasks?${qs.toString()}` : `/tasks`;
   return request<TaskListResponse>(path);
 }
@@ -671,6 +724,30 @@ export interface AuditEventDto {
   createdAt: string;
 }
 
+/**
+ * One row of the tenant directory (`GET /iam/users`). Four fields and no more: the id every other
+ * IAM endpoint takes, the two things a human recognises a colleague by, and `root` — the flag that
+ * changes the answer, since the API refuses to bound the Root and authorization bypasses them.
+ */
+export interface DirectoryUserDto {
+  id: string;
+  displayName: string;
+  email: string;
+  root: boolean;
+}
+
+/**
+ * The tenant's users. Gated by `iam:group:read`, the same grant that lists a group's members.
+ *
+ * This is what turns the four user-id fields of the IAM screen into real pickers. Before it
+ * existed, the screen had to assemble a directory out of accepted invites, expanded group
+ * membership and audit actors — a list that was good and provably incomplete, so it could only be
+ * offered as suggestions next to a free-text field asking for a UUID nothing displays.
+ */
+export async function listIamUsers(): Promise<DirectoryUserDto[]> {
+  return request<DirectoryUserDto[]>(`/iam/users`);
+}
+
 export async function listGroups(): Promise<GroupDto[]> {
   return request<GroupDto[]>(`/iam/groups`);
 }
@@ -728,6 +805,27 @@ export async function updatePolicyDocument(id: string, document: unknown): Promi
 
 export async function deletePolicy(id: string): Promise<void> {
   return request<void>(`/iam/policies/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/**
+ * One revision of a policy (`GET /iam/policies/{id}/versions`, US36).
+ *
+ * `document` comes back in the SAME shape the write endpoints accept, which is what makes a
+ * revision usable for more than looking at: it can be pasted into the editor to roll a policy
+ * back, and that is the only reason anybody opens a history.
+ */
+export interface PolicyVersionDto {
+  /** 1-based; the highest one is the policy's current document. */
+  version: number;
+  document: unknown;
+  /** Null when the user who wrote this revision has since been deleted. */
+  createdBy: string | null;
+  createdAt: string;
+}
+
+/** Newest first, capped at 100 by the backend. Requires `iam:policy:read`. */
+export async function listPolicyVersions(id: string): Promise<PolicyVersionDto[]> {
+  return request<PolicyVersionDto[]>(`/iam/policies/${encodeURIComponent(id)}/versions`);
 }
 
 /**
@@ -966,11 +1064,67 @@ export async function deleteChatSession(id: string): Promise<void> {
   return request<void>(`/chat/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+/**
+ * The streaming chat call — the one endpoint in the product that is NOT on `API_BASE_URL`.
+ *
+ * `POST /api/chat` is served by this app's own route handler (the LLM key never reaches the
+ * browser), so it cannot go through `request<T>()`: that helper prefixes the backend base URL and
+ * parses the body as JSON, and this body is an NDJSON stream that has to be read as it arrives.
+ *
+ * It lives here anyway, and that is the whole point. The chat used to call `fetch("/api/chat")`
+ * directly from the screen, which meant it was the ONE surface with no 401 interceptor: an expired
+ * access token produced a permanent error bubble in a tab the middleware still considered signed in
+ * (it only checks that the cookie is present), and nothing recovered until the user pressed F5.
+ * There is no proactive refresh to save it either — the timer is only armed by `setSession` at
+ * login, so a reloaded tab has none.
+ *
+ * So this repeats the interceptor of `request`, deliberately and with the same shape: ONE
+ * `sharedRefresh()` — the same single-flight promise every other call awaits, so a burst of 401s
+ * never sends two refreshes with the same cookie and trips the backend's reuse detection — then
+ * ONE retry, then `handleSessionExpired()`. The response is handed back unread; the caller owns
+ * the body.
+ */
+export async function streamChat(
+  body: { messages: { role: 'user' | 'assistant'; content: string }[] },
+  signal?: AbortSignal,
+): Promise<Response> {
+  const call = () =>
+    fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      credentials: 'include',
+      cache: 'no-store',
+      signal,
+    });
+
+  const first = await call();
+  if (first.status !== 401) return first;
+
+  // The 401 body is never read on this path: it is the route's own "Não autenticado.", and
+  // surfacing it would show the user an error for a session we are about to renew.
+  const refreshed = await sharedRefresh();
+  if (refreshed.ok) return call();
+
+  // Refresh failed too. `handleSessionExpired` assigns `window.location.href`, so in the browser
+  // the throw below is normally never observed — it is there for SSR and for tests.
+  await handleSessionExpired();
+  throw new ApiRequestError(401, errorCopy.REFRESH_TOKEN_INVALID);
+}
+
 // ---------- Semantic meeting search (RAG) ----------
 
 /**
  * Searches meetings relevant to a query by semantic similarity.
  * `k` controls how many results to return (backend default). Scoped to the tenant.
+ *
+ * The query goes through `redactPii` first, and that is not belt-and-braces: `/meetings/search`
+ * embeds whatever it is given with an EXTERNAL provider, so this is the same external boundary
+ * ADR 0012 put the shield on. The chat route has always redacted before this call; the command
+ * palette calls it straight from the browser on every keystroke past the debounce, which meant a
+ * CPF or a card number typed into ⌘K reached the provider raw while the identical string typed
+ * into the chat did not. Redacting inside the client is what makes the guarantee independent of
+ * which caller remembers.
  */
 export async function searchMeetings(
   q: string,
@@ -979,7 +1133,7 @@ export async function searchMeetings(
   items: Array<{ id: string; title: string; summarySnippet?: string; startedAt?: string }>;
 }> {
   const qs = new URLSearchParams();
-  qs.set('q', q);
+  qs.set('q', redactPii(q));
   if (typeof k === 'number') qs.set('k', String(k));
   return request<{
     items: Array<{ id: string; title: string; summarySnippet?: string; startedAt?: string }>;

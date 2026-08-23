@@ -14,13 +14,14 @@ import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { searchMeetings } from "@/lib/api/client";
+import { ApiRequestError, searchMeetings } from "@/lib/api/client";
+import { errorCopy } from "@/lib/strings";
 
 type CommandItem = {
   kind: "cmd";
   label: string;
   sub?: string;
-  icon: "plus" | "chat" | "tasks" | "trends" | "usage" | "flow" | "gear" | "shield";
+  icon: "plus" | "chat" | "people" | "tasks" | "trends" | "usage" | "flow" | "gear" | "shield";
   href: Route;
 };
 
@@ -29,6 +30,7 @@ type ResolvedItem = { href: Route };
 const COMMANDS: CommandItem[] = [
   { kind: "cmd", label: "Nova reunião", sub: "N", icon: "plus", href: "/meetings/upload" as Route },
   { kind: "cmd", label: "Nova sessão de chat", icon: "chat", href: "/chat" as Route },
+  { kind: "cmd", label: "Pessoas — quem aparece nas reuniões", icon: "people", href: "/people" as Route },
   { kind: "cmd", label: "Ver action items", icon: "tasks", href: "/tasks" as Route },
   { kind: "cmd", label: "Tendências — temas e carga de tarefas", icon: "trends", href: "/trends" as Route },
   { kind: "cmd", label: "Consumo — reuniões, chamadas de IA e custo estimado", icon: "usage", href: "/usage" as Route },
@@ -50,6 +52,15 @@ function CmdIcon({ name }: { name: CommandItem["icon"] | "doc" | "search" }) {
       return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+      );
+    case "people":
+      return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
         </svg>
       );
     case "tasks":
@@ -131,6 +142,16 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const [query, setQuery] = useState("");
   const [meetings, setMeetings] = useState<MeetingHit[]>([]);
   const [sel, setSel] = useState(0);
+  /**
+   * Why the rate limit gets its own state instead of the generic empty message.
+   *
+   * The search bills an embedding per call and the backend caps it per principal, so a fast
+   * typist reaches `MEETING_RATE_LIMITED` in ordinary use — one call per pause in typing. Every
+   * failure used to become an empty result list, which the palette renders as "nothing found for
+   * X": a refusal to search read as an answer, and the answer was wrong. The message below says
+   * the search did not happen, and the results already on screen stay there instead of vanishing.
+   */
+  const [notice, setNotice] = useState<string | null>(null);
 
   // Focuses the input on open and clears the search. Closing does not need to
   // wipe everything — the reset happens on the next open.
@@ -138,6 +159,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     if (!open) return;
     setQuery("");
     setSel(0);
+    setNotice(null);
     const t = setTimeout(() => inputRef.current?.focus(), 30);
     return () => clearTimeout(t);
   }, [open]);
@@ -151,9 +173,19 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       try {
         const k = query.trim() ? 6 : 4;
         const res = await searchMeetings(query.trim(), k);
-        if (alive) setMeetings(res.items ?? []);
-      } catch {
-        if (alive) setMeetings([]);
+        if (!alive) return;
+        setMeetings(res.items ?? []);
+        setNotice(null);
+      } catch (err) {
+        if (!alive) return;
+        if (err instanceof ApiRequestError && err.status === 429) {
+          // Keep whatever was last found: the previous hits are still the best answer available,
+          // and dropping them would punish the user for typing quickly.
+          setNotice(errorCopy.MEETING_RATE_LIMITED);
+          return;
+        }
+        setMeetings([]);
+        setNotice(null);
       }
     }, query.trim() ? 180 : 0);
     return () => {
@@ -265,7 +297,13 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             );
           })}
 
-          {items.length === 0 && (
+          {notice && (
+            <div className="palette-empty" role="status" data-testid="palette-notice">
+              {notice}
+            </div>
+          )}
+
+          {items.length === 0 && notice === null && (
             <div className="palette-empty">
               {query.trim() ? `Nada encontrado pra “${query.trim()}”.` : "Nenhuma reunião ainda."}
             </div>

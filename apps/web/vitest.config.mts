@@ -21,8 +21,13 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  // No JSX setting here on purpose: the transformer reads `"jsx": "react-jsx"` from
+  // `tsconfig.json`, which is the same automatic runtime Next compiles the app with. Restating it
+  // is what would let the two drift.
   test: {
-    include: ['src/**/*.test.ts'],
+    // `.tsx` as well as `.ts` since 2026-08-23: the suite covers components now, not only pure
+    // modules. `e2e/` stays out below, as it always has.
+    include: ['src/**/*.test.{ts,tsx}'],
     exclude: ['node_modules/**', '.next/**', 'e2e/**'],
 
     // `node` by default because the modules worth testing first are pure. The one file that
@@ -56,7 +61,7 @@ export default defineConfig({
       // has spent several passes removing from its own documents.
       include: ['src/**/*.{ts,tsx}'],
       exclude: [
-        'src/**/*.test.ts',
+        'src/**/*.test.{ts,tsx}',
         // Type-only modules: no statements to execute, so they would report as 0% covered
         // files that cannot be covered by anything.
         'src/lib/api/types.ts',
@@ -71,15 +76,18 @@ export default defineConfig({
       // lines). Read them as "nobody takes these modules below this line". Raising coverage is
       // the work; whoever raises it should raise the floor with it.
       //
-      // No global threshold, on purpose. `apps/web` is at roughly 5% overall, and a global
-      // number would either be symbolic (a floor at 5% gates nothing) or block every UI pull
-      // request a solo maintainer opens. ADR 0018 itself rejected "mandatory total coverage, no
-      // distinction by area" (Alternatives Considered, item 1), and both coverage gates this
+      // No global threshold, on purpose. Whole-app coverage here is low — the screens have no
+      // unit tests — so a global number would either be symbolic (a floor under what exists
+      // gates nothing) or block every UI pull request a solo maintainer opens. The current
+      // figure is whatever the last CI run measured, and is deliberately not quoted here: a
+      // number in a comment is a number that goes stale silently. ADR 0018 itself rejected
+      // "mandatory total coverage, no distinction by area" (Alternatives Considered, item 1),
+      // and both coverage gates this
       // repository actually enforces are scoped to a single unit: JaCoCo on `PolicyEvaluator`,
       // `--cov-fail-under` on `pii_shield.py`.
       //
       // No threshold on `src/lib/api/client.ts` either, and that omission is deliberate rather
-      // than an oversight. The file is one `request()` plus 74 one-line wrappers around it, so a
+      // than an oversight. The file is one `request()` plus 82 one-line wrappers around it, so a
       // file-level percentage measures how many wrappers exist, not how well the shared function
       // is tested: adding twenty endpoints would drop the number and fail the build while
       // changing nothing about the tested behaviour. `request` is covered by

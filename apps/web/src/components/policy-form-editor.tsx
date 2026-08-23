@@ -86,6 +86,11 @@ const ACTION_SUGGESTIONS = [
   "meeting:update",
   "meeting:reprocess",
   "meeting:analyze:live",
+  // Two actions, two grants, on purpose: `delete` is the reversible removal of ADR 0021 and
+  // belongs to anybody who runs meetings, `erase` is the LGPD destruction with no way back.
+  "meeting:delete",
+  "meeting:erase",
+  "stt:session:create",
   "task:read",
   "task:write",
   "tenant:read",
@@ -109,6 +114,9 @@ const ACTION_SUGGESTIONS = [
   "iam:policy:update",
   "iam:policy:delete",
   "iam:policy:simulate",
+  "iam:boundary:read",
+  "iam:boundary:set",
+  "iam:boundary:delete",
   "iam:attachment:create",
   "iam:attachment:delete",
   "iam:audit:read",

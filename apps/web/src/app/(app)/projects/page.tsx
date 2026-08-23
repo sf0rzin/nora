@@ -3,6 +3,8 @@ import type { Route } from "next";
 
 import { listMeetings } from "@/lib/api/client";
 import type { MeetingListItem, ProcessingStatus } from "@/lib/api/types";
+import { buildProjects, type Project } from "@/lib/projects/build-projects";
+import { loadAllPages } from "@/lib/projects/paged";
 import { LOCALE, strings } from "@/lib/strings";
 
 /**
@@ -26,15 +28,6 @@ const STATUS_META: Record<ProcessingStatus, { label: string; color: string }> = 
   FAILED: { label: copy.status.FAILED, color: "var(--danger)" },
 };
 
-type Project = {
-  tag: string;
-  name: string;
-  meetings: MeetingListItem[];
-  open: number;
-  risks: number;
-  last: string;
-};
-
 function prettyTag(tag: string): string {
   const fixes = copy.prettyTagFixes;
   return tag
@@ -42,35 +35,6 @@ function prettyTag(tag: string): string {
     .filter(Boolean)
     .map((w) => fixes[w.toLowerCase()] ?? w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
-}
-
-function buildProjects(items: MeetingListItem[]): Project[] {
-  const byTag = new Map<string, MeetingListItem[]>();
-  for (const m of items) {
-    for (const tag of m.tags ?? []) {
-      const key = tag.trim();
-      if (!key) continue;
-      let bucket = byTag.get(key);
-      if (!bucket) {
-        bucket = [];
-        byTag.set(key, bucket);
-      }
-      bucket.push(m);
-    }
-  }
-
-  const projects: Project[] = [];
-  for (const [tag, meetings] of byTag) {
-    const open = meetings.reduce((a, m) => a + (m.actionItemCount ?? 0), 0);
-    const risks = meetings.reduce((a, m) => a + (m.riskCount ?? 0), 0);
-    const last = meetings
-      .map((m) => m.startedAt)
-      .sort()
-      .reverse()[0];
-    projects.push({ tag, name: prettyTag(tag), meetings, open, risks, last });
-  }
-
-  return projects.sort((a, b) => (a.last < b.last ? 1 : -1));
 }
 
 function fmtDate(iso: string): string {
@@ -119,7 +83,8 @@ function ProjectCard({ p }: { p: Project }) {
           {copy.meetingCount(p.meetings.length)}
         </span>
         <span>
-          <strong style={{ fontWeight: 500, color: "var(--ink)" }}>{p.open}</strong> {copy.openActionItems}
+          <strong style={{ fontWeight: 500, color: "var(--ink)" }}>{p.open}</strong>{" "}
+          {copy.openActionItems}
         </span>
         {p.risks > 0 && (
           <span style={{ color: "var(--danger)" }}>
@@ -227,8 +192,13 @@ function DetailView({ p }: { p: Project }) {
             <span>
               {p.meetings.length} {copy.meetingCount(p.meetings.length)}
             </span>
+            {/* The detail keeps the neutral label over the raw total, so the card ("abertos") and
+                this line ("action items") stay two different claims about two different numbers. */}
             <span>
-              {p.open} {copy.actionItems}
+              {p.total} {copy.actionItems}
+            </span>
+            <span>
+              {p.open} {copy.openActionItems}
             </span>
             {p.risks > 0 && (
               <span style={{ color: "var(--danger)" }}>
@@ -312,22 +282,44 @@ export default async function ProjectsPage({
   const activeTag = sp.tag?.trim() || undefined;
 
   let items: MeetingListItem[] = [];
+  let truncated = false;
+  let totalItems = 0;
   let errorMessage: string | null = null;
   try {
-    const data = await listMeetings({ size: 100 });
-    items = data.items;
+    const loaded = await loadAllPages((params) => listMeetings(params));
+    items = loaded.items;
+    truncated = loaded.truncated;
+    totalItems = loaded.totalItems;
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : copy.loadMeetingsFailed;
   }
 
-  const projects = buildProjects(items);
+  const projects = buildProjects(items, { formatName: prettyTag });
   const active = activeTag ? projects.find((p) => p.tag === activeTag) : undefined;
+  const missingTag = activeTag !== undefined && active === undefined;
 
   return (
     <div className="page">
       {errorMessage && (
         <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--chip)", fontSize: 13, color: "var(--muted)" }}>
           {copy.loadErrorPrefix} ({errorMessage}). {copy.loadErrorSuffix}
+        </div>
+      )}
+
+      {truncated && (
+        <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 9, border: "1px solid var(--border)", background: "var(--chip)", fontSize: 13, color: "var(--muted)" }}>
+          {copy.truncatedNotice(items.length, totalItems)}
+        </div>
+      )}
+
+      {/* A `?tag=` nobody can resolve used to fall through to the full list, so a stale link read
+          as "this project has no meetings any more" — or, worse, as a different project. */}
+      {missingTag && (
+        <div style={{ marginBottom: 16, padding: "12px 14px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--canvas)", fontSize: 13, color: "var(--ink)" }}>
+          <strong style={{ fontWeight: 500 }}>{copy.notFoundTitle}</strong>
+          <div style={{ color: "var(--muted)", marginTop: 4, lineHeight: 1.55 }}>
+            {copy.notFoundBody(activeTag)}
+          </div>
         </div>
       )}
 

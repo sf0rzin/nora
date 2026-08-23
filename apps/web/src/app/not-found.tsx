@@ -1,18 +1,47 @@
 import Link from 'next/link';
 
+/** 404. Tokens and `.btn`, like the rest of the product — see the note in `error.tsx`. */
 export default function NotFound() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
-      <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <p className="mb-2 font-mono text-xs uppercase tracking-wider text-slate-400">404</p>
-        <h1 className="mb-2 text-xl font-semibold text-slate-900">Página não encontrada</h1>
-        <p className="mb-6 text-sm text-slate-600">
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+        background: 'var(--canvas)',
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 440,
+          padding: 32,
+          textAlign: 'center',
+          background: 'var(--canvas)',
+          border: '1px solid var(--border)',
+          borderRadius: 16,
+        }}
+      >
+        <p
+          style={{
+            fontFamily: 'var(--mono)',
+            fontSize: 11.5,
+            letterSpacing: '0.08em',
+            color: 'var(--muted)',
+            margin: '0 0 8px',
+          }}
+        >
+          404
+        </p>
+        <h1 className="h1" style={{ fontSize: 22, marginBottom: 8 }}>
+          Página não encontrada
+        </h1>
+        <p className="lede" style={{ marginBottom: 24 }}>
           A rota que você tentou acessar não existe ou foi removida.
         </p>
-        <Link
-          href="/dashboard"
-          className="inline-block rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-        >
+        <Link href="/dashboard" className="btn btn-primary">
           Voltar para o dashboard
         </Link>
       </div>

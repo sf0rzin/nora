@@ -57,7 +57,10 @@ export default function TasksPage() {
     let active = true;
     setLoading(true);
     setError(null);
-    listTasks(filter === "ALL" ? undefined : filter)
+    // `size` is explicit because `GET /tasks` became paged and its default page is twenty: the
+    // screen was showing the first twenty action items of the workspace and calling it the list.
+    // 100 is the backend's own cap, so this asks for as much as one request can carry.
+    listTasks({ status: filter === "ALL" ? undefined : filter, size: 100 })
       .then((r) => {
         if (active) setItems(r.items);
       })
