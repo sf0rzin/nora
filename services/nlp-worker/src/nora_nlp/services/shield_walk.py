@@ -16,9 +16,7 @@ from __future__ import annotations
 from .pii_shield import redact as pii_redact
 
 
-def shield_field(
-    value: str, counter: list[int], tenant_terms: frozenset[str] = frozenset()
-) -> str:
+def shield_field(value: str, counter: list[int], tenant_terms: frozenset[str] = frozenset()) -> str:
     """Applies PII Shield to an individual field, counting redactions.
 
     `tenant_terms` is this request's admitted trade names, and passing them here is what stops

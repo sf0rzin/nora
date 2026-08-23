@@ -168,10 +168,9 @@ def test_the_rejected_response_never_reaches_the_log(route, body, target, raw, c
     is absent. If this fails, read the log line -- it is a live ADR 0012 violation, not a
     formatting preference.
     """
-    with caplog.at_level(logging.DEBUG):
-        with patch(target) as MockClient:
-            MockClient.return_value = _mock_returning(raw)
-            resp = client.post(route, json=body)
+    with caplog.at_level(logging.DEBUG), patch(target) as MockClient:
+        MockClient.return_value = _mock_returning(raw)
+        resp = client.post(route, json=body)
 
     assert resp.status_code == 502, resp.text
     for token in ("Wanderleia", "Kranz", "confirmou o prazo"):

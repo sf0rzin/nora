@@ -618,8 +618,7 @@ def _opener_coverage_pairs() -> list[tuple[str, str]]:
     entry answers the question the cross product would: that no entry is dead weight.
     """
     pairs = [
-        (w.capitalize(), _OPENER_COVERAGE_PARTNER)
-        for w in sorted(pii_shield._SENTENCE_OPENERS)
+        (w.capitalize(), _OPENER_COVERAGE_PARTNER) for w in sorted(pii_shield._SENTENCE_OPENERS)
     ]
     pairs += [
         (_ORDINARY_COVERAGE_PARTNER, w.capitalize())

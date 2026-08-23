@@ -80,15 +80,15 @@ def available() -> bool:
     return _pipeline() is not None
 
 
-def _pipeline():  # noqa: ANN202 - spaCy's Language type is not importable when spaCy is absent
+def _pipeline():
     global _nlp, _load_failed
     if _nlp is not None or _load_failed:
         return _nlp
     try:
-        import spacy  # noqa: PLC0415 - deliberately deferred: the dependency is optional
+        import spacy
 
         _nlp = spacy.load(_MODEL, disable=list(_DISABLED))
-    except Exception as exc:  # noqa: BLE001 - any failure means "run without the backstop"
+    except Exception as exc:
         _load_failed = True
         # info, not warning: on a deployment that chose not to ship the model this is the
         # expected state, and a warning on every boot trains people to ignore warnings.
@@ -100,7 +100,7 @@ def _pipeline():  # noqa: ANN202 - spaCy's Language type is not importable when 
     return _nlp
 
 
-def person_spans(text: str, is_negative) -> list[tuple[int, int]]:  # noqa: ANN001
+def person_spans(text: str, is_negative) -> list[tuple[int, int]]:
     """Character spans of person names the deterministic pass did not claim.
 
     `is_negative` is `pii_shield`'s own token test, passed in rather than imported, so the two
@@ -122,7 +122,7 @@ def person_spans(text: str, is_negative) -> list[tuple[int, int]]:  # noqa: ANN0
 
     try:
         doc = nlp(text)
-    except Exception:  # noqa: BLE001 - a model failure must not take the request down
+    except Exception:
         logger.exception("NER backstop raised; falling back to the deterministic shield alone")
         return []
 
@@ -146,7 +146,7 @@ def person_spans(text: str, is_negative) -> list[tuple[int, int]]:  # noqa: ANN0
     return spans
 
 
-def _trim(value: str, is_negative) -> tuple[int, int] | None:  # noqa: ANN001
+def _trim(value: str, is_negative) -> tuple[int, int] | None:
     """Shrinks a span to its name core, or refuses it. Offsets are relative to `value`.
 
     THE MODEL DOES NOT KNOW WHERE A NAME ENDS, and this is the single correction that makes its

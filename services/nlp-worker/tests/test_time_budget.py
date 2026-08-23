@@ -212,9 +212,11 @@ def test_the_json_mode_fallback_is_not_attempted_once_the_budget_is_gone():
         tenantContext=_TENANT_CONTEXT,
     )
 
-    with patch("nora_nlp.services.llm_analyzer.LlmClient", return_value=instance):
-        with pytest.raises(LlmBudgetExceededError):
-            llm_analyzer.analyze(req, _make_settings())
+    with (
+        patch("nora_nlp.services.llm_analyzer.LlmClient", return_value=instance),
+        pytest.raises(LlmBudgetExceededError),
+    ):
+        llm_analyzer.analyze(req, _make_settings())
 
     instance.chat_json.assert_not_called()
 
@@ -226,9 +228,11 @@ def test_the_live_path_does_not_fall_back_either_once_the_budget_is_gone():
     )
     req = LiveAnalyzeRequest(transcriptChunk=_TRANSCRIPT, language="pt-BR")
 
-    with patch("nora_nlp.services.live_analyzer.LlmClient", return_value=instance):
-        with pytest.raises(LlmBudgetExceededError):
-            live_analyzer.analyze(req, _make_settings())
+    with (
+        patch("nora_nlp.services.live_analyzer.LlmClient", return_value=instance),
+        pytest.raises(LlmBudgetExceededError),
+    ):
+        live_analyzer.analyze(req, _make_settings())
 
     instance.chat_json.assert_not_called()
 
@@ -260,9 +264,11 @@ def test_split_spends_one_budget_across_its_windows_and_not_one_per_window(monke
     budget = TimeBudget(90.0, clock=_StepClock(25.0))
     req = SplitRequest(transcript=transcript, language="pt-BR")
 
-    with patch("nora_nlp.services.split_analyzer.LlmClient", return_value=instance):
-        with pytest.raises(LlmBudgetExceededError):
-            split_analyzer.analyze(req, redacted_lines, _make_settings(), budget=budget)
+    with (
+        patch("nora_nlp.services.split_analyzer.LlmClient", return_value=instance),
+        pytest.raises(LlmBudgetExceededError),
+    ):
+        split_analyzer.analyze(req, redacted_lines, _make_settings(), budget=budget)
 
     assert instance.chat_structured.call_count == 2, (
         "the budget is being read per window instead of across the request -- with windows still "
@@ -314,9 +320,8 @@ def test_an_exhausted_budget_is_a_gateway_timeout_and_not_a_server_error(
     `OpenAI` is patched so a regression fails on the assertion rather than on the network. The
     provider is never reached on this path -- that is what the budget is for.
     """
-    with caplog.at_level(logging.DEBUG):
-        with patch("nora_nlp.clients.llm.OpenAI"):
-            resp = client.post(route, json=body)
+    with caplog.at_level(logging.DEBUG), patch("nora_nlp.clients.llm.OpenAI"):
+        resp = client.post(route, json=body)
 
     assert resp.status_code == 504, resp.text
     detail = resp.json()["detail"]

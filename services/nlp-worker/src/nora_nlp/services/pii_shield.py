@@ -91,9 +91,16 @@ _LOWER = "a-zß-öø-ÿ"
 # placeholder, and refusing the span instead is what published a whole name the last time this
 # guard was widened without measuring. The narrower spelling is the common one; the wider one
 # is a known gap, not an oversight.
-_NAME_SEPARATORS = "-'’"
+# The RIGHT SINGLE QUOTATION MARK is the point of this string, not a typo in it. Transcripts
+# arrive with both apostrophes — the ASCII one from a keyboard, the typographic one from a word
+# processor or an ASR export — and a shield that knew only the ASCII one would redact the name
+# typed on a keyboard and leak the same name pasted from Word. Hence the `noqa`: ruff's
+# ambiguous-character rule is right in general and wrong about a table of separators, which is
+# exactly where such a character belongs. (Spelled out rather than shown, because a comment
+# demonstrating the character trips the same rule one line up from the code it explains.)
+_NAME_SEPARATORS = "-'’"  # noqa: RUF001
 _TITLE_WORD = (
-    f"(?:[{_UPPER}]['’])?"
+    f"(?:[{_UPPER}]['’])?"  # noqa: RUF001
     f"[{_UPPER}][{_LOWER}]+(?:[{_NAME_SEPARATORS}][{_UPPER}][{_LOWER}]+)*"
 )
 
@@ -2315,7 +2322,7 @@ def _ends_on_a_word_boundary(end: int, text: str) -> bool:
     # is a department suffix -- "Carlos Silva-TI", "Ana Souza-RH" is a standard speaker label --
     # and refusing the span there dropped it whole, publishing the surname. A lowercase tail is
     # a suffix ("Silva-jr") for the same reason. This mirrors `_TITLE_WORD`'s own separator
-    # branch, which joins `[-'’][UPPER][lower]+` and nothing else.
+    # branch, which joins a separator followed by `[UPPER][lower]+` and nothing else.
     return not re.match(f"[{_NAME_SEPARATORS}][{_UPPER}][{_LOWER}]", text[end : end + 3])
 
 
@@ -3088,11 +3095,13 @@ def redact(text: str, tenant_terms: frozenset[str] = frozenset()) -> PiiRedactio
     """
     text = unicodedata.normalize("NFC", text)
 
-    baseline_text, baseline_redactions, baseline_spans, intermediate, baseline_counters = (
-        _one_pass(text, frozenset())
+    baseline_text, baseline_redactions, baseline_spans, intermediate, baseline_counters = _one_pass(
+        text, frozenset()
     )
     if not tenant_terms:
-        return _with_ner_backstop(baseline_text, baseline_redactions, baseline_counters, tenant_terms)
+        return _with_ner_backstop(
+            baseline_text, baseline_redactions, baseline_counters, tenant_terms
+        )
 
     # `intermediate` comes from the baseline pass and the span coordinates belong to it. The
     # candidate pass recomputes the same string -- `_apply_basic_patterns` takes no tenant
@@ -3171,6 +3180,7 @@ def _apply_ner_backstop(
 
     Applied back-to-front so an earlier span's coordinates survive a later replacement.
     """
+
     # The vocabulary handed to the backstop is WIDER than the negative list, and that is the
     # difference between this layer helping and this layer costing more than it buys. The model
     # knows nothing about weekdays, business areas or the tenant's own trade names: measured over
@@ -3211,9 +3221,7 @@ def _apply_ner_backstop(
         placeholder = f"[[{PiiType.PERSON_NAME.value}_{counters[PiiType.PERSON_NAME]}]]"
         rebuilt = rebuilt[:start] + placeholder + rebuilt[end:]
         redactions.append(
-            Redaction(
-                placeholder=placeholder, type=PiiType.PERSON_NAME, originalHash=_hash(value)
-            )
+            Redaction(placeholder=placeholder, type=PiiType.PERSON_NAME, originalHash=_hash(value))
         )
     # Reversed so the reported order follows the text, like every other list here.
     redactions.reverse()

@@ -67,8 +67,7 @@ def _schema_error_summary(exc: ValidationError) -> str:
     value is what they must not be shown. ADR 0012.
     """
     parts = [
-        f"{'.'.join(str(p) for p in err['loc']) or '<root>'}: {err['type']}"
-        for err in exc.errors()
+        f"{'.'.join(str(p) for p in err['loc']) or '<root>'}: {err['type']}" for err in exc.errors()
     ]
     return "; ".join(parts) if parts else "no field detail"
 

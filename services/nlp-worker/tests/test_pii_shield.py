@@ -204,7 +204,10 @@ def test_a_trim_never_splices_a_placeholder_into_a_surname():
     [
         ("Maria Sant'Anna aprovou o escopo.", "Sant'Anna"),
         ("Maria Sant'Ana aprovou o escopo.", "Sant'Ana"),
-        ("Maria Sant’Anna aprovou o escopo.", "Sant’Anna"),
+        # The typographic apostrophe is the case under test, not a stray character: a shield
+        # that knows only the ASCII one redacts the name typed on a keyboard and leaks the same
+        # name pasted out of a word processor. Hence the `noqa` here and on the two assertions.
+        ("Maria Sant’Anna aprovou o escopo.", "Sant’Anna"),  # noqa: RUF001
         ("Carlos D'Angelo assumiu a conta.", "D'Angelo"),
         ("Sra. D'Ávila confirmou o prazo.", "D'Ávila"),
     ],
@@ -226,8 +229,8 @@ def test_a_surname_with_an_apostrophe_is_redacted_whole(text, surname):
     result = pii_shield.redact(text)
     assert surname not in result.redacted_text, result.redacted_text
     # The tail on its own, which is what a cut at the apostrophe would leave behind.
-    assert surname.split("'")[-1].split("’")[-1] not in result.redacted_text
-    assert not re.search(r"\]\][\w'’]", result.redacted_text), result.redacted_text
+    assert surname.split("'")[-1].split("’")[-1] not in result.redacted_text  # noqa: RUF001
+    assert not re.search(r"\]\][\w'’]", result.redacted_text), result.redacted_text  # noqa: RUF001
     assert "[[PERSON_NAME_1]]" in result.redacted_text
 
 
