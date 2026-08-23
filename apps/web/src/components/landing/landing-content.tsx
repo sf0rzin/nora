@@ -20,6 +20,15 @@ function Check({ size = 14, strokeWidth = 2.4 }: { size?: number; strokeWidth?: 
   );
 }
 
+/**
+ * Marks a line as planned rather than delivered. The page keeps the product
+ * narrative (issue #456, option 2), so anything that is not built yet has to be
+ * legible as roadmap at a glance instead of reading as a shipped feature.
+ */
+function RoadmapTag() {
+  return <span className="roadmap-tag">Roadmap</span>;
+}
+
 // ── How it works ──
 export function LandingHowItWorks() {
   return (
@@ -88,7 +97,8 @@ export function LandingHowItWorks() {
             <span className="step-num">03 · Você recebe</span>
             <h3>Resumo navegável + integração.</h3>
             <p>
-              Resumo, decisões, tasks com prioridade. Empurre pra Linear, Jira ou Calendar via MCP.
+              Resumo, decisões, tasks com prioridade. Empurre pra Linear, GitHub ou Calendar pelos
+              conectores OAuth.
             </p>
             <div className="step-visual">
               <div className="mock-summary">
@@ -128,7 +138,7 @@ const PROMISES = [
   },
   {
     title: "Nunca treinam modelos",
-    body: "Suas reuniões não viram fine-tune de ninguém. Garantia contratual no DPA Enterprise.",
+    body: "Suas reuniões não viram fine-tune de ninguém. Antes de qualquer chamada a um LLM externo, o PII Shield redige CPF, CNPJ, e-mail, telefone, cartão e nomes.",
     icon: (
       <svg
         width="16"
@@ -147,7 +157,7 @@ const PROMISES = [
   },
   {
     title: "Direito ao esquecimento",
-    body: "Apaga tudo permanentemente em um clique. LGPD Art. 18, sem trâmite, sem ligação.",
+    body: "Apagar uma reunião é definitivo: transcrição, participantes, tags e análises somem junto, sem trâmite e sem ligação. LGPD Art. 18.",
     icon: (
       <svg
         width="16"
@@ -166,8 +176,8 @@ const PROMISES = [
     ),
   },
   {
-    title: "Auditoria imutável",
-    body: "Quem acessou qual transcrição, quando, de onde. Log versionado com versionamento de policies (ADR 0007).",
+    title: "Trilha de auditoria",
+    body: "Login, cadastro, troca de senha, upload e reprocessamento de reunião ficam registrados com autor, alvo e horário — visíveis na tela de IAM (ADR 0007).",
     icon: (
       <svg
         width="16"
@@ -213,18 +223,20 @@ export function LandingPrivacy() {
           ))}
         </div>
 
+        {/* Only numbers the code backs, and none that goes stale on its own — the ADR
+            count and the audio-retention window were both fiction. */}
         <div className="privacy-strip">
           <div className="privacy-stat">
-            <span className="privacy-stat-num">21</span>
-            <span className="privacy-stat-lbl">ADRs aceitos</span>
-          </div>
-          <div className="privacy-stat">
-            <span className="privacy-stat-num">30</span>
-            <span className="privacy-stat-lbl">dias de retenção de áudio (default)</span>
+            <span className="privacy-stat-num">0</span>
+            <span className="privacy-stat-lbl">áudio guardado no servidor</span>
           </div>
           <div className="privacy-stat">
             <span className="privacy-stat-num">0</span>
             <span className="privacy-stat-lbl">dados de cliente em treinamento</span>
+          </div>
+          <div className="privacy-stat">
+            <span className="privacy-stat-num">RLS</span>
+            <span className="privacy-stat-lbl">isolamento por tenant aplicado no banco</span>
           </div>
           <div className="privacy-stat">
             <span className="privacy-stat-num">100%</span>
@@ -237,12 +249,14 @@ export function LandingPrivacy() {
 }
 
 // ── Pricing ──
+// No quota is enforced anywhere in the API, so the plan list stops quoting one.
 const CORE_FEATURES = [
   "Resumo + decisões + action items",
   "Productivity Score opt-in",
   "PII Shield pessoal completo",
-  "30 reuniões/mês · projetos ilimitados",
-  "Integrações MCP (Calendar, Linear, GitHub)",
+  "Reuniões e projetos sem limite de cota",
+  "Integrações OAuth: Calendar, Linear, GitHub, Notion, Slack, Trello, Todoist, Telegram",
+  "Servidor MCP somente leitura pros seus agentes",
   "Desktop app (Windows, macOS, Linux)",
 ];
 
@@ -289,23 +303,24 @@ export function LandingPricing() {
           <div className="pricing-card highlighted">
             <div className="pricing-head">
               <span className="badge ent">Enterprise</span>
+              <RoadmapTag />
               <h3>Motor de receita pra equipes</h3>
               <p>Pra times comerciais e empresas que vivem em conversas com cliente.</p>
             </div>
             <div className="pricing-price">
-              <span className="num">Sob consulta</span>
-              <span className="unit">por seat / mês</span>
+              <span className="num">A definir</span>
+              <span className="unit">a Nora ainda não é comercializada</span>
             </div>
             <ul className="pricing-features">
               <li>
                 <Check />
-                Tudo do Core, sem limites
+                Tudo do Core
               </li>
               <li>
                 <Check />
                 <span>
-                  <strong>Product Context</strong> — catálogo de produtos, concorrentes, glossário
-                  via RAG
+                  <strong>Product Context</strong> — catálogo de produtos, concorrentes, ICP e
+                  objeções
                 </span>
               </li>
               <li>
@@ -322,20 +337,21 @@ export function LandingPricing() {
               </li>
               <li>
                 <Check />
-                SSO SAML 2.0 · Entra ID · multi-tenancy isolado
+                Multi-tenancy isolado por tenant_id, com RLS no Postgres
               </li>
               <li>
                 <Check />
-                Suporte BR · SLA enterprise · DPA assinado
+                <span>
+                  Glossário do workspace via RAG <RoadmapTag />
+                </span>
               </li>
             </ul>
-            <a
-              href="#cta"
-              className="btn btn-primary btn-lg"
-              style={{ justifyContent: "center", background: "var(--accent)" }}
-            >
-              Falar com vendas
-            </a>
+            {/* No sales channel exists, so the card carries a note instead of a
+                button that only scrolls the page back to the signup section. */}
+            <p className="pricing-note">
+              Sem canal comercial por enquanto: o plano Enterprise é a direção do produto, não uma
+              assinatura que dá pra fechar hoje.
+            </p>
           </div>
         </div>
       </div>
@@ -347,11 +363,11 @@ export function LandingPricing() {
 const FAQS = [
   {
     q: "Nora grava minhas reuniões?",
-    a: "Não. Nora processa transcrições que você sobe ou áudio que o app Desktop captura. Áudio temporário é descartado após a transcrição (padrão 30 dias). Você pode reduzir o TTL pra zero — apaga assim que termina.",
+    a: "Não. A Nora processa transcrições que você sobe; no app Desktop, a captura e a transcrição acontecem na sua máquina — o áudio não passa pela infraestrutura da Nora, só o texto. No servidor existe uma purga automática por idade da reunião, mas ela vem desligada por padrão: enquanto ninguém configurar uma janela de retenção, nada é apagado sozinho. Apagar uma reunião em definitivo é uma ação sua, a qualquer momento.",
   },
   {
     q: "E a LGPD? Meus dados podem ser usados pra treinar modelos?",
-    a: "Nunca. Antes de qualquer envio a um LLM externo, o PII Shield detecta e redige CPF, CNPJ, e-mail, telefone, cartão e nomes brasileiros. Nenhum dado seu treina modelos de terceiros. Você tem direito ao esquecimento (Art. 18) com um clique.",
+    a: "Nunca. Antes de qualquer envio a um LLM externo, o PII Shield detecta e redige CPF, CNPJ, e-mail, telefone, cartão e nomes brasileiros. Nenhum dado seu treina modelos de terceiros. E o direito ao esquecimento (Art. 18) é exercido reunião a reunião: apagar uma é permanente e leva junto transcrição, participantes e análises.",
   },
   {
     q: "Funciona com Google Meet, Zoom, Teams?",
@@ -363,15 +379,15 @@ const FAQS = [
   },
   {
     q: "Qual a diferença pro Gong / Otter / Fireflies?",
-    a: "Gong e Clari são caros, em inglês e usam conhecimento genérico. Otter e Fireflies só transcrevem. Nora aprende o vocabulário do seu workspace (produtos, concorrentes, glossário) e devolve análise estruturada — em português, com conformidade LGPD.",
+    a: "Gong e Clari são caros, em inglês e usam conhecimento genérico. Otter e Fireflies só transcrevem. Nora aprende o contexto do seu workspace (produtos, concorrentes, ICP, objeções) e devolve análise estruturada — em português, com conformidade LGPD.",
   },
   {
-    q: "Posso integrar com Linear / Jira / CRM?",
-    a: "Sim, via Model Context Protocol (MCP). Action items detectadas viram issues no Linear/Jira, resumo vai pro evento do Calendar, e (Enterprise) contexto comercial vai pro Salesforce/HubSpot. Pós-MVP comercial — disponível mediante solicitação.",
+    q: "Posso integrar com Linear, GitHub, Slack?",
+    a: "Sim, por OAuth: você conecta a sua conta na tela de Integrações e os fluxos escrevem por lá. Hoje existem conectores de Google (Gmail + Calendar), Microsoft (Outlook + Calendar), Slack, Telegram, GitHub, Notion, Todoist, Linear e Trello. Jira, Salesforce e Pipedrive estão no roadmap, sem data. O servidor MCP da Nora é o caminho contrário: ele expõe cinco ferramentas somente leitura pro seu agente consultar reuniões, tasks e Customer Confidence — MCP não escreve nada nas suas ferramentas.",
   },
   {
     q: "Onde os dados ficam armazenados?",
-    a: "Em servidor próprio, autogerenciado. Nenhum serviço da aplicação fica acessível diretamente da internet: as portas que o stack publica ficam restritas ao loopback da máquina, e todo o acesso público entra por um túnel de saída. O isolamento entre organizações é feito por tenant_id em toda consulta ao banco. Você pode solicitar exportação ou exclusão de todos os seus dados a qualquer momento.",
+    a: "Em servidor próprio, autogerenciado. Nenhum serviço da aplicação fica acessível diretamente da internet: as portas que o stack publica ficam restritas ao loopback da máquina, e todo o acesso público entra por um túnel de saída. O isolamento entre organizações é feito por tenant_id em toda consulta ao banco. Você pode apagar qualquer reunião em definitivo a qualquer momento; exportação em massa dos seus dados ainda está no roadmap.",
   },
 ];
 
@@ -428,8 +444,10 @@ export function LandingFinalCTA() {
                   <polyline points="12 5 19 12 12 19" />
                 </svg>
               </Link>
-              <a href="#planos" className="btn btn-ghost btn-lg">
-                Agendar uma demo
+              {/* There is nobody to schedule a demo with; the demo that exists is the
+                  interactive section further up the page. */}
+              <a href="#demo" className="btn btn-ghost btn-lg">
+                Ver a demonstração
               </a>
             </div>
           </div>
@@ -440,6 +458,8 @@ export function LandingFinalCTA() {
 }
 
 // ── Footer ──
+const REPO_URL = "https://github.com/sf0rzin/nora";
+
 export function LandingFooter() {
   return (
     <footer>
@@ -468,20 +488,34 @@ export function LandingFooter() {
               </li>
             </ul>
           </div>
+          {/* Every link here points at something that exists. The old "Empresa" column
+              (Sobre, Carreiras, Blog, Contato) and the Termos/Status entries were
+              href="#" placeholders for pages and documents that were never written. */}
           <div className="footer-col">
-            <h4>Empresa</h4>
+            <h4>Projeto</h4>
             <ul>
               <li>
-                <a href="#">Sobre</a>
+                <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
+                  Repositório
+                </a>
               </li>
               <li>
-                <a href="#">Carreiras</a>
+                <a
+                  href={`${REPO_URL}/tree/main/docs/adr`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  ADRs
+                </a>
               </li>
               <li>
-                <a href="#">Blog</a>
-              </li>
-              <li>
-                <a href="#">Contato</a>
+                <a
+                  href={`${REPO_URL}/tree/main/docs/challenge`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Challenge FIAP
+                </a>
               </li>
             </ul>
           </div>
@@ -489,23 +523,19 @@ export function LandingFooter() {
             <h4>Recursos</h4>
             <ul>
               <li>
-                <a href="#">Documentação</a>
+                <a href={`${REPO_URL}/tree/main/docs`} target="_blank" rel="noopener noreferrer">
+                  Documentação
+                </a>
               </li>
               <li>
                 <a href="#privacidade">Privacidade · LGPD</a>
-              </li>
-              <li>
-                <a href="#">Termos</a>
-              </li>
-              <li>
-                <a href="#">Status</a>
               </li>
             </ul>
           </div>
         </div>
         <div className="footer-meta">
           <span>© 2026 Nora · Construído em São Paulo</span>
-          <span>v1.11 · 21 ADRs aceitos</span>
+          <span>Código e decisões de arquitetura abertos no repositório</span>
         </div>
       </div>
     </footer>

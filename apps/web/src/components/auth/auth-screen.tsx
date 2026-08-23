@@ -146,10 +146,10 @@ function LeftPanel() {
       </div>
       <div className="left-foot">
         <span>© 2026 Nora</span>
+        {/* Only the privacy section exists as a page; Termos and Status pointed at
+            documents that were never written. */}
         <div className="links">
-          <a href="#">Privacidade</a>
-          <a href="#">Termos</a>
-          <a href="#">Status</a>
+          <Link href="/#privacidade">Privacidade · LGPD</Link>
         </div>
       </div>
     </div>
@@ -191,16 +191,6 @@ function ArrowLeftIcon() {
     </svg>
   );
 }
-function MicrosoftIcon() {
-  return (
-    <svg viewBox="0 0 23 23" width="16" height="16" aria-hidden="true">
-      <rect x="1" y="1" width="10" height="10" fill="#F25022" />
-      <rect x="12" y="1" width="10" height="10" fill="#7FBA00" />
-      <rect x="1" y="12" width="10" height="10" fill="#00A4EF" />
-      <rect x="12" y="12" width="10" height="10" fill="#FFB900" />
-    </svg>
-  );
-}
 function EyeIcon({ shown }: { shown: boolean }) {
   return shown ? (
     <svg
@@ -234,10 +224,10 @@ function EyeIcon({ shown }: { shown: boolean }) {
   );
 }
 
-// SSO not wired up yet (Entra ID) — button active by design; back-end is a separate issue.
-const SSO_NOTICE = "Login com Microsoft ainda não está disponível — em integração.";
-
 // ── Login ──
+// Corporate SSO (Entra ID / SAML) is a declared WONT — ADR 0038 §4 kills US05 outright, not
+// defers it — so neither form offers a Microsoft button: no notice, no disabled control, no
+// "coming soon". E-mail and password is the whole authentication surface.
 function LoginForm({ onSwitchToSignup, next }: { onSwitchToSignup: () => void; next: Route }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -301,15 +291,6 @@ function LoginForm({ onSwitchToSignup, next }: { onSwitchToSignup: () => void; n
         <h2>Bem-vindo de volta.</h2>
         <p>Entre na sua conta Nora pra continuar.</p>
       </div>
-
-      <div className="sso-row">
-        <button type="button" className="sso-btn" onClick={() => setErr(SSO_NOTICE)}>
-          <MicrosoftIcon />
-          Continuar com Microsoft
-        </button>
-      </div>
-
-      <div className="divider">ou</div>
 
       {err && (
         <div className="error-banner">
@@ -408,7 +389,6 @@ function LoginForm({ onSwitchToSignup, next }: { onSwitchToSignup: () => void; n
               Criar agora
             </button>
           </span>
-          <span style={{ fontSize: 11, letterSpacing: "0.04em" }}>SSO · SAML</span>
         </div>
       </form>
     </div>
@@ -443,7 +423,13 @@ type SignupData = {
   agreed: boolean;
 };
 
-function SignupForm({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
+function SignupForm({
+  onSwitchToLogin,
+  question,
+}: {
+  onSwitchToLogin: () => void;
+  question: string;
+}) {
   const [stepIdx, setStepIdx] = useState(0);
   const [data, setData] = useState<SignupData>({
     email: "",
@@ -571,16 +557,32 @@ function SignupForm({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
 
       {err && <div className="error-banner">{err}</div>}
 
+      {/* The question typed in the landing composer arrives as `?q=`. Signing in carries it to
+          the chat, which now seeds its composer from it; it is shown here as well because signup
+          ends at e-mail verification, and several minutes pass before the visitor sees it again. */}
+      {question && step.id === "email" && (
+        <div
+          style={{
+            margin: "0 0 18px",
+            padding: "12px 14px",
+            borderRadius: 10,
+            background: "var(--accent-soft)",
+            color: "var(--accent-ink)",
+          }}
+        >
+          <div style={{ fontSize: 11, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+            Sua pergunta
+          </div>
+          <p style={{ margin: "6px 0 0", fontSize: 13.5, lineHeight: 1.5 }}>“{question}”</p>
+          <p style={{ margin: "6px 0 0", fontSize: 11.5, opacity: 0.85 }}>
+            Guardamos ela pra você: assim que entrar, ela já vai estar escrita no chat.
+          </p>
+        </div>
+      )}
+
       <form onSubmit={submit}>
         {step.id === "email" && (
           <>
-            <div className="sso-row">
-              <button type="button" className="sso-btn" onClick={() => setErr(SSO_NOTICE)}>
-                <MicrosoftIcon />
-                Cadastrar com Microsoft
-              </button>
-            </div>
-            <div className="divider">ou com e-mail</div>
             <div className="field">
               <label className="field-label" htmlFor="su-name">
                 Nome completo
@@ -741,10 +743,13 @@ function SignupForm({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
                 checked={data.agreed}
                 onChange={(e) => update({ agreed: e.target.checked })}
               />
+              {/* There is no Terms of Use and no Privacy Policy document to accept — the
+                  checkbox now points at the only text that exists, the privacy section. */}
               <span>
-                Li e aceito os <a href="#">Termos de Uso</a> e a{" "}
-                <a href="#">Política de Privacidade</a>. Entendo que Nora é LGPD-compliant e que
-                posso solicitar exclusão dos meus dados a qualquer momento.
+                Li a <Link href="/#privacidade">seção de privacidade</Link> e entendo que a Nora
+                ainda não
+                opera comercialmente: não existem Termos de Uso nem Política de Privacidade
+                assinados. Posso apagar minhas reuniões em definitivo a qualquer momento.
               </span>
             </label>
           </>
@@ -794,17 +799,33 @@ function SignupForm({ onSwitchToLogin }: { onSwitchToLogin: () => void }) {
 // ── Shell ──
 export function AuthScreen({ initialMode }: { initialMode: Mode }) {
   const params = useSearchParams();
-  const next = safeNextPath(params.get("next"));
+  // Capped: the composer is a textarea, and this only has to be readable on screen.
+  const question = (params.get("q") ?? "").trim().slice(0, 280);
+  /**
+   * Where signing in lands. An explicit `next` always wins — it is how the middleware sends
+   * somebody back to the page they were trying to reach. Failing that, a visitor who arrived
+   * carrying a question from the landing composer goes to the chat with it, which is the last
+   * hop of the promise the landing makes; everybody else goes to the dashboard.
+   */
+  const next = params.get("next")
+    ? safeNextPath(params.get("next"))
+    : question
+      ? (`/chat?q=${encodeURIComponent(question)}` as Route)
+      : ("/dashboard" as Route);
   const [mode, setMode] = useState<Mode>(initialMode);
 
   function switchTo(m: Mode) {
     setMode(m);
     if (typeof window !== "undefined") {
+      // The rewrite used to drop every parameter but `next`, which is what threw the
+      // visitor's question away on the first toggle between login and signup.
+      const qs = new URLSearchParams();
       const nextQs = params.get("next");
-      const url =
-        m === "signup"
-          ? "/auth/signup"
-          : `/auth/login${nextQs ? `?next=${encodeURIComponent(nextQs)}` : ""}`;
+      if (nextQs && m === "login") qs.set("next", nextQs);
+      const rawQuestion = params.get("q");
+      if (rawQuestion) qs.set("q", rawQuestion);
+      const search = qs.toString();
+      const url = `${m === "signup" ? "/auth/signup" : "/auth/login"}${search ? `?${search}` : ""}`;
       window.history.replaceState(null, "", url);
     }
   }
@@ -817,7 +838,7 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
           {mode === "login" ? (
             <LoginForm next={next} onSwitchToSignup={() => switchTo("signup")} />
           ) : (
-            <SignupForm onSwitchToLogin={() => switchTo("login")} />
+            <SignupForm question={question} onSwitchToLogin={() => switchTo("login")} />
           )}
         </div>
       </div>

@@ -478,55 +478,6 @@
   justify-content: space-between;
 }
 
-/* SSO */
-.nora-auth .sso-row {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 20px;
-}
-.nora-auth .sso-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 14px;
-  background: var(--canvas);
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  color: var(--ink);
-  font-family: var(--sans);
-  font-size: 13.5px;
-  font-weight: 500;
-  letter-spacing: -0.005em;
-  cursor: pointer;
-  transition:
-    background 140ms ease,
-    border-color 140ms ease;
-}
-.nora-auth .sso-btn:hover {
-  background: var(--sidebar);
-  border-color: var(--muted);
-}
-.nora-auth .divider {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  font-size: 11px;
-  color: var(--muted);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  margin: 18px 0;
-}
-.nora-auth .divider::before,
-.nora-auth .divider::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-}
-
 /* Workspace step */
 .nora-auth .role-options {
   display: grid;

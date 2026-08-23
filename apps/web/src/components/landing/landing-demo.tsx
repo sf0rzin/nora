@@ -36,12 +36,21 @@ function WordSpotlight() {
           const meta = KIND_META[t.kind];
           const isActive = active === i;
           return (
-            <span
+            // <mark> because these are annotated stretches of text, not controls: it
+            // reaches the keyboard through tabIndex and carries its classification in
+            // the text itself, so the colour is never the only thing that says it.
+            <mark
               key={i}
               className="spot-tok"
               data-kind={t.kind}
+              tabIndex={0}
               onMouseEnter={() => setActive(i)}
               onMouseLeave={() => setActive(null)}
+              onFocus={() => setActive(i)}
+              onBlur={() => setActive(null)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setActive(null);
+              }}
               style={{
                 background: isActive ? meta.bg : "transparent",
                 color: isActive ? meta.color : "var(--ink)",
@@ -51,12 +60,13 @@ function WordSpotlight() {
               }}
             >
               {t.text}
+              <span className="spot-tok-sr"> — {meta.label}</span>
               {isActive && (
-                <span className="spot-tag" style={{ background: meta.color }}>
+                <span className="spot-tag" style={{ background: meta.color }} aria-hidden="true">
                   {meta.label}
                 </span>
               )}
-            </span>
+            </mark>
           );
         })}
       </div>
@@ -67,7 +77,9 @@ function WordSpotlight() {
             {m.label}
           </span>
         ))}
-        <span className="legend-hint">Passe o mouse sobre qualquer palavra destacada.</span>
+        <span className="legend-hint">
+          Passe o mouse ou percorra os trechos destacados com Tab.
+        </span>
       </div>
     </div>
   );
@@ -83,7 +95,7 @@ export function LandingDemo() {
           <h2 className="section-title">Da conversa à inteligência, palavra por palavra.</h2>
           <p className="section-subtitle">
             A Nora classifica cada trecho — decisão, action item, PII, concorrente — e devolve tudo
-            estruturado. Passe o mouse pra ver.
+            estruturado. Passe o mouse ou use o Tab pra ver a classificação de cada um.
           </p>
         </div>
         <div className="demo-shell-v2">

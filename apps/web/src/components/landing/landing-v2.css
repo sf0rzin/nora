@@ -341,36 +341,29 @@
   }
 }
 
-/* logos strip */
-.nora-landing .logos-strip {
+/* project context strip (took the place of the customer logo strip) */
+.nora-landing .context-strip {
   position: relative;
   z-index: 3;
   background: var(--canvas);
   margin-top: clamp(24px, 5vh, 56px);
   padding: 36px 0 12px;
   display: flex;
-  align-items: center;
-  gap: 24px;
+  align-items: baseline;
+  gap: 10px 24px;
   flex-wrap: wrap;
   border-top: 1px solid var(--border);
 }
-.nora-landing .logos-strip .lead {
-  font-size: 12px;
-  color: var(--muted);
-}
-.nora-landing .logos-strip .row {
-  display: flex;
-  align-items: center;
-  gap: 28px;
-  flex-wrap: wrap;
-}
-.nora-landing .fake-logo {
+.nora-landing .context-strip .lead {
   font-family: var(--display);
   font-weight: 500;
   letter-spacing: -0.012em;
+  font-size: 15px;
+  color: var(--ink);
+}
+.nora-landing .context-strip .note {
+  font-size: 12px;
   color: var(--muted);
-  font-size: 16px;
-  opacity: 0.65;
 }
 
 /* Scroll hint */
@@ -941,16 +934,16 @@
 }
 
 /* fa 4 · MCP */
-.nora-landing .fa-mcp {
+.nora-landing .fa-conn {
   padding: 0;
 }
-.nora-landing .fa-mcp-svg {
+.nora-landing .fa-conn-svg {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
 }
-.nora-landing .fa-mcp-center {
+.nora-landing .fa-conn-center {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -964,17 +957,17 @@
   box-shadow: 0 6px 18px -8px rgba(15, 23, 42, 0.3);
   z-index: 2;
 }
-.nora-landing .fa-mcp-center .logo-bars {
+.nora-landing .fa-conn-center .logo-bars {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 2px;
   height: 14px;
 }
-.nora-landing .fa-mcp-center .logo-bars span {
+.nora-landing .fa-conn-center .logo-bars span {
   background: var(--canvas) !important;
 }
-.nora-landing .fa-mcp-app {
+.nora-landing .fa-conn-app {
   position: absolute;
   transform: translate(-50%, -50%);
   display: flex;
@@ -983,7 +976,7 @@
   gap: 4px;
   z-index: 1;
 }
-.nora-landing .fa-mcp-app svg {
+.nora-landing .fa-conn-app svg {
   width: 26px;
   height: 26px;
   padding: 6px;
@@ -992,7 +985,7 @@
   border: 1px solid var(--border);
   color: var(--ink);
 }
-.nora-landing .fa-mcp-app span {
+.nora-landing .fa-conn-app span {
   font-size: 10.5px;
   color: var(--muted);
   letter-spacing: -0.005em;
@@ -1269,6 +1262,22 @@
     color 160ms ease,
     box-shadow 160ms ease;
 }
+.nora-landing .spot-tok:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+}
+/* The classification reaches assistive tech as text; colour and tag only repeat it. */
+.nora-landing .spot-tok-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
 .nora-landing .spot-tag {
   position: absolute;
   bottom: calc(100% + 6px);
@@ -1526,6 +1535,33 @@
   color: var(--accent-ink);
   flex-shrink: 0;
   margin-top: 2px;
+}
+.nora-landing .pricing-note {
+  margin: 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+/* Roadmap marker: outlined, never filled, so it never reads as a shipped badge. */
+.nora-landing .roadmap-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+.nora-landing .pricing-head .roadmap-tag {
+  margin: 0 0 14px 6px;
+  vertical-align: 2px;
 }
 
 /* ── FAQ ── */

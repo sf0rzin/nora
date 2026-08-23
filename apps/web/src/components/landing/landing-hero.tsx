@@ -92,7 +92,7 @@ const SUGGESTIONS = [
   },
 ];
 
-/** Hero: headline + composer + soundwave + suggestions + logos. */
+/** Hero: headline + composer + soundwave + suggestions + project context. */
 export function LandingHero() {
   const [prompt, setPrompt] = useState("");
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -126,8 +126,10 @@ export function LandingHero() {
               placeholder="Pergunte qualquer coisa sobre suas reuniões…"
               rows={1}
             />
+            {/* `q` is read back by the auth screen and shown to the visitor, so the
+                typed question survives the jump instead of being dropped on signup. */}
             <Link
-              href={{ pathname: "/auth/signup", query: trimmed ? { q: prompt } : {} }}
+              href={{ pathname: "/auth/signup", query: trimmed ? { q: trimmed } : {} }}
               className={`hero-composer-send ${trimmed ? "is-active" : ""}`}
               aria-label="Perguntar Nora"
             >
@@ -159,16 +161,13 @@ export function LandingHero() {
       </div>
 
       <div className="container">
-        <div className="logos-strip">
-          <span className="lead">Usado por times em:</span>
-          <div className="row">
-            <span className="fake-logo">veridian</span>
-            <span className="fake-logo">Lattice·BR</span>
-            <span className="fake-logo">CAMPO×</span>
-            <span className="fake-logo">norte sul</span>
-            <span className="fake-logo">Praxe</span>
-            <span className="fake-logo">FIAP</span>
-          </div>
+        {/* Replaces the old logo strip: NORA has no customers, so the only context
+            worth showing is where the project itself comes from. */}
+        <div className="context-strip">
+          <span className="lead">Projeto do Challenge FIAP × TOTVS 2026</span>
+          <span className="note">
+            Em construção aberta: cada decisão de arquitetura vira um ADR no repositório público.
+          </span>
         </div>
       </div>
 

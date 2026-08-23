@@ -156,8 +156,8 @@ function ActionsAnim() {
   );
 }
 
-// ── 4 · MCP integrations ──
-function MCPIcon({ kind }: { kind: string }) {
+// ── 4 · OAuth connectors ──
+function ConnectorIcon({ kind }: { kind: string }) {
   if (kind === "linear")
     return (
       <svg
@@ -191,7 +191,7 @@ function MCPIcon({ kind }: { kind: string }) {
         <line x1="3" y1="10" x2="21" y2="10" />
       </svg>
     );
-  if (kind === "jira")
+  if (kind === "notion")
     return (
       <svg
         width="14"
@@ -199,11 +199,14 @@ function MCPIcon({ kind }: { kind: string }) {
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        <polygon points="12 2 22 22 2 22" />
+        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 3 14 8 19 8" />
+        <line x1="9" y1="13" x2="15" y2="13" />
+        <line x1="9" y1="17" x2="13" y2="17" />
       </svg>
     );
   return (
@@ -222,7 +225,7 @@ function MCPIcon({ kind }: { kind: string }) {
   );
 }
 
-function MCPAnim() {
+function ConnectorsAnim() {
   const lines = [
     { x1: 160, y1: 110, x2: 50, y2: 50, d: 0 },
     { x1: 160, y1: 110, x2: 270, y2: 50, d: 0.4 },
@@ -232,12 +235,12 @@ function MCPAnim() {
   const apps = [
     { id: "linear", label: "Linear", x: "15%", y: "23%" },
     { id: "calendar", label: "Calendar", x: "85%", y: "23%" },
-    { id: "jira", label: "Jira", x: "15%", y: "77%" },
+    { id: "notion", label: "Notion", x: "15%", y: "77%" },
     { id: "github", label: "GitHub", x: "85%", y: "77%" },
   ];
   return (
-    <div className="fa fa-mcp">
-      <svg className="fa-mcp-svg" viewBox="0 0 320 220">
+    <div className="fa fa-conn">
+      <svg className="fa-conn-svg" viewBox="0 0 320 220">
         {lines.map((l, i) => (
           <g key={i}>
             <line
@@ -260,7 +263,7 @@ function MCPAnim() {
           </g>
         ))}
       </svg>
-      <div className="fa-mcp-center">
+      <div className="fa-conn-center">
         <span className="logo-bars" aria-hidden="true">
           <span style={{ width: 3, height: "40%", borderRadius: 3 }} />
           <span style={{ width: 3, height: "75%", borderRadius: 3 }} />
@@ -270,8 +273,8 @@ function MCPAnim() {
         </span>
       </div>
       {apps.map((app) => (
-        <div key={app.id} className="fa-mcp-app" style={{ left: app.x, top: app.y }}>
-          <MCPIcon kind={app.id} />
+        <div key={app.id} className="fa-conn-app" style={{ left: app.x, top: app.y }}>
+          <ConnectorIcon kind={app.id} />
           <span>{app.label}</span>
         </div>
       ))}
@@ -391,9 +394,9 @@ const FEATURES = [
     body: "Detecção com confiança calibrada, citação textual da fonte, prioridade e vencimento estimado.",
   },
   {
-    anim: <MCPAnim />,
-    title: "Integração via MCP",
-    body: "Empurre tasks pro Linear/Jira, registre resumo no Calendar, sincronize com Salesforce — tudo via Model Context Protocol.",
+    anim: <ConnectorsAnim />,
+    title: "Conectores OAuth",
+    body: "Action items viram issues no Linear ou no GitHub, o resumo vira página no Notion e evento no Calendar — pela sua própria conta, via OAuth. O servidor MCP da Nora é o caminho de entrada: somente leitura.",
   },
   {
     anim: <DesktopAnim />,
