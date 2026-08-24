@@ -384,10 +384,20 @@ Students credit. All fourteen containers verified healthy after the resize; the 
    machine is mute in exactly this failure. The cheapest honest fix is an external uptime probe
    against `https://nora.systems/healthz` (Grafana Cloud free tier, UptimeRobot, or a GitHub
    Actions cron that curls and opens an issue) — pick one and it closes; none is configured today.
-2. **The live deployment does not follow the documented one** — `latest` tags, no systemd timers,
-   no git checkout on the host (ADR 0051 §Consequences; measured 2026-08-24). Until the bootstrap
-   in `host-deploy.md` is run on the real machine, the deploy, off-host backup and restore-drill
-   machinery this repository carries is installed nowhere.
+2. ~~The live deployment does not follow the documented one.~~ **Closed the same day.**
+   `bootstrap-host.sh --skip-docker` ran on the VM, the plaintext `.env` was encrypted to
+   `secrets.env.sops` against two age recipients, and the pull agent runs every five minutes —
+   verified by hand first, resolving the pointer to `sha-e8f0460` and decrypting 42 variables
+   with every service healthy.
+
+3. **A commit touching only `infra/**` never moves the release pointer** — found by the first
+   run of the pull agent, and it can roll a deployment backwards. The pointer is published behind
+   the image build and names image tags derived from its own commit, so an infra-only commit
+   cannot have one; `--follow-release` implies `--sync`, so the agent syncs the host back to the
+   last commit that did. The workaround (`gh workflow run build-images.yml --ref main`) is in
+   `host-deploy.md`. A real fix would let `deploy-host.yml` publish a pointer inheriting the
+   previous image tags; nobody has designed that yet, and this row is what keeps it from being
+   forgotten.
 
 ## History
 

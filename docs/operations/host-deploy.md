@@ -43,15 +43,31 @@ A single Azure Ubuntu VM runs the whole stack with Docker Compose (project
 `nora`), defined in [`infra/host/docker-compose.yml`](../../infra/host/docker-compose.yml) — **that
 file is the source of truth**; this runbook is how to operate it.
 
-> **The live deployment does not yet follow this runbook, and pretending otherwise would make
-> this document dangerous.** Measured on the machine on 2026-08-24: the four product containers
-> run `ghcr.io/sf0rzin/nora-*:latest`, not the immutable `sha-<short>` tags `deploy.sh` promotes;
-> none of the `nora-*` systemd timers this runbook installs (deploy, backup off-host, restore
-> drill) are present; and the compose directory is not a git checkout, so `deploy.sh --sync` has
-> nothing to sync against. What brings the stack back after a boot is Docker's own
-> `restart: unless-stopped` and nothing else. Until someone runs the bootstrap below on the real
-> machine, treat every procedure in this file as *the intended state*, and the paragraph you are
-> reading as *the actual one*.
+> **The live deployment follows this runbook since 2026-08-24, and for most of that day it did
+> not.** What stood here described an unbootstrapped host and is replaced rather than deleted,
+> because it is what one looks like: the four containers ran `:latest` instead of the promoted
+> `sha-<short>`, none of the `nora-*` timers existed, and what brought the stack back after a
+> boot was Docker's `restart: unless-stopped` and nothing else.
+>
+> What closed it: `bootstrap-host.sh --skip-docker` on the VM — sops, age and `postgresql-client`
+> installed, `/srv/nora/{state,secrets}` and `/etc/nora` created, the host age key generated and
+> the seven units written — then the plaintext `.env` encrypted to `secrets.env.sops`, and
+> `deploy.sh --if-changed --follow-release` run by hand exactly as the timer runs it. It resolved
+> the pointer to `sha-e8f0460`, decrypted 42 variables and reported every service healthy. All
+> three timers are started.
+>
+> **One gotcha the first run found, and it can roll a deployment backwards.** `--follow-release`
+> implies `--sync`, so it moves the checkout to the commit the pointer names. The pointer is
+> published only by `deploy-host.yml`, which runs after `build-images.yml`, which is filtered to
+> `services/**`, `apps/**` and `packages/**`. **A change under `infra/**` alone therefore never
+> moves the pointer**, and the pull agent will sync the host back to the last commit that did,
+> undoing it. That is not a bug in the filter: the pointer names `sha-<short>` image tags derived
+> from its own commit, and an infra-only commit has no images. The workaround is one line, which
+> is why this is a note and not a footnote:
+>
+> ```bash
+> gh workflow run build-images.yml --ref main   # publishes a pointer for the current main
+> ```
 
 ```
 Internet ──> Cloudflare edge ──(tunnel, egress-only)──> cloudflared

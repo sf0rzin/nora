@@ -101,13 +101,14 @@ Concretely:
   about three minutes of downtime, because changing size requires deallocating; the stack came
   back on Docker's `restart: unless-stopped` alone — which is the next bullet's point.
 - **The running stack does not match the deployment doctrine the repository documents.** The four
-  containers run `ghcr.io/sf0rzin/nora-*:latest`, not the immutable `sha-<short>` tags
-  `deploy.sh` and `docs/operations/host-deploy.md` describe; none of the `nora-*` systemd timers
-  the repository defines are installed; and `/home/nora/nora` is not a git checkout. What brings
-  the stack back after a boot is Docker's own `restart: unless-stopped`, and nothing else. The
-  documented deploy path and the live deploy path are two different things.
-- The audit's own finding stands and is now recorded twice: this repository has been better at
-  auditing its code than its infrastructure.
+- **The running stack did not match the deployment doctrine, and now does.** For most of
+  2026-08-24 the four containers ran `ghcr.io/sf0rzin/nora-*:latest` instead of the promoted
+  `sha-<short>`, none of the `nora-*` timers was installed, and there was no age key or
+  `secrets.env.sops` — the stack ran from a plaintext `.env` with 40 keys in it. Closed the same
+  day by running `bootstrap-host.sh` on the VM, encrypting the secrets against two age
+  recipients, and starting the three timers. What the first run of the pull agent exposed in
+  exchange is recorded as Gap 9.3: a commit touching only `infra/**` never moves the release
+  pointer, and `--follow-release` will therefore roll such a commit back.
 
 ## Alternatives Considered
 
@@ -126,4 +127,5 @@ Concretely:
 | Date | Decider | Change |
 |---|---|---|
 | 2026-08-24 | sys0xFF | Created and accepted. Supersedes ADR 0036 after `systemd-detect-virt` returned `microsoft` on the machine serving `nora.systems`, with the whole compose stack healthy and the site answering 200. Records that Azure was never gone, that the nightly auto-shutdown is an open and costed decision, and that the live deployment does not follow the documented one |
-| 2026-08-24 | sys0xFF | The auto-shutdown decision was made the same day: schedule deleted, VM resized `B4s_v2` → `B2as_v2` to run 24/7 inside the student credit (~USD 55/month). Stack verified healthy after the resize. The deploy-doctrine divergence (`:latest` tags, no timers, no git checkout) remains the open item |
+| 2026-08-24 | sys0xFF | The auto-shutdown decision was made the same day: schedule deleted, VM resized `B4s_v2` → `B2as_v2` to run 24/7 inside the student credit (~USD 55/month). Stack verified healthy after the resize. The deploy-doctrine divergence (`:latest` tags, no timers, no git checkout) remains the open item |
+| 2026-08-24 | sys0xFF | The host was bootstrapped: sops/age installed, the host age key generated, the plaintext `.env` encrypted to `secrets.env.sops` against two recipients (host + operator offline, the second one the project never had), and the three timers started. `deploy.sh --if-changed --follow-release` verified by hand — pointer `sha-e8f0460`, 42 variables decrypted, every service healthy. The live deployment and the documented one are the same thing from this date |
