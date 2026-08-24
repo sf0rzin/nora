@@ -108,7 +108,20 @@ creation_rules:
     #
     # Multiple recipients: separate with a comma. Strongly recommended to have
     # at least TWO (host + the operator's offline backup), otherwise losing the
-    # host = losing the secrets. There is currently only one — see ADR 0036 section 4 for
-    # what that costs and why the encrypted file is therefore not versioned.
+    # host = losing the secrets.
+    #
+    # THERE ARE TWO NOW, since 2026-08-24, and the drift the paragraph above warned about had
+    # happened again in the meantime. The single value here was `age1kuda...`, read off the
+    # BARE-METAL host on 2026-08-10 — a machine that is not the substrate any more (ADR 0051).
+    # The Azure VM that replaced it was built by hand and never had an age key at all, which is
+    # why `secrets.env.sops` did not exist on it and the stack was running from a plaintext
+    # `.env`. Both recipients are listed deliberately:
+    #
+    #   age16ph5...  the VM's own key, generated ON the host by `bootstrap-host.sh` on
+    #                2026-08-24. Its private half has never left `/etc/nora/age.key` (0400
+    #                root) and never should.
+    #   age1kuda...  the operator's offline key, held outside this repository. It is the
+    #                second recipient the paragraph above asks for and the project never had:
+    #                without it, losing the VM loses every secret with it.
     #   age: 'age1host-key,age1operator-offline-backup-key'
-    age: 'age1kudamfefsy3pq4ty94zu22jruhhfh37gk8ppclxufjcuym22qsfsgj5r5y'
+    age: 'age16ph5ufynn06063f85qwkjxudxs3vmradkju80djffmwgzs2zs9lsc9f704,age1kudamfefsy3pq4ty94zu22jruhhfh37gk8ppclxufjcuym22qsfsgj5r5y'
