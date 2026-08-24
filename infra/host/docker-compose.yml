@@ -764,7 +764,14 @@ services:
       GRPC: "0"
       IMAGES: "0"
       INFO: "0"
-      NETWORKS: "0"
+      # `1`, and it took a live run to learn why. Alloy's `discovery.docker` does not only list
+      # containers: it computes network labels for every target, which is a `GET /networks` call.
+      # With this at `0` the proxy answered 403, `discovery.docker.daemon` failed with "Unable to
+      # refresh target groups" every ten seconds, and NO logs reached Loki at all — a silent
+      # outage of the log pipeline behind a container that reported itself up. Read-only, and the
+      # only thing it exposes is the network topology of this stack, which the containers on it
+      # can already observe.
+      NETWORKS: "1"
       NODES: "0"
       PLUGINS: "0"
       SECRETS: "0"
