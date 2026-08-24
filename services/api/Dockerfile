@@ -8,7 +8,7 @@ COPY checkstyle.xml .
 RUN mvn -B -q -DskipTests package
 
 # --- runtime ---
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:24-jre-alpine
 WORKDIR /app
 
 # OpenTelemetry Java Agent (auto-instrumentation). Replaces the applicationinsights-agent
