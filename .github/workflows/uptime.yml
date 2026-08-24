@@ -1,0 +1,132 @@
+# NORA — an availability check that does not run on the machine it is checking.
+# =============================================================================
+# WHY THIS EXISTS, and it is not "monitoring" in any serious sense.
+#
+# On 2026-08-18 a DevTestLab auto-shutdown powered the host off at 04:00 UTC. The site stayed
+# down until 2026-08-24 — six days — and nothing reported it. Not because alerting was missing:
+# eight Grafana rules, a contact point and a notification policy were all provisioned and
+# correct. They run in a container, on the host, and a host that is off cannot say it is off.
+# Every probe the project had was inside the thing being probed.
+#
+# So this is the smallest possible fix for that specific blindness: something that runs
+# somewhere else. GitHub's runners are somewhere else.
+#
+# WHAT IT IS NOT, said plainly so nobody mistakes it for a monitoring product:
+#
+#   * The schedule is best-effort. GitHub delays scheduled workflows under load, routinely by
+#     ten minutes and occasionally much more, so treat the interval as "eventually" rather than
+#     "every fifteen minutes". An outage will be noticed late; six days late it will not be.
+#   * Scheduled workflows are disabled automatically after 60 days without repository activity.
+#     On a repository that goes quiet, this stops — and it stops silently, which is the same
+#     failure mode it exists to catch. Re-enable it from the Actions tab.
+#   * One vantage point, one request. It cannot distinguish "the site is down" from "GitHub's
+#     egress cannot reach Cloudflare right now", which is why a single failure only comments and
+#     the issue stays open for a human to read rather than paging anyone.
+#
+# It is still worth more than the Grafana rules for this one failure, because it is outside.
+name: uptime
+
+on:
+  schedule:
+    # :07 and :37 — off the hour on purpose. Everybody's cron fires at :00, GitHub's queue is
+    # deepest there, and the delay is worst exactly then.
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+
+# Least privilege: it reads nothing from the repository and only needs to write an issue.
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe the public endpoints
+        id: probe
+        run: |
+          set -uo pipefail
+          fail=0
+          report=""
+
+          # The two that answer without authentication. `adm.nora.systems` is deliberately NOT
+          # probed: it sits behind Cloudflare Access and a 302 to the identity provider is both
+          # its healthy and its broken answer, so it cannot tell us anything.
+          probe_one() {
+            local name="$1" url="$2" want="$3"
+            local code
+            # --max-time covers the whole request; Cloudflare answers a live origin in well
+            # under a second, and 20s is long enough that a slow TLS handshake is not a failure.
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url" || echo "000")
+            if [ "$code" = "$want" ]; then
+              echo "  OK   $name -> $code"
+              report="${report}"$'\n'"- \`$name\` → **$code** (expected $want)"
+            else
+              echo "  FAIL $name -> $code (expected $want)"
+              report="${report}"$'\n'"- \`$name\` → **$code**, expected $want ❌"
+              fail=1
+            fi
+          }
+
+          probe_one "nora.systems"        "https://nora.systems/"                    "200"
+          probe_one "api health"          "https://api.nora.systems/actuator/health" "200"
+
+          {
+            echo "failed=$fail"
+            echo "report<<REPORT_EOF"
+            printf '%s\n' "$report"
+            echo "REPORT_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          # Never fail the step: a red X on a schedule is a notification nobody configured.
+          # The issue below is the notification.
+          exit 0
+
+      - name: Open or update the outage issue
+        if: steps.probe.outputs.failed == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT: ${{ steps.probe.outputs.report }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE="Uptime probe: nora.systems is not answering"
+
+          # One issue, reopened and commented rather than a new one per tick — an outage that
+          # lasts six days would otherwise produce close to three hundred issues.
+          NUM=$(gh issue list --state all --search "\"$TITLE\" in:title" --limit 1 --json number,state \
+                  --jq '.[0].number // empty')
+
+          BODY=$(printf '%s\n\n%s\n\n%s\n' \
+            "Probed from a GitHub runner at $(date -u '+%Y-%m-%d %H:%M:%SZ'). This check runs off the host on purpose — see the header of \`.github/workflows/uptime.yml\`." \
+            "$REPORT" \
+            "Run: $RUN_URL")
+
+          if [ -n "$NUM" ]; then
+            gh issue reopen "$NUM" 2>/dev/null || true
+            gh issue comment "$NUM" --body "$BODY"
+          else
+            gh issue create --title "$TITLE" --body "$BODY"
+          fi
+
+      - name: Close the outage issue once it answers again
+        if: steps.probe.outputs.failed == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE="Uptime probe: nora.systems is not answering"
+          NUM=$(gh issue list --state open --search "\"$TITLE\" in:title" --limit 1 --json number \
+                  --jq '.[0].number // empty')
+          # The recovery message is the point of closing it from here: an incident that fixed
+          # itself and an incident nobody noticed look identical in a closed issue with no note.
+          if [ -n "$NUM" ]; then
+            gh issue comment "$NUM" --body "Answering again as of $(date -u '+%Y-%m-%d %H:%M:%SZ'). Run: $RUN_URL"
+            gh issue close "$NUM"
+          fi

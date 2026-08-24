@@ -380,15 +380,17 @@ Students credit. All fourteen containers verified healthy after the resize; the 
 
 **What stays open, because the incident proved it rather than the shutdown itself:**
 
-1. **No outside-the-host liveness check exists.** Anything that can only scream from inside the
-   machine is mute in exactly this failure. The cheapest honest fix is an external uptime probe
-   against `https://nora.systems/healthz` (Grafana Cloud free tier, UptimeRobot, or a GitHub
-   Actions cron that curls and opens an issue) — pick one and it closes; none is configured today.
-2. ~~The live deployment does not follow the documented one.~~ **Closed the same day.**
-   `bootstrap-host.sh --skip-docker` ran on the VM, the plaintext `.env` was encrypted to
-   `secrets.env.sops` against two age recipients, and the pull agent runs every five minutes —
-   verified by hand first, resolving the pointer to `sha-e8f0460` and decrypting 42 variables
-   with every service healthy.
+1. ~~No outside-the-host liveness check exists.~~ **Closed 2026-08-24** by
+   `.github/workflows/uptime.yml`: a scheduled GitHub Actions job that curls `nora.systems` and
+   the API health endpoint from a runner — off the host, which is the only property that
+   mattered — and opens one issue on failure, comments on it while the outage lasts, and closes
+   it with a recovery note. Free, no credential, no third party.
+
+   **Read its header before trusting it.** GitHub delays scheduled workflows, so the interval is
+   "eventually" rather than "every thirty minutes"; and a scheduled workflow is disabled
+   automatically after 60 days without repository activity — silently, which is the same failure
+   mode it exists to catch. It is worth more than the Grafana rules for this one failure because
+   it is outside, and worth less than a real uptime service for every other reason.
 
 3. **A commit touching only `infra/**` never moves the release pointer** — found by the first
    run of the pull agent, and it can roll a deployment backwards. The pointer is published behind
