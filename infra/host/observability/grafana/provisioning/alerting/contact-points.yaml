@@ -23,6 +23,17 @@
 # worth strictly more than no rule, because the rule is the part that encodes what "broken"
 # means, and it is the part that cannot be added in a hurry during an incident.
 #
+# THAT PARAGRAPH WAS AN ASSERTION, NOT A MEASUREMENT, AND IT WAS WRONG — corrected 2026-08-24
+# after this file took the live Grafana down. An empty `url` does not degrade: Grafana fails
+# provisioning validation with `required field 'url' is not specified`, exits non-zero, and the
+# container crash-loops. Every dashboard and every datasource goes with it. An optional feature
+# that had never been configured took down the observability surface that was already working.
+#
+# The fix is the default in `docker-compose.yml`: `${NORA_ALERT_WEBHOOK_URL:-http://alerts.invalid/not-configured}`.
+# `.invalid` is reserved by RFC 2606 and can never resolve, so the URL is syntactically valid —
+# Grafana boots, the rules evaluate, the state history exists — and delivery fails visibly with a
+# hostname that says why. That is the degradation the paragraph above claimed and did not have.
+#
 # WHY A WEBHOOK AND NOT EMAIL. Email would need SMTP credentials in the Grafana container
 # (GF_SMTP_ENABLED / GF_SMTP_HOST / GF_SMTP_USER / GF_SMTP_PASSWORD / GF_SMTP_FROM_ADDRESS,
 # all of them env vars this compose does not set) plus a provider that will accept mail from

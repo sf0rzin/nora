@@ -851,8 +851,13 @@ services:
     # the socket.
     security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
+    # `cap_drop: ALL` was here and is deliberately NOT, measured on the live host 2026-08-24:
+    # the image's entrypoint creates its own `--storage.path` on first run, and without
+    # CAP_CHOWN/CAP_DAC_OVERRIDE that mkdir fails with `permission denied` and the container
+    # crash-loops. The capability drop was added in the same change as the socket proxy and was
+    # never the point of it — the containment that mattered was taking the Docker socket away,
+    # and that stands. Restoring the drop needs a writable volume for /var/lib/alloy with the
+    # right ownership, which is a separate change with a separate way of being wrong.
     depends_on:
       loki:
         condition: service_healthy
@@ -880,7 +885,13 @@ services:
       # chosen a webhook cannot boot Grafana at all, which trades a missing notification for a
       # missing dashboard — the wrong way round. secrets.env.example carries the entry and
       # what to put in it.
-      NORA_ALERT_WEBHOOK_URL: ${NORA_ALERT_WEBHOOK_URL:-}
+      # NOT `:-` empty. Grafana validates provisioned contact points at boot and refuses to
+      # start when a webhook receiver has no `url`, taking every dashboard and datasource down
+      # with it — measured on the live host on 2026-08-24, where an unconfigured optional
+      # feature crash-looped the container. `.invalid` is reserved by RFC 2606 and never
+      # resolves, so this default is valid enough to boot and impossible to mistake for a
+      # working destination. See `observability/grafana/provisioning/alerting/contact-points.yaml`.
+      NORA_ALERT_WEBHOOK_URL: ${NORA_ALERT_WEBHOOK_URL:-http://alerts.invalid/not-configured}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
