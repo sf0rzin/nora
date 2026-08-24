@@ -91,7 +91,7 @@ repository does not have.
 | [0033](0033-pii-chat-path-strategy.md) | PII strategy on the chat path (structured in the BFF + PERSON_NAME via the worker) | accepted |
 | [0034](0034-azure-to-proxmox-migration.md) | Migration from Azure Container Apps to self-hosted Proxmox (single VM + Docker Compose) | accepted (supersedes 0009; partially supersedes 0016; extends 0025; substrate §1 and backup §9 superseded by 0036) |
 | [0035](0035-local-stt-whisper-on-client.md) | Local STT: Whisper embedded in Tauri (Rust), on the client machine | superseded by 0039 (it supersedes 0009 and partially supersedes 0008; those parts stand) |
-| [0036](0036-substrate-is-a-single-bare-metal-host.md) | The substrate is a single bare-metal Ubuntu host, not a Proxmox VM | accepted (supersedes 0034 §1 substrate and §9 backup) |
+| [0036](0036-substrate-is-a-single-bare-metal-host.md) | The substrate is a single bare-metal Ubuntu host, not a Proxmox VM | superseded by 0051 (it supersedes 0034 §1 substrate and §9 backup; its single-host and Compose reasoning stand) |
 | [0037](0037-ssh-over-the-existing-tunnel.md) | SSH reaches the host through the existing Cloudflare Tunnel, gated by Access | accepted (extends 0025 and 0034 §2) |
 | [0038](0038-post-pitch-scope-realignment.md) | Post-pitch scope realignment | accepted (supersedes 0014) |
 | [0039](0039-cloud-stt-openai-ephemeral-token.md) | Cloud STT: OpenAI transcription reached with an ephemeral session token | accepted (supersedes 0035) |
@@ -106,6 +106,7 @@ repository does not have.
 | [0048](0048-participant-identity-matching.md) | Participant identity: deterministic matching over the declared roster | accepted (implements US13 of 0046 §1; relates to 0012 and 0029; supersedes nothing) |
 | [0049](0049-permission-boundaries.md) | Permission boundaries: a cap that never grants, and the four questions a cap raises | accepted (successor record to 0007; supersedes nothing) |
 | [0050](0050-the-landing-page-states-what-the-code-does.md) | The public landing page states what the code does, and marks what it does not | accepted (lifts the DEC-04 freeze recorded in 0038, 0040 and 0046; supersedes nothing) |
+| [0051](0051-the-substrate-is-an-azure-vm.md) | The substrate is an Azure VM, and Azure was never gone | accepted (supersedes 0036; corrects the "Azure is gone" overreach inherited from 0034) |
 
 **50 numbered records, 45 of them `accepted`, measured 2026-08-23.** The other five are the ones
 this index exists to keep straight: 0009, 0014 and 0035 are superseded outright, and 0016 and 0026

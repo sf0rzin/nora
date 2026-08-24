@@ -45,7 +45,7 @@ Each row was read from the file cited beside it, on 2026-08-17, at commit `4017b
 | **Desktop** Tauri | 2 | Native wrapper + audio capture | `apps/desktop/src-tauri/Cargo.toml:71`, ADR 0008 |
 | Rust | edition 2021 | System-wide audio capture via WASAPI loopback. Windows-only | `apps/desktop/src-tauri/Cargo.toml:6`, ADR 0038 §2 |
 | tokio-tungstenite | 0.28 | Realtime STT transport: one WebSocket per track, rustls with bundled roots (§14) | `apps/desktop/src-tauri/Cargo.toml`, ADR 0039 → ADR 0045 |
-| **Infra** Self-hosted | — | Single bare-metal Ubuntu host, no hypervisor, Docker Compose | `infra/host/docker-compose.yml`, ADR 0034/0036 |
+| **Infra** Self-hosted | — | Single Azure Ubuntu VM, Docker Compose | `infra/host/docker-compose.yml`, ADR 0034/0051 |
 | GitHub Actions | — | CI/CD (ci.yml + build-images.yml + deploy-host.yml) | `.github/workflows/*.yml` |
 
 Notes:
@@ -832,7 +832,7 @@ This rebuilds the ADR 0009 broker pattern for a different vendor, days after tha
 deleted. It is not a reversal: what died was Azure and the second runtime, not the shape. The
 long-lived credential stays on the server, the client holds a short-lived one, and the media path
 stays off our infrastructure — which is also why ADR 0009's server-side audio proxy is rejected
-again. The substrate is a single bare-metal host (ADR 0036); streaming every client's audio through
+again. The substrate is a single host (ADR 0036, now ADR 0051); streaming every client's audio through
 it would be the worst version of a topology already discarded when the infrastructure was better.
 
 ### The audio does not traverse NORA's infrastructure
@@ -945,9 +945,10 @@ Step by step in words:
 
 ## §16. Self-hosted infrastructure
 
-NORA runs on a single self-hosted bare-metal host — Ubuntu, no hypervisor, Docker Engine with
-Compose v2 — under compose project `nora` (ADR 0034; substrate corrected by ADR 0036, which found
-no hypervisor and no other guest on the machine). Provisioned via
+NORA runs on a single Azure Ubuntu VM — Docker Engine with Compose v2 — under compose project
+`nora` (ADR 0051, which superseded ADR 0036's bare-metal claim: `systemd-detect-virt` returns
+`microsoft` on the machine serving `nora.systems`; the single-host, no-orchestrator shape both
+ADRs reasoned from is unchanged). Provisioned via
 `infra/host/docker-compose.yml` and deployed by `deploy-host.yml`, which publishes an immutable
 release pointer. The deploy direction is PULL, never PUSH, because the repository is public
 (ADR 0017). **The consumer half exists since 2026-08-23**: `nora-deploy.timer` runs
@@ -980,7 +981,9 @@ first-deployment steps, rollback, restore drill) live in `docs/operations/host-d
 (`infra/host/docker-compose.yml`): a host that does not want a control plane simply never
 starts one, and the product path does not notice.
 
-Azure is gone — no subscription, no export, nothing to decommission (ADR 0036). The historical
+The Azure **managed services** are gone — Container Apps, Key Vault, App Insights and the Bicep
+IaC — and stay gone; Azure itself is not, and the host above is one of its VMs (ADR 0051, which
+corrects the "no subscription" overreach this paragraph used to repeat). The historical
 Azure resource inventory (`rg-nora-dev`: Container Apps, Key Vault, Flexible Server, the Service
 Principal and its federated credentials) that used to live in this section is not reproduced here;
 it described infrastructure that no longer exists and is addressable in `git log` on this file

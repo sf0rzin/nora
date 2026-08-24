@@ -1,7 +1,7 @@
 # NORA — Secrets & Environment Variables Cartography
 
 > **Historical, as of the section below.** Written for the Azure deployment (Key Vault + Bicep +
-> Container Apps), which is gone — no subscription, no export (ADR 0036). On the self-hosted stack,
+> Container Apps), which is gone — the managed services were deleted without an export (ADR 0034; the substrate is an Azure VM, ADR 0051). On the self-hosted stack,
 > production secrets live encrypted in `infra/host/secrets.env.sops` (SOPS + age), decrypted to
 > tmpfs on deploy; there is no Key Vault and no `secretRef`. See `docs/operations/host-deploy.md`
 > §3 (Generate the age key and encrypt the secrets) for the current model and the current secrets

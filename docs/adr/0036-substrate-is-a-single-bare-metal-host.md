@@ -1,6 +1,6 @@
 # ADR 0036 — The substrate is a single bare-metal Ubuntu host, not a Proxmox VM
 
-- **Status:** accepted
+- **Status:** superseded by 0051
 - **Date:** 2026-08-10
 - **Supersedes:** ADR 0034 §1 (substrate) and §9 (backup). Everything else ADR 0034 decided —
   Cloudflare Tunnel as the only ingress, SOPS + age, pull-based deployment, the two Postgres

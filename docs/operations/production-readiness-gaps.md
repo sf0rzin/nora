@@ -23,6 +23,15 @@
 > is a scenario that cannot happen any more, replaced by a different one nobody has written a
 > runbook for. **Gap 7** is genuinely still open. **Gap 8** stays delivered.
 >
+> **Reconciled a third time 2026-08-24, against the infrastructure instead of the code — and the
+> substrate this banner describes above is wrong.** The lines "which is gone — no subscription"
+> and "a single bare-metal host" are kept unedited above because they are what the earlier passes
+> believed, but ADR 0051 corrects both: the machine serving `nora.systems` is an **Azure VM**
+> (`vm-nora-dev`, `rg-nora-dev-cc`), and the Azure subscription was never gone. Gap 1's premise
+> ("no resource group") is therefore false again in the narrow sense — a resource group exists —
+> while its conclusion stands, because nothing Bicep-shaped describes it. **Gap 9 below** records
+> the incident that forced the discovery: the VM had been powering itself off nightly.
+>
 > **Audience (as written):** whoever operates NORA when it is promoted from the `rg-nora-dev` environment to `rg-nora-prod`.
 >
 > **Status:** descriptive (`docs/`). Implementation was tracked in **Sub-phase 1.12 — Production Hardening**, formalised via **ADR 0016 — Production Readiness Checklist**.
@@ -357,10 +366,34 @@ happening. Items get built when they are worth building, which is how four of th
 
 Prerequisites: the **code** items of Sub-phase 1.11 already delivered — Customer Confidence (#148), the AUTH_FILTER fix (silent 500 ceiling removed via batched scanning) and PolicyEvaluator (`StringIn`/`StringLike`/`DateGreaterThan`/`DateLessThan`). Items (e) seed and (f) demo script were delivered on 2026-08-17 (`scripts/seed-demo.sh`, [`../challenge/demo-script.md`](../challenge/demo-script.md)); they never blocked 1.12 either way.
 
+## Gap 9 — The host powered itself off nightly, and nothing noticed for six days — **RESOLVED, with the real gap it exposed left open**
+
+**What happened.** The substrate turned out to be an Azure VM (ADR 0051), carrying a DevTestLab
+auto-shutdown schedule at 04:00 UTC. It fired on 2026-08-18 and `nora.systems` stayed down until
+2026-08-24, when the VM was started by hand during the audit follow-up. Six days of outage,
+detected by nobody and nothing — the alerting delivered under Gap 4 runs *on the host*, so a host
+that is off cannot report that it is off.
+
+**What was done (2026-08-24).** The schedule was deleted, and the VM resized `Standard_B4s_v2` →
+`Standard_B2as_v2` (~USD 136 → ~USD 55/month) so that running 24/7 fits inside the Azure for
+Students credit. All fourteen containers verified healthy after the resize; the site answers 200.
+
+**What stays open, because the incident proved it rather than the shutdown itself:**
+
+1. **No outside-the-host liveness check exists.** Anything that can only scream from inside the
+   machine is mute in exactly this failure. The cheapest honest fix is an external uptime probe
+   against `https://nora.systems/healthz` (Grafana Cloud free tier, UptimeRobot, or a GitHub
+   Actions cron that curls and opens an issue) — pick one and it closes; none is configured today.
+2. **The live deployment does not follow the documented one** — `latest` tags, no systemd timers,
+   no git checkout on the host (ADR 0051 §Consequences; measured 2026-08-24). Until the bootstrap
+   in `host-deploy.md` is run on the real machine, the deploy, off-host backup and restore-drill
+   machinery this repository carries is installed nowhere.
+
 ## History
 
 | Date | Change |
 |---|---|
+| 2026-08-24 | **Gap 9 added and immediately part-resolved.** The substrate is an Azure VM (ADR 0051); its nightly auto-shutdown had kept the site down for six days with nothing noticing. Schedule deleted, VM resized to fit the student credit 24/7. The exposed residue — no external liveness probe, and a live deployment that does not follow this repository's deploy machinery — is recorded in the gap rather than closed by it |
 | 2026-05-14 | Doc created during Sub-phase 1.10 (Docs Refresh) |
 | 2026-05-28 | Gap 8 added: the control plane's business telemetry (ADR 0022) goes to zero under RLS enforce — a BYPASSRLS role is a prerequisite before turning on RLS enforce |
 | 2026-06-06 | Doc x code reconciliation + standardisation: Gap 5 (operational LGPD) marked as delivered via ADR 0029; reference correction ADR 0019 → ADR 0029 for LGPD |

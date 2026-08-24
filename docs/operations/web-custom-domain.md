@@ -1,8 +1,9 @@
 # Runbook — custom domain for the web app (`nora.systems`)
 
 > **Historical — superseded.** Written for the Azure deployment, where the web app had public
-> ingress and only the admin console went through a tunnel. Azure is gone — no subscription, no
-> export (ADR 0036). On the self-hosted stack **every** hostname (`nora.systems`, `www`, `api`,
+> ingress and only the admin console went through a tunnel. That deployment is gone — the managed
+> services were deleted without an export (ADR 0034; the substrate is an Azure VM, ADR 0051). On
+> the self-hosted stack **every** hostname (`nora.systems`, `www`, `api`,
 > `admin`, `grafana`) goes through the same Cloudflare Tunnel to `caddy`; there is no distinct
 > "web app has public ingress" case and no Azure-managed certificate to provision. The current
 > procedure is `docs/operations/host-deploy.md` §4 (Cloudflare Tunnel + Access Applications). Kept

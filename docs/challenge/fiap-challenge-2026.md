@@ -28,7 +28,7 @@ This page documents:
 | **Technical architecture (diagrams, flows)** | [`../engineering/architecture.md`](../engineering/architecture.md) — DDD layers, IAM flow, RAG pipeline, multi-tenancy |
 | **Documented architectural decisions** | [`../adr/README.md`](../adr/README.md) — canonical ADR index (durable decisions with context + alternatives) |
 | **Technical validation (tests)** | Coverage measured by CI on every run, not quoted from a snapshot. The figures live in the "Measured coverage" section below, each with the date it was taken on — this row deliberately no longer restates them, because it restated a set that was two revisions behind the section it points at |
-| **Functional demonstration (deploy)** | NORA runs self-hosted on a single bare-metal host (ADR 0034/0036), behind Cloudflare Tunnel at `nora.systems`. The Azure deployment this rubric item originally pointed at is gone — no subscription, no export (ADR 0036) |
+| **Functional demonstration (deploy)** | NORA runs on a single Azure Ubuntu VM (ADR 0051), behind Cloudflare Tunnel at `nora.systems`. The *managed-services* Azure deployment this rubric item originally pointed at (Container Apps, Key Vault, Bicep) is gone — ADR 0034 — but Azure itself hosts the VM, which ADR 0036 got wrong and ADR 0051 corrects |
 | **Pitch / final presentation** | [`demo-script.md`](demo-script.md) — block-by-block script with a plan B per block, paired with the seed in `scripts/seed-demo.sh`. **The running time is declared there and nowhere else**, because this page and the roadmap used to carry two different numbers for a script that did not exist |
 
 ### Technical differentiators (above the rubric minimum)
@@ -43,7 +43,7 @@ NORA delivers elements that go beyond the typical academic rubric:
 - **NORA as an MCP server** (ADR 0041) — an external MCP client (Claude Desktop, an IDE, a coding agent) reads meetings, tasks, semantic search and Customer Confidence from NORA. The interesting part is the constraint: every tool call resolves a real IAM principal and goes through the same `PolicyEvaluator` as the web surface, with `meeting:read` and `task:read` rather than an MCP permission vocabulary — so an MCP client can never see more than the user it acts for. Read-only first cut, tenant-scoped bearer token stored only as a SHA-256 hash
 - **Opt-in Productivity Score** (ADR 0005) — analysis of the meeting's productivity against the declared goal, with the mandatory disclaimer "an indicator of the meeting, not of the participants"
 - **Customer Confidence** (ADR 0006) — score per meeting with buying signals + objections, delivered full-stack with an authoritative per-account trend (PR #148)
-- **Production-grade self-hosted deploy** (ADR 0034/0036) — pull-based rollout whose deploy path opens no inbound port (the machine's own sshd is a separate matter, and is open), secrets encrypted with SOPS + age, self-hosting pitfalls catalogued in `docs/operations/host-deploy.md`. Rolling forward is still a manual `deploy.sh --tag` — the release pointer is published but nothing on the host consumes it. The earlier Azure deployment (8 Azure for Students pitfalls, OIDC workflow, 14 resources via Bicep IaC) is gone — no subscription, no export
+- **Production-grade self-hosted deploy** (ADR 0034/0051) — pull-based rollout whose deploy path opens no inbound port (the machine's own sshd is behind an NSG allowing only the maintainer's IP), secrets encrypted with SOPS + age, self-hosting pitfalls catalogued in `docs/operations/host-deploy.md`. The repository's roll-forward machinery (`deploy.sh --follow-release` + timer) exists but is **not installed on the live VM yet** — see host-deploy.md's divergence note. The earlier Azure managed-services deployment (8 Azure for Students pitfalls, OIDC workflow, 14 resources via Bicep IaC) is gone; the substrate is an Azure VM (ADR 0051)
 - **Test coverage where CI actually gates it** (ADR 0018, ADR 0042) — three JaCoCo rules on the backend, `--cov-fail-under=90` over the PII shield, and per-module coverage floors in the two Next.js apps. ADR 0018's ">85% across IAM, Auth and PII" is the aspiration; the gates are what blocks a merge. See "Measured coverage" below for the list and for what the rest of the code measures
 - **AGPL-3.0 License** (ADR 0017) — protection against clone-and-compete
 
@@ -149,8 +149,8 @@ described have both been overtaken — one by delivery, the other by a decision.
   reasons recorded in `data/synthetic/README.md`. What was called "internal UX polish" landed with
   the v3 redesign
 - **Sub-phase 1.12 — Production Hardening: no longer a list of tasks.** Most of what it named was
-  Azure vocabulary — a separate `rg-nora-prod` is a resource group, and there is no subscription
-  (ADR 0034/0036). The block that survives is declared **deferred scope** by
+  Azure vocabulary — a separate `rg-nora-prod` resource group that was never created (the live
+  group is `rg-nora-dev-cc`; ADR 0051). The block that survives is declared **deferred scope** by
   [ADR 0038](../adr/0038-post-pitch-scope-realignment.md) §6 rather than pending work, and that ADR
   is the list; repeating it here is how the two copies start to disagree. Operational LGPD was
   already delivered before the pitch (ADR 0029: `DELETE /privacy/meetings/{id}` plus the scheduled

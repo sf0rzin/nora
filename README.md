@@ -16,7 +16,7 @@ Personally identifiable information never reaches the language model in the clea
 
 ## Current state
 
-The stack runs on a single self-hosted bare-metal Ubuntu host under Docker Compose, with Cloudflare Tunnel as the only ingress (no inbound port besides SSH) and secrets encrypted with SOPS and age. Azure is gone — there is no subscription, no export and nothing to decommission. ADR 0034 is the decision to leave it, and ADR 0036 corrects the substrate: it is one physical machine, not a VM on a hypervisor. Both are in the [ADR index](docs/adr/README.md).
+The stack runs on a single Azure Linux VM under Docker Compose, with Cloudflare Tunnel as the only ingress (no inbound port besides SSH) and secrets encrypted with SOPS and age. Two earlier ADRs described this differently and both are corrected by [ADR 0051](docs/adr/0051-the-substrate-is-an-azure-vm.md): ADR 0034's exit from Azure was real for the managed services — Container Apps, Key Vault, App Insights and the Bicep IaC are gone and stay gone — but the sentence "there is no subscription" was never true of Azure itself; and ADR 0036's bare-metal claim failed its own test when `systemd-detect-virt` returned `microsoft` on the machine serving `nora.systems`. What survives from both is everything that actually matters to the code: one machine, one Compose file, pull-based deploy, tunnel-only ingress.
 
 Web, API and NLP worker are a working vertical slice, and the desktop client captures audio and transcribes it on-device.
 
@@ -74,7 +74,7 @@ docs/                      Documentation, see below
 | Database | Postgres 16. Self-hosted runs the `pgvector/pgvector:pg16` image with the extension available but not created; local development runs plain `postgres:16-alpine` |
 | NLP worker | Python 3.12 · FastAPI · Pydantic 2 · provider-agnostic LLM and embeddings client |
 | Desktop | Tauri 2 · Rust · streaming speech-to-text over a WebSocket, on a session credential minted by the API (ADR 0039/0045). The provider key never reaches the client |
-| Hosting | Self-hosted: one bare-metal Ubuntu host, no hypervisor, Docker Compose, Cloudflare Tunnel, Caddy, SOPS + age |
+| Hosting | One Azure Ubuntu VM (ADR 0051), Docker Compose, Cloudflare Tunnel, Caddy, SOPS + age |
 | Observability | OpenTelemetry Collector · Prometheus · Loki · Alloy · Grafana |
 | CI/CD | GitHub Actions. Deployment is pull-based — nothing pushes to the host. The host's timer follows the published release pointer since 2026-08-23 (`deploy.sh --if-changed --follow-release`), and refuses a pointer whose immutable sibling tag is missing; `deploy.sh --tag sha-<short>` is still there for a deliberate roll-back or roll-forward |
 | Model | OpenAI `gpt-4o-mini` by default; the client is provider-agnostic |
