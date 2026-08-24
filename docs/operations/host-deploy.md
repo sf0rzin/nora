@@ -37,6 +37,39 @@ auto-shutdown schedule **used to power it off nightly at 04:00 UTC** — that sc
 down for six days in August before being deleted on 2026-08-24. If the site is down, check the
 VM's power state before anything else: `az vm get-instance-view -g rg-nora-dev-cc -n vm-nora-dev --query "instanceView.statuses[?starts_with(code,'PowerState')].displayStatus|[0]" -o tsv`.
 
+## Two things this runbook cannot hardcode
+
+Both were hardcoded until 2026-08-24, both were wrong on this host, and one of them sits in the
+restore path.
+
+**Where the checkout lives.** Command blocks below say `/opt/nora`. On this host the checkout is at
+**`/home/nora/nora`**, and `/opt/nora` does not exist — so a copy-pasted `/opt/nora/scripts/...`
+fails with "No such file or directory". Nothing enforces either path: `bootstrap-host.sh` resolves
+everything from `BASH_SOURCE`, and the units it writes carry whatever directory it was run from
+(`WorkingDirectory=/home/nora/nora/infra/host` on this machine). Read every `/opt/nora` below as
+*wherever you cloned it*, and confirm with:
+
+```bash
+systemctl cat nora-deploy.service | grep -E 'WorkingDirectory|ExecStart'
+```
+
+**What the Postgres superuser is called.** Command blocks used to say `-U nora_admin` — the default
+in `infra/host/docker-compose.yml` and the owner name in `postgres/init/01-roles-and-db.sql`. It is
+**not** the role on this host: the data directory was initialised with
+`POSTGRES_ADMIN_USER=postgres`, so every one of those commands died with
+`FATAL: role "nora_admin" does not exist`, including the four under §Restoring the data — the worst
+possible place for a command that cannot run. A superuser is fixed at `initdb` time and cannot be
+renamed by editing the environment afterwards, so the only safe move is to ask the container.
+Export this once per shell before running anything below:
+
+```bash
+PGADMIN=$(docker exec nora-postgres printenv POSTGRES_USER)   # 'postgres' here; 'nora_admin' on a host built from the defaults
+echo "$PGADMIN"
+```
+
+`infra/host/scripts/smoke-confirm.sh` does this lookup itself, so the end-to-end smoke needs
+nothing from you.
+
 ## Overview
 
 A single Azure Ubuntu VM runs the whole stack with Docker Compose (project
@@ -231,7 +264,7 @@ drill), the scripts are **silently ignored**.
 volume, apply it by hand:
 
 ```bash
-docker compose -p nora exec -T postgres psql -U nora_admin -d nora < infra/host/postgres/init/01-roles-and-db.sql
+docker compose -p nora exec -T postgres psql -U "$PGADMIN" -d nora < infra/host/postgres/init/01-roles-and-db.sql
 ```
 
 **Important corollary:** after a `pg_restore`, `DEFAULT PRIVILEGES` do **not** reach the
@@ -364,8 +397,8 @@ Silent fail-closed — the most expensive failure mode to diagnose.
 **Fix:** provision all three at bootstrap (pitfall 2) and fill in all three variables. Check:
 
 ```bash
-docker compose -p nora exec postgres psql -U nora_admin -d nora -c \
-  "select rolname, rolbypassrls from pg_roles where rolname in ('nora_app','nora_telemetry','nora_admin');"
+docker compose -p nora exec postgres psql -U "$PGADMIN" -d nora -c \
+  "select rolname, rolbypassrls from pg_roles where rolname in ('nora_app','nora_telemetry','$PGADMIN');"
 ```
 
 Expected: `nora_app` = `f`, `nora_telemetry` = `t`.
@@ -756,7 +789,7 @@ what a Level 2/3 rollback follows, sourced from the `backup` service's hourly `p
 # 1) ONLY the databases. initdb runs here (empty volume) and creates the RLS roles.
 docker compose -p nora --env-file ./env.defaults --env-file /dev/shm/nora.env \
   up -d postgres postgres-platform
-docker compose -p nora exec postgres pg_isready -U nora_admin -d nora
+docker compose -p nora exec postgres pg_isready -U "$PGADMIN" -d nora
 
 # 2) Copy the dumps (custom format, -Fc)
 docker cp nora.dump          nora-postgres:/tmp/nora.dump
@@ -765,9 +798,9 @@ docker cp nora_platform.dump nora-postgres-platform:/tmp/nora_platform.dump
 # 3) Restore. --no-owner/--no-acl so a dump carrying roles that do not exist on this host
 #    (e.g. the historical Azure ones) does not make the restore fail on every object.
 docker compose -p nora exec postgres \
-  pg_restore -U nora_admin -d nora --no-owner --no-acl --exit-on-error -v /tmp/nora.dump
+  pg_restore -U "$PGADMIN" -d nora --no-owner --no-acl --exit-on-error -v /tmp/nora.dump
 docker compose -p nora exec postgres-platform \
-  pg_restore -U nora_admin -d nora_platform --no-owner --no-acl --exit-on-error -v /tmp/nora_platform.dump
+  pg_restore -U "$PGADMIN" -d nora_platform --no-owner --no-acl --exit-on-error -v /tmp/nora_platform.dump
 ```
 
 **4) Reapply the GRANTs (mandatory — pitfall 2).** `ALTER DEFAULT PRIVILEGES` only applies to
@@ -775,14 +808,14 @@ objects created **afterwards**; the restored tables already existed in the dump 
 `nora_app` / `nora_telemetry` permissions:
 
 ```bash
-docker compose -p nora exec -T postgres psql -U nora_admin -d nora \
+docker compose -p nora exec -T postgres psql -U "$PGADMIN" -d nora \
   < ../../services/api/src/main/resources/db/operational/R001__provision_app_roles.sql
 ```
 
 **5) Check before bringing up the rest:**
 
 ```bash
-docker compose -p nora exec postgres psql -U nora_admin -d nora -c "
+docker compose -p nora exec postgres psql -U "$PGADMIN" -d nora -c "
   select count(*) as tenants from tenants;
   select count(*) as meetings from meetings;
   select count(*) as transcripts from transcripts;
@@ -850,7 +883,7 @@ docker compose -p nora exec loki wget -qO- \
 RLS (pitfall 8) and secrets:
 
 ```bash
-docker compose -p nora exec postgres psql -U nora_admin -d nora -c \
+docker compose -p nora exec postgres psql -U "$PGADMIN" -d nora -c \
   "select rolname, rolbypassrls from pg_roles where rolname like 'nora_%';"
 docker compose -p nora --profile platform exec admin printenv CF_ACCESS_AUD   # must not be empty
 ```
@@ -977,10 +1010,13 @@ No network exposure: the ports are on `127.0.0.1`.
 ```bash
 ssh -L 15432:127.0.0.1:5432 nora-prod          # primary
 ssh -L 15433:127.0.0.1:5433 nora-prod          # platform
-psql "host=127.0.0.1 port=15432 dbname=nora user=nora_admin"     # WITHOUT sslmode (pitfall 1)
+psql "host=127.0.0.1 port=15432 dbname=nora user=$PGADMIN"       # WITHOUT sslmode (pitfall 1)
 ```
 
-Directly on the host: `docker compose -p nora exec postgres psql -U nora_admin -d nora`.
+This one runs from the operator's machine, where `docker exec` cannot look the name up — take
+`$PGADMIN` from a shell on the host first.
+
+Directly on the host: `docker compose -p nora exec postgres psql -U "$PGADMIN" -d nora`.
 
 ### On-demand manual backup
 
@@ -1040,10 +1076,10 @@ In that case, the rollback is a **data restore**:
 ```bash
 docker compose -p nora stop api web admin worker
 docker compose -p nora exec postgres \
-  psql -U nora_admin -d postgres -c 'drop database nora; create database nora;'
+  psql -U "$PGADMIN" -d postgres -c 'drop database nora; create database nora;'
 docker compose -p nora exec postgres \
-  pg_restore -U nora_admin -d nora --no-owner --no-acl --exit-on-error /backups/nora-<TS>.dump
-docker compose -p nora exec -T postgres psql -U nora_admin -d nora \
+  pg_restore -U "$PGADMIN" -d nora --no-owner --no-acl --exit-on-error /backups/nora-<TS>.dump
+docker compose -p nora exec -T postgres psql -U "$PGADMIN" -d nora \
   < services/api/src/main/resources/db/operational/R001__provision_app_roles.sql
 # only then: API_TAG back to the previous one + deploy
 ```

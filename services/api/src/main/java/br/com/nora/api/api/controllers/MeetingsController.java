@@ -36,7 +36,9 @@ import br.com.nora.api.application.meeting.TranscriptSplitService;
 import br.com.nora.api.application.ports.MeetingRepository.MeetingFilter;
 import br.com.nora.api.application.ports.MeetingRepository.PagedMeetings;
 import br.com.nora.api.application.ports.TrendsRepository.Scope;
+import br.com.nora.api.application.ports.UserRepository;
 import br.com.nora.api.domain.customer.CustomerConfidenceAssessment;
+import br.com.nora.api.domain.identity.User;
 import br.com.nora.api.domain.meeting.Meeting;
 import br.com.nora.api.domain.meeting.Participant;
 import br.com.nora.api.domain.meeting.ParticipantIdentity;
@@ -95,6 +97,7 @@ public class MeetingsController {
     private final AuthorizationService authz;
     private final EmbeddingService embeddings;
     private final ParticipantIdentityService participantIdentities;
+    private final UserRepository users;
 
     /**
      * Guards the four handlers on this controller that reach a paid provider. It sits here rather
@@ -117,6 +120,7 @@ public class MeetingsController {
             AuthorizationService authz,
             EmbeddingService embeddings,
             ParticipantIdentityService participantIdentities,
+            UserRepository users,
             AiSpendRateLimiter spendLimiter) {
         this.meetings = meetings;
         this.analyses = analyses;
@@ -129,7 +133,30 @@ public class MeetingsController {
         this.authz = authz;
         this.embeddings = embeddings;
         this.participantIdentities = participantIdentities;
+        this.users = users;
         this.spendLimiter = spendLimiter;
+    }
+
+    /**
+     * The owner's display name, or null when the row is gone.
+     *
+     * <p>This method exists because the argument used to be the literal {@code null}. {@code
+     * OwnerSummary} has carried a {@code displayName} member since it was written, the detail page
+     * renders it unconditionally ({@code apps/web/src/app/(app)/meetings/[id]/page.tsx}), and the
+     * value was hard-coded null at the single construction site — so every meeting detail in
+     * production showed an owner label with nothing after it. A field that is always null is worse
+     * than an absent one: the client cannot tell "we do not know" from "we never looked".
+     *
+     * <p>One extra read per detail request, on a page that already issues several. It stays null
+     * rather than throwing when the user cannot be found: an owner deleted out from under a meeting
+     * is not a reason to fail the whole response, and the caller already handles the null it has
+     * been receiving all along.
+     */
+    private String ownerName(UUID ownerUserId) {
+        if (ownerUserId == null) {
+            return null;
+        }
+        return users.findById(ownerUserId).map(User::displayName).orElse(null);
     }
 
     private static String meetingResource(UUID tenantId, UUID meetingId) {
@@ -560,7 +587,7 @@ public class MeetingsController {
                 m.endedAt(),
                 m.durationSeconds(),
                 m.language(),
-                new MeetingDetailResponse.OwnerSummary(m.ownerUserId(), null),
+                new MeetingDetailResponse.OwnerSummary(m.ownerUserId(), ownerName(m.ownerUserId())),
                 m.participants().stream()
                         .map(
                                 p ->

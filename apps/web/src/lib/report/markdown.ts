@@ -9,6 +9,7 @@
  */
 
 import type { MeetingDetail, Severity } from "@/lib/api/types";
+import { meetingInstant } from "@/lib/utils";
 
 const BAND_LABEL: Record<string, string> = {
   LOW: "Baixa",
@@ -74,7 +75,7 @@ export function meetingToMarkdown(detail: MeetingDetail): string {
   lines.push(`# ${detail.title}`, "");
 
   const meta: string[] = [];
-  const when = formatDateTimePt(detail.startedAt);
+  const when = formatDateTimePt(meetingInstant(detail));
   if (when) meta.push(`**Data:** ${when}`);
   const duration = durationLabel(detail.durationSeconds);
   if (duration) meta.push(`**Duração:** ${duration}`);

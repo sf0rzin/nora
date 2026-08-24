@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 
 import { ApiRequestError, getMeeting } from "@/lib/api/client";
 import type { ActionItem, Decision, MeetingDetail, Opportunity, Risk } from "@/lib/api/types";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, meetingInstant } from "@/lib/utils";
 import { MarkdownContent } from "@/components/markdown-content";
 import MeetingProductivitySection from "@/components/meeting-productivity-section";
 import CustomerConfidenceCard from "@/components/customer-confidence-card";
@@ -97,7 +97,9 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
               </span>
             ))}
             {meeting.participants.length === 0 && (
-              <span style={{ fontSize: 12, color: "var(--muted)" }}>Owner: {meeting.owner.displayName}</span>
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                Responsável: {meeting.owner.displayName ?? "—"}
+              </span>
             )}
           </div>
           {tags.length > 0 && (
@@ -112,7 +114,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 10, flexShrink: 0, paddingTop: 6 }}>
           <div style={{ fontSize: 12, color: "var(--muted)", textAlign: "right", whiteSpace: "nowrap" }}>
-            {formatDateTime(meeting.startedAt)}
+            {formatDateTime(meetingInstant(meeting))}
             {duration ? ` · ${duration}` : ""}
           </div>
           {a && <ExportMenu detail={meeting} />}

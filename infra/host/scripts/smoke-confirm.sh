@@ -35,8 +35,33 @@ set -euo pipefail
 readonly SMOKE_DOMAIN="smoke.invalid"
 
 PG_CONTAINER="${NORA_PG_CONTAINER:-nora-postgres}"
-PG_USER="${POSTGRES_ADMIN_USER:-nora_admin}"
 PG_DB="${POSTGRES_DB:-nora}"
+
+# THE SUPERUSER IS ASKED FOR, NOT ASSUMED, and the reason is a smoke run that died on it.
+#
+# This line used to read `PG_USER="${POSTGRES_ADMIN_USER:-nora_admin}"`. `nora_admin` is the
+# default in `infra/host/docker-compose.yml`, it is what `postgres/init/01-roles-and-db.sql`
+# calls the owner, and it is the user every psql command in `docs/operations/host-deploy.md`
+# passes. It is also not the role on the deployed host, whose data directory was initialised
+# with POSTGRES_ADMIN_USER=postgres -- so on 2026-08-24 the documented end-to-end smoke died at
+# step 4 with `FATAL: role "nora_admin" does not exist`, having proved signup and the
+# verification gate and nothing after them.
+#
+# The environment could not save it either: this script runs from `NORA_SMOKE_CONFIRM_CMD`,
+# usually under `sudo`, whose env_reset drops POSTGRES_ADMIN_USER even when the operator
+# exported it. A default that is right in the repository and wrong on the host, in a script the
+# host is the only place to run, is a default worth deleting.
+#
+# So: ask the container. A running Postgres knows which superuser its data directory was created
+# with -- that is exactly what POSTGRES_USER holds inside it -- and it cannot disagree with
+# itself the way a repository default can. An explicit POSTGRES_ADMIN_USER still wins, for the
+# case where the container's own variable is absent; `nora_admin` stays as the last resort so a
+# stopped container produces the old error rather than an empty `-U`.
+PG_USER="${POSTGRES_ADMIN_USER:-}"
+if [ -z "$PG_USER" ]; then
+  PG_USER="$(docker exec "$PG_CONTAINER" printenv POSTGRES_USER 2>/dev/null || true)"
+fi
+PG_USER="${PG_USER:-nora_admin}"
 
 addr="${1:-}"
 [ -n "$addr" ] || { echo "usage: $(basename "$0") <email>" >&2; exit 2; }

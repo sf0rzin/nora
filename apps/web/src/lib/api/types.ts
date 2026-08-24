@@ -139,7 +139,14 @@ export interface MeetingAnalysis {
 
 export interface UserRef {
   id: string;
-  displayName: string;
+  /**
+   * Nullable, and it was not merely nullable in theory: `MeetingsController` used to construct
+   * `OwnerSummary(ownerUserId, null)` with the null written out as a literal, so every meeting
+   * detail rendered its owner label with nothing after it. The API reads the name now; it still
+   * comes back null when the owner row is gone, which is a different thing from "we never looked"
+   * and the type should be able to say so.
+   */
+  displayName: string | null;
 }
 
 export interface Participant {
@@ -207,7 +214,14 @@ export interface MeetingDetail {
   id: string;
   tenantId: string;
   title: string;
-  startedAt: string;
+  /**
+   * Null when the upload declared no start. `docs/api/openapi.yaml` has always said
+   * `[string, 'null']` here while this type said `string`, which is how `new Date(null)` reached
+   * `toLocaleString` and printed the Unix epoch on the detail page. Render it through
+   * `formatDateTime`, and take the instant from `meetingInstant`, which falls back to `createdAt`
+   * — the upload date the form promises.
+   */
+  startedAt: string | null;
   endedAt?: string;
   durationSeconds?: number;
   language?: string;

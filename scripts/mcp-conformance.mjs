@@ -14,8 +14,16 @@
 // a real client then fails, this tells you whether the fault is on our side of the wire.
 //
 // USAGE
-//   node scripts/mcp-conformance.mjs --url https://nora.systems --token nora_mcp_xxx
+//   node scripts/mcp-conformance.mjs --url https://api.nora.systems --token nora_mcp_xxx
 //   NORA_URL=... NORA_MCP_TOKEN=... node scripts/mcp-conformance.mjs
+//
+//   --url is the API base, NOT the web origin. The endpoint is a mapping in `services/api`, so
+//   it lives on api.nora.systems and nowhere else. This block used to say `https://nora.systems`
+//   and that is worse than a typo: the web origin answers, so nothing here fails as a transport
+//   error. Every check simply fails, and one of them fails in the most misleading direction
+//   available -- `GET https://nora.systems/meetings` is a Next.js PAGE and returns 200, so the
+//   run reports "the MCP token must not authenticate the REST API" as a failure and looks like a
+//   credential-scoping breach. The guard after `initialize` now stops that run instead.
 //
 // Mint the token in the web app (Settings › MCP). It is shown once; only its SHA-256 is stored
 // (ADR 0041 §3). Zero dependencies — Node 18+ for the built-in fetch.
@@ -45,7 +53,8 @@ const EXPECTED_TOOLS = [
 ]
 
 if (!BASE || !TOKEN) {
-  console.error('usage: node scripts/mcp-conformance.mjs --url <base> --token <nora_mcp_...>')
+  console.error('usage: node scripts/mcp-conformance.mjs --url <api base> --token <nora_mcp_...>')
+  console.error('       <api base> is the API origin (https://api.nora.systems), not the web one')
   console.error('   or: NORA_URL=<base> NORA_MCP_TOKEN=<token> node scripts/mcp-conformance.mjs')
   process.exit(2)
 }
@@ -54,6 +63,19 @@ let passed = 0
 let failed = 0
 const ok = (msg, detail) => { passed++; console.log(`  PASS  ${msg}${detail ? ` — ${detail}` : ''}`) }
 const bad = (msg, detail) => { failed++; console.log(`  FAIL  ${msg}${detail ? ` — ${detail}` : ''}`) }
+
+// EXITING AFTER A FETCH, on Windows. `process.exit()` called while undici still holds a
+// keep-alive socket aborts the process instead of exiting it:
+// `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c` and exit
+// code 127 -- which replaces whatever message was just printed with a crash. It needs a response
+// to have just arrived, so it does not hit the transport-error path (nothing connected) and it
+// does not hit the end of a full run (by then the sockets have gone idle). It hits the 404 guard
+// below, whose whole job is to print one clear sentence. One macrotask is enough for libuv to
+// close the handle.
+const stop = async (code) => {
+  await new Promise((r) => setTimeout(r, 50))
+  process.exit(code)
+}
 
 let nextId = 1
 async function rpc(method, params, { token = TOKEN, version = PREFERRED_VERSION } = {}) {
@@ -74,8 +96,15 @@ async function rpc(method, params, { token = TOKEN, version = PREFERRED_VERSION 
     console.error('deployment is up. Nothing about protocol conformance was measured.')
     process.exit(2)
   }
+  // Read the body as text and parse it here, rather than calling res.json() and swallowing the
+  // throw. Same result on a JSON body, and it fixes a real failure on the not-JSON path: an
+  // unread body leaves undici holding the socket, and a `process.exit()` that follows -- which
+  // the 404 guard below does -- aborts the process instead of exiting, with
+  // `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` and exit code 127. Draining first
+  // costs nothing and a non-JSON body is still the finding it always was.
+  const text = await res.text()
   let json = null
-  try { json = await res.json() } catch { /* a non-JSON body is itself the finding */ }
+  try { json = JSON.parse(text) } catch { /* a non-JSON body is itself the finding */ }
   return { status: res.status, json }
 }
 
@@ -88,6 +117,18 @@ const init = await rpc('initialize', {
   capabilities: {},
   clientInfo: { name: 'nora-conformance', version: '1.0.0' },
 })
+// A 404 is not a conformance finding, it is the wrong base URL -- and unlike an unreachable
+// host it does not raise, so without this the run continues and reports eleven failures about a
+// server it never spoke to. Stopping here costs nothing that was going to be true anyway.
+if (init.status === 404) {
+  console.error('')
+  console.error(`${ENDPOINT} answered 404, so nothing below would be about MCP.`)
+  console.error('')
+  console.error('--url must be the API base -- the endpoint is a mapping in services/api and')
+  console.error('exists only there. On the deployed stack that is https://api.nora.systems,')
+  console.error('not the web origin. Nothing about protocol conformance was measured.')
+  await stop(2)
+}
 if (init.status !== 200) {
   bad('initialize returns 200', `got ${init.status}`)
 } else if (init.json?.error) {

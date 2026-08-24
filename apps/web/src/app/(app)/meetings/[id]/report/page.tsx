@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 
 import { ApiRequestError, getMeeting } from "@/lib/api/client";
 import type { MeetingDetail, Severity } from "@/lib/api/types";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, meetingInstant } from "@/lib/utils";
 import { MarkdownContent } from "@/components/markdown-content";
 import PrintButton from "./print-button";
 
@@ -94,7 +94,7 @@ export default async function MeetingReportPage({ params }: { params: Promise<{ 
   const duration = durationLabel(meeting.durationSeconds);
   const generatedAt = formatDateTime(new Date().toISOString());
 
-  const metaParts: string[] = [formatDateTime(meeting.startedAt)];
+  const metaParts: string[] = [formatDateTime(meetingInstant(meeting))];
   if (duration) metaParts.push(duration);
   if (meeting.participants.length > 0) {
     metaParts.push(meeting.participants.map((p) => p.displayName).join(", "));

@@ -131,7 +131,7 @@ Internal-only — only the Spring backend talks to it. Hosted in `nora-worker-de
 
 **PII** — Personally Identifiable Information. Categories covered by NORA's PII Shield: email, CPF, CNPJ, phone, credit card, PERSON_NAME (BR) and ADDRESS (BR street-type recogniser, ADR 0043 — deterministic, not NER). ADR 0012.
 
-**PII Shield** — System in the NLP worker that detects and redacts PII **before** sending text to an external LLM. Replaces it with `[[TIPO_N]]` placeholders (e.g., `[[EMAIL_1]]`, `[[CPF_2]]`). After the LLM, the backend can unredact if authorized. ADR 0012. Implementation in `services/nlp-worker/src/.../pii_shield.py` (95% coverage).
+**PII Shield** — System in the NLP worker that detects and redacts PII **before** sending text to an external LLM. Replaces it with `[[TIPO_N]]` placeholders (e.g., `[[EMAIL_1]]`, `[[CPF_2]]`). **The replacement is one-way and there is no path back** — see **Unredact** below, and expect to see placeholders in the analysis itself. ADR 0012. Implementation in `services/nlp-worker/src/.../pii_shield.py` (95% coverage).
 
 **PolicyEvaluator** — Spring component in `services/api/src/main/java/.../PolicyEvaluator.java` that receives a set of policies + context (user, action, resource, attributes) and returns `Allow` / `Deny`. Implements Deny-first eval. Supported operators: `StringEquals`, `StringIn`, `StringLike`, `DateGreaterThan`, `DateLessThan` (unsupported operators result in `false`, fail-closed). Coverage 96.3% instruction / 86.0% branch (measured 2026-08-17) — the one class in the backend with a JaCoCo gate of its own (`services/api/pom.xml`: instruction >= 90%, branch >= 75%).
 
@@ -175,7 +175,21 @@ Internal-only — only the Spring backend talks to it. Hosted in `nora-worker-de
 
 **UAI** — User-Assigned Identity. Type of Azure managed identity that is **pre-created** (vs SystemAssigned, which is created with the resource). NORA uses two UAIs (`nora-uai-deploy` and `nora-uai-app`) to resolve the role assignment + KV reference cycle in Container Apps. Without it, ACA tries to access KV before the role assignment has propagated.
 
-**Unredact** — Operation of reverting the PII Shield's `[[TIPO_N]]` placeholders back to the original values. Done by the backend after the LLM response, only if authorized by the request context.
+**Unredact** — **Does not exist, and cannot be built on the current design.** This entry used to
+describe it as shipped behaviour — "done by the backend after the LLM response, only if authorized
+by the request context" — and there is no such operation anywhere in the tree: no method, no
+endpoint, no authorization flag. The design forecloses it three times over. The worker keeps only
+`sha256(value)[:16]` (`pii_shield.py`), never the original. The `redactions` list never leaves the
+worker process: `analyze.py` consumes it through `len()` and `WorkerDtos.Metadata` carries an
+integer, `piiRedactionsApplied`, across the service boundary. And every occurrence is numbered
+separately with no dedup, so two mentions of one person are two placeholders that nothing
+downstream can join.
+
+The consequence is visible and worth stating plainly rather than leaving a reader to discover it:
+a placeholder the model kept in a summary, an action item's assignee or a source quote **reaches
+the tenant's own screen as `[[PERSON_NAME_9]]`**, and that is the intended behaviour of a shield
+whose promise is that the original never survives the call. Restoring the names would mean
+retaining them, which is the thing ADR 0012 exists to avoid.
 
 ## V
 
