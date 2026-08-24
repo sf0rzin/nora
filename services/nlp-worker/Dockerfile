@@ -2,7 +2,7 @@
 # This is necessary for the COPY of the shared package packages/nlp-baseline (ADR 0010).
 # Build: docker build -f services/nlp-worker/Dockerfile -t nora-worker .
 
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
