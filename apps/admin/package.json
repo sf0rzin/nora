@@ -28,7 +28,7 @@
     "@vitest/coverage-v8": "^4.1.11",
     "autoprefixer": "^10.5.4",
     "eslint": "^8.57.1",
-    "eslint-config-next": "15.5.23",
+    "eslint-config-next": "15.5.25",
     "eslint-config-prettier": "^9.1.0",
     "postcss": "^8.5.18",
     "prettier": "^3.9.6",
