@@ -4,13 +4,13 @@
 # allowlist on ACA" this line used to name is the pre-0025 hosting, gone since the move off Azure.
 
 # --- deps ---
-FROM node:22-alpine AS deps
+FROM node:25-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
 # --- build ---
-FROM node:22-alpine AS build
+FROM node:25-alpine AS build
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
@@ -18,7 +18,7 @@ COPY . .
 RUN npm run build
 
 # --- runtime (standalone) ---
-FROM node:22-alpine AS runtime
+FROM node:25-alpine AS runtime
 WORKDIR /app
 # HOSTNAME=0.0.0.0 is not a detail: the standalone output's `server.js` binds to
 # `process.env.HOSTNAME`, and Docker fills that variable with the container ID. Without
